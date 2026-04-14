@@ -537,30 +537,53 @@ function appTaskToDB(t){
     seg3_s:t.segs[2]?.s||null,seg3_e:t.segs[2]?.e||null};
 }
 
+// ── QUERY TIMEOUT ─────────────────────────────────────────────────────────────
+// Prevents loadAll/saveApiKey from hanging forever if Supabase is paused/slow.
+// Supabase free-tier projects pause after ~7 days of inactivity.
+const QUERY_TIMEOUT_MS=12000;
+function withTimeout(promise,ms,msg){
+  return Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error(msg||'Database query timed out. Check your Supabase project is active at supabase.com.')),ms))
+  ]);
+}
+
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl]=await Promise.all([
-      sb.from('projects').select('*').order('sort_order'),
-      sb.from('tasks').select('*').order('project_id').order('sort_order'),
-      sb.from('crews').select('*').order('sort_order'),
-      sb.from('holidays').select('*').order('date')
-    ]);
+    const[pr,tk,cr,hl]=await withTimeout(
+      Promise.all([
+        sb.from('projects').select('*').order('sort_order'),
+        sb.from('tasks').select('*').order('project_id').order('sort_order'),
+        sb.from('crews').select('*').order('sort_order'),
+        sb.from('holidays').select('*').order('date')
+      ]),
+      QUERY_TIMEOUT_MS
+    );
     if(!pr.error&&pr.data)S.projects=pr.data;
     if(!tk.error&&tk.data)S.tasks=tk.data.map(dbTaskToApp);
     if(!cr.error&&cr.data)S.crews=cr.data;
     if(!hl.error&&hl.data)S.holidays=hl.data;
+    _projTaskCache=null; // invalidate memoised cache after fresh data
   }finally{
     S.syncing=false;refreshToolbar();
   }
 }
 
+// Debounced realtime reload — coalesces multiple rapid change events into one
+// loadAll(). Without this, saving a project+tasks fires 2 separate loadAll() calls.
+let _reloadTimer=null;
+function scheduleReload(){
+  clearTimeout(_reloadTimer);
+  _reloadTimer=setTimeout(()=>loadAll().then(renderSafe).catch(e=>console.error('[Strada] realtime reload failed:',e)),400);
+}
+
 function startRealtime(){
   realtimeCh=sb.channel('db-changes')
-    .on('postgres_changes',{event:'*',schema:'public',table:'projects'},()=>loadAll().then(render).catch(console.error))
-    .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>loadAll().then(render).catch(console.error))
-    .on('postgres_changes',{event:'*',schema:'public',table:'crews'},()=>loadAll().then(render).catch(console.error))
-    .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},()=>loadAll().then(render).catch(console.error))
+    .on('postgres_changes',{event:'*',schema:'public',table:'projects'},scheduleReload)
+    .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},scheduleReload)
+    .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
+    .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
 }
 
@@ -590,9 +613,9 @@ async function seedData(){
     const tasks=seeds.filter(r=>r.type==='task').map(r=>r.row);
     for(let i=0;i<projs.length;i+=20)await sb.from('projects').upsert(projs.slice(i,i+20));
     for(let i=0;i<tasks.length;i+=50)await sb.from('tasks').upsert(tasks.slice(i,i+50));
-    await loadAll();toast('✓ Sample data loaded successfully','ok');render();
+    await loadAll();toast('✓ Sample data loaded successfully','ok');renderSafe();
   }catch(e){toast('⚠ Seed failed: '+e.message,'error')}
-  S.syncing=false;refreshToolbar();
+  finally{S.syncing=false;refreshToolbar()}
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -615,11 +638,54 @@ function workDays(segs,holDates,wknd){
 function projSpan(tasks){let s=null,e=null;tasks.forEach(t=>(t.segs||[]).forEach(sg=>{if(sg.s&&(!s||sg.s<s))s=sg.s;if(sg.e&&(!e||sg.e>e))e=sg.e}));return{s,e}}
 function getHolIdxs(){return ALL_DATES.reduce((a,d,i)=>{if(S.holidays.some(h=>h.date===d2s(d)))a.push(i);return a},[])}
 function crewMap(){const m={};S.crews.forEach(c=>{m[c.name]=c});return m}
-function projTasks(pid){return S.tasks.filter(t=>t.project_id===pid).sort((a,b)=>a.sort_order-b.sort_order)}
+// projTasks() is defined above with memoisation cache
 
 const el=tag=>document.createElement(tag);
 function statusBadge(st){const c=ST_CLR[st]||'#6c757d',s=el('span');s.className='status-badge';s.style.cssText='background:'+c+'22;color:'+c+';border:1px solid '+c+'44';s.textContent=st;return s}
 function iBtn(ico,fn,col){const b=el('button');b.className='icon-btn';b.style.color=col||'#555';b.innerHTML=ico;b.onclick=fn;return b}
+
+// ── PERFORMANCE: projTasks memoisation ───────────────────────────────────────
+// projTasks() was O(N_tasks) per call; called ~50+ times per render = O(N²).
+// We build a lookup map once per render and reuse it.
+let _projTaskCache=null;
+function buildProjTaskCache(){
+  _projTaskCache={};
+  S.tasks.forEach(t=>{
+    if(!_projTaskCache[t.project_id])_projTaskCache[t.project_id]=[];
+    _projTaskCache[t.project_id].push(t);
+  });
+  Object.values(_projTaskCache).forEach(arr=>arr.sort((a,b)=>a.sort_order-b.sort_order));
+}
+function projTasks(pid){
+  if(_projTaskCache)return _projTaskCache[pid]||[];
+  return S.tasks.filter(t=>t.project_id===pid).sort((a,b)=>a.sort_order-b.sort_order);
+}
+
+// ── PERFORMANCE: Calendar header cache ───────────────────────────────────────
+// The 275-day calendar header (9 month + 275 day + 275 weekday cells = 559 DOM
+// elements) is identical on every render. We build it once and clone it.
+let _calCache=null; // {key:string, node:Element}
+function getCalHeader(totalW,holI){
+  const key=holI.join(',')+':'+totalW;
+  if(_calCache&&_calCache.key===key)return _calCache.node.cloneNode(true);
+  const calw=el('div');calw.className='cal-wrap';calw.style.width=totalW+'px';
+  const mr=el('div');mr.className='month-row';
+  MONTH_BANDS.forEach(m=>{const mc=el('div');mc.className='mc';mc.style.cssText='width:'+m.n*DW+'px;height:18px;background:'+m.c;mc.textContent=m.l;mr.appendChild(mc)});calw.appendChild(mr);
+  const dr=el('div');dr.className='day-row';
+  ALL_DATES.forEach((d,i)=>{
+    const wk=WDAY_IDXS.includes(i),hl=holI.includes(i),tod=i===TODAYIDX;
+    const dc=el('div');dc.className='dc';dc.style.cssText='width:'+DW+'px;height:15px;background:'+(tod?'#FFD700':hl?'#ffb3b3':wk?'#b8bcc8':'#2a4a80');
+    dc.style.color=tod?'#333':'#fff';if(tod||wk)dc.style.fontWeight='700';dc.textContent=d.getDate();dr.appendChild(dc);
+  });calw.appendChild(dr);
+  const wr=el('div');wr.className='wd-row';
+  ALL_DATES.forEach((d,i)=>{
+    const wk=WDAY_IDXS.includes(i);const wc=el('div');wc.className='wc';
+    wc.style.cssText='width:'+DW+'px;height:10px;background:'+(wk?'#9a9ea8':'#1a3a6a');
+    wc.style.color=wk?'#555':'rgba(255,255,255,.5)';wc.textContent='SMTWTFS'[d.getDay()];wr.appendChild(wc);
+  });calw.appendChild(wr);
+  _calCache={key,node:calw};
+  return calw.cloneNode(true);
+}
 function toast(msg,type){
   const tc=document.getElementById('toasts');const t=el('div');t.className='toast';t.textContent=msg;
   if(type==='error')t.style.background='#7f1d1d';tc.appendChild(t);
@@ -840,9 +906,21 @@ async function fetchApiKey(){
 }
 async function saveApiKey(key){
   try{
-    const{error}=await sb.from('settings').upsert({key:'anthropic_api_key',value:key.trim()});
-    return!error;
-  }catch(e){console.error('saveApiKey failed:',e);return false}
+    const{error}=await withTimeout(
+      sb.from('settings').upsert({key:'anthropic_api_key',value:key.trim()}),
+      QUERY_TIMEOUT_MS,
+      'Save timed out. Your Supabase project may be paused — visit supabase.com to wake it up.'
+    );
+    if(error){
+      // code 42P01 = table does not exist
+      if(error.code==='42P01')throw new Error('The "settings" table does not exist. Run settings_setup.sql in Supabase SQL Editor first.');
+      throw new Error(error.message);
+    }
+    return true;
+  }catch(e){
+    console.error('[Strada] saveApiKey failed:',e);
+    throw e; // re-throw so the button handler can show the specific message
+  }
 }
 function fileToBase64(file){
   return new Promise((resolve,reject)=>{
@@ -932,9 +1010,9 @@ window.addEventListener('mouseup',()=>{
 function render(){
   const toolbar=document.getElementById('toolbar');const main=document.getElementById('main');
   if(!toolbar||!main)return;
-  saveScroll(); // FIX CP4: capture before DOM change
+  saveScroll();
+  buildProjTaskCache(); // build O(N) lookup once per render
   toolbar.parentNode.replaceChild(buildToolbar(),toolbar);
-  // Rebuild filter bar (Phase 2)
   const fb=document.getElementById('filter-bar');
   if(fb){const nfb=buildFilterBar();fb.parentNode.replaceChild(nfb,fb)}
   if(S.loading){
@@ -1041,21 +1119,8 @@ function buildGantt(){
     ?visProjs.length+' of '+totalProjCount+' jobs (filtered)'
     :flatRows.length+' rows · '+totalProjCount+' jobs';
   ci.textContent=filteredInfo;corner.appendChild(ci);hdr.appendChild(corner);
-  const calw=el('div');calw.className='cal-wrap';calw.style.width=totalW+'px';
-  const mr=el('div');mr.className='month-row';
-  MONTH_BANDS.forEach(m=>{const mc=el('div');mc.className='mc';mc.style.cssText='width:'+m.n*DW+'px;height:18px;background:'+m.c;mc.textContent=m.l;mr.appendChild(mc)});calw.appendChild(mr);
-  const dr=el('div');dr.className='day-row';
-  ALL_DATES.forEach((d,i)=>{
-    const wk=WDAY_IDXS.includes(i),hl=holI.includes(i),tod=i===TODAYIDX;
-    const dc=el('div');dc.className='dc';dc.style.cssText='width:'+DW+'px;height:15px;background:'+(tod?'#FFD700':hl?'#ffb3b3':wk?'#b8bcc8':'#2a4a80');
-    dc.style.color=tod?'#333':'#fff';if(tod||wk)dc.style.fontWeight='700';dc.textContent=d.getDate();dr.appendChild(dc);
-  });calw.appendChild(dr);
-  const wr=el('div');wr.className='wd-row';
-  ALL_DATES.forEach((d,i)=>{
-    const wk=WDAY_IDXS.includes(i);const wc=el('div');wc.className='wc';
-    wc.style.cssText='width:'+DW+'px;height:10px;background:'+(wk?'#9a9ea8':'#1a3a6a');
-    wc.style.color=wk?'#555':'rgba(255,255,255,.5)';wc.textContent='SMTWTFS'[d.getDay()];wr.appendChild(wc);
-  });calw.appendChild(wr);hdr.appendChild(calw);wrap.appendChild(hdr);
+  hdr.appendChild(getCalHeader(totalW,holI)); // cached — not rebuilt every render
+  wrap.appendChild(hdr);
 
   flatRows.forEach((row,ri)=>{
     const isP=row.type==='proj';const h=isP?PH:RH;
@@ -1282,9 +1347,10 @@ function buildDataPanel(){
     if(!key.startsWith('sk-ant-')&&!key.startsWith('sk-')){toast('That doesn\'t look like a valid Anthropic key.','error');return}
     akSave.disabled=true;akSave.textContent='Saving…';
     try{
-      const ok=await saveApiKey(key);
-      if(ok){toast('✓ API key saved','ok');}
-      else{toast('⚠ Failed to save. Make sure you ran settings_setup.sql in Supabase first.','error');}
+      await saveApiKey(key);
+      toast('✓ API key saved','ok');
+    }catch(e){
+      toast('⚠ '+e.message,'error');
     }finally{
       akSave.disabled=false;akSave.textContent='Save Key';
     }
