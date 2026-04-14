@@ -12,39 +12,47 @@ input,select,textarea{font-family:inherit;font-size:12px}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:#eee}
 ::-webkit-scrollbar-thumb{background:#bbb;border-radius:3px}
-/* Layout */
+/* Full-screen overlay screens */
+.screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1000}
+.screen-bg-dark{background:linear-gradient(135deg,#1F3864 0%,#2563eb 100%)}
+.screen-card{background:#fff;border-radius:14px;padding:32px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.screen-logo{font-size:26px;font-weight:800;color:#1F3864;margin-bottom:4px}
+.screen-sub{color:#888;font-size:13px;margin-bottom:22px;line-height:1.5}
+.screen-lbl{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:4px;margin-top:14px}
+.screen-inp{width:100%;padding:9px 12px;border:1.5px solid #d0d7e3;border-radius:7px;font-size:13px;outline:none;transition:border-color .15s;color:#222}
+.screen-inp:focus{border-color:#1F3864}
+.screen-btn{width:100%;margin-top:18px;padding:11px;background:#1F3864;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;transition:background .15s}
+.screen-btn:hover{background:#2d5a9e}
+.screen-btn:disabled{background:#bbb;cursor:not-allowed}
+.screen-err{color:#dc3545;font-size:12px;margin-top:8px;min-height:18px}
+.screen-link{display:block;text-align:center;margin-top:12px;font-size:12px;color:#1F3864;cursor:pointer;text-decoration:underline}
+.screen-note{color:#aaa;font-size:11px;margin-top:14px;text-align:center;line-height:1.5}
+.screen-divider{border:none;border-top:1px solid #eee;margin:16px 0}
+/* App shell */
 .app{display:flex;flex-direction:column;height:100vh}
-.toolbar{display:flex;align-items:center;gap:10px;padding:0 16px;height:44px;background:#1F3864;color:#fff;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,0.25);z-index:100}
-.logo{font-weight:700;font-size:14px;margin-right:4px}
-.tabs{display:flex;background:rgba(255,255,255,0.12);border-radius:6px;padding:2px;gap:1px}
-.tab{padding:3px 12px;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,0.8);transition:all .15s}
+.toolbar{display:flex;align-items:center;gap:10px;padding:0 14px;height:44px;background:#1F3864;color:#fff;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:100}
+.logo{font-weight:700;font-size:14px;margin-right:4px;letter-spacing:.2px}
+.tabs{display:flex;background:rgba(255,255,255,.12);border-radius:6px;padding:2px;gap:1px}
+.tab{padding:3px 11px;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;background:transparent;color:rgba(255,255,255,.8);transition:all .15s}
 .tab.active{background:#fff;color:#1F3864}
 .spacer{flex:1}
-.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.user-pill{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);border-radius:20px;padding:3px 10px 3px 3px}
+.user-av{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0}
+.user-email{font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-left:2px}
 .sync-dot.ok{background:#4ade80}
 .sync-dot.busy{background:#fbbf24;animation:pulse .8s infinite}
 .sync-dot.err{background:#f87171}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.logout-btn{background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.8);border-radius:5px;padding:3px 9px;font-size:11px;cursor:pointer;white-space:nowrap}
+.logout-btn:hover{background:rgba(255,255,255,.2)}
 .main{flex:1;overflow:hidden;display:flex}
-/* Setup screen */
-.setup-screen{position:fixed;inset:0;background:linear-gradient(135deg,#1F3864,#2563eb);display:flex;align-items:center;justify-content:center;z-index:1000}
-.setup-card{background:#fff;border-radius:14px;padding:32px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
-.setup-logo{font-size:28px;font-weight:800;color:#1F3864;margin-bottom:4px}
-.setup-sub{color:#666;font-size:13px;margin-bottom:24px}
-.setup-lbl{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:4px;margin-top:14px}
-.setup-inp{width:100%;padding:8px 12px;border:1px solid #d0d7e3;border-radius:6px;font-size:13px;outline:none;transition:border-color .15s}
-.setup-inp:focus{border-color:#1F3864}
-.setup-btn{width:100%;margin-top:20px;padding:10px;background:#1F3864;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;transition:background .15s}
-.setup-btn:hover{background:#2d5a9e}
-.setup-btn:disabled{background:#bbb;cursor:not-allowed}
-.setup-err{color:#dc3545;font-size:12px;margin-top:8px;min-height:18px}
-.setup-note{color:#888;font-size:11px;margin-top:12px;text-align:center}
 /* Loading */
 .loading-screen{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#666}
 .spinner{width:32px;height:32px;border:3px solid #e0e4ed;border-top-color:#1F3864;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* Toast */
-.toast-container{position:fixed;top:52px;right:16px;z-index:900;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast-ctr{position:fixed;top:52px;right:16px;z-index:900;display:flex;flex-direction:column;gap:6px;pointer-events:none}
 .toast{background:#1a2b4a;color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;opacity:0;transform:translateX(20px);transition:all .25s;max-width:300px}
 .toast.show{opacity:1;transform:translateX(0)}
 /* Gantt */
@@ -80,12 +88,13 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .board-card{background:#fff;border-radius:8px;padding:10px 12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e4e8f0;margin-bottom:6px;transition:box-shadow .15s}
 .board-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.12)}
 /* Settings */
-.settings-wrap{flex:1;overflow:auto;padding:20px;max-width:620px}
+.settings-wrap{flex:1;overflow:auto;padding:20px;max-width:640px}
 .settings-tabs{display:flex;gap:8px;margin-bottom:16px}
 .settings-tab{padding:6px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
 .panel-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.crew-card,.hol-card{display:flex;align-items:center;gap:10px;background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:7px}
+.crew-card,.hol-card,.user-card{display:flex;align-items:center;gap:10px;background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:7px}
 .crew-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0}
+.info-card{background:#f0f4ff;border:1px solid #c5d0e8;border-radius:8px;padding:14px;margin-bottom:10px;font-size:12px;color:#334;line-height:1.6}
 /* Modal */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:center;justify-content:center}
 .modal{background:#fff;border-radius:10px;padding:22px;width:560px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.22)}
@@ -114,29 +123,78 @@ input,select,textarea{font-family:inherit;font-size:12px}
 </head>
 <body>
 
-<div id="setup-screen" class="setup-screen">
-  <div class="setup-card">
-    <div class="setup-logo">🏗 Strada Schedule</div>
-    <div class="setup-sub">Connect to your Supabase database to get started</div>
-    <label class="setup-lbl">Supabase Project URL</label>
-    <input id="cfg-url" class="setup-inp" placeholder="https://xxxxxxxxxxx.supabase.co" />
-    <label class="setup-lbl">Supabase Anon (public) Key</label>
-    <input id="cfg-key" class="setup-inp" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" />
-    <button class="setup-btn" id="cfg-btn" onclick="connectSupabase()">Connect</button>
-    <div class="setup-err" id="cfg-err"></div>
-    <div class="setup-note">Your credentials are saved in this browser only. The anon key is safe to share with teammates — access is controlled by your Supabase project settings.</div>
+<!-- ① Supabase connection setup (one-time) -->
+<div id="screen-setup" class="screen screen-bg-dark" style="display:none">
+  <div class="screen-card">
+    <div class="screen-logo">🏗 Strada Schedule</div>
+    <div class="screen-sub">Enter your Supabase project details to connect.<br>You only need to do this once on this device.</div>
+    <label class="screen-lbl">Supabase Project URL</label>
+    <input id="cfg-url" class="screen-inp" placeholder="https://xxxxxxxxxxx.supabase.co" />
+    <label class="screen-lbl">Supabase Anon (public) Key</label>
+    <input id="cfg-key" class="screen-inp" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" />
+    <button class="screen-btn" id="cfg-btn" onclick="doConnect()">Connect</button>
+    <div class="screen-err" id="cfg-err"></div>
+    <div class="screen-note">The anon key is safe to share with teammates — it can only access data when a user is signed in.</div>
   </div>
 </div>
 
+<!-- ② Sign in -->
+<div id="screen-login" class="screen screen-bg-dark" style="display:none">
+  <div class="screen-card">
+    <div class="screen-logo">🏗 Strada Schedule</div>
+    <div class="screen-sub">Sign in to access the team schedule.</div>
+    <label class="screen-lbl">Email</label>
+    <input id="li-email" class="screen-inp" type="email" placeholder="you@yourcompany.com" />
+    <label class="screen-lbl">Password</label>
+    <input id="li-pass" class="screen-inp" type="password" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')doSignIn()" />
+    <button class="screen-btn" id="li-btn" onclick="doSignIn()">Sign In</button>
+    <div class="screen-err" id="li-err"></div>
+    <a class="screen-link" onclick="showForgot()">Forgot password?</a>
+    <hr class="screen-divider">
+    <div class="screen-note">Don't have an account? Ask your administrator to invite you via the Supabase dashboard.</div>
+    <a class="screen-link" style="color:#aaa" onclick="showSetup()">Change database connection</a>
+  </div>
+</div>
+
+<!-- ③ Forgot password -->
+<div id="screen-forgot" class="screen screen-bg-dark" style="display:none">
+  <div class="screen-card">
+    <div class="screen-logo">🏗 Strada Schedule</div>
+    <div class="screen-sub">Enter your email and we'll send you a password reset link.</div>
+    <label class="screen-lbl">Email</label>
+    <input id="fp-email" class="screen-inp" type="email" placeholder="you@yourcompany.com" />
+    <button class="screen-btn" id="fp-btn" onclick="doForgot()">Send Reset Link</button>
+    <div class="screen-err" id="fp-msg"></div>
+    <a class="screen-link" onclick="showLogin()">Back to sign in</a>
+  </div>
+</div>
+
+<!-- ④ Set new password (after clicking reset link) -->
+<div id="screen-newpass" class="screen screen-bg-dark" style="display:none">
+  <div class="screen-card">
+    <div class="screen-logo">🏗 Strada Schedule</div>
+    <div class="screen-sub">Choose a new password for your account.</div>
+    <label class="screen-lbl">New Password</label>
+    <input id="np-pass" class="screen-inp" type="password" placeholder="Minimum 6 characters" />
+    <label class="screen-lbl">Confirm Password</label>
+    <input id="np-pass2" class="screen-inp" type="password" placeholder="Repeat password" />
+    <button class="screen-btn" id="np-btn" onclick="doUpdatePass()">Update Password</button>
+    <div class="screen-err" id="np-err"></div>
+  </div>
+</div>
+
+<!-- ⑤ Main app -->
 <div class="app" id="app" style="display:none">
   <div class="toolbar" id="toolbar"></div>
   <div class="main" id="main"></div>
 </div>
-<div class="toast-container" id="toasts"></div>
+
+<div class="toast-ctr" id="toasts"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// ── CONSTANTS ────────────────────────────────────────────────────────────────
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const GS=new Date(2026,3,1),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
 const MONTH_CFG=[
   {l:'APRIL',c:'#1565A9',n:30},{l:'MAY',c:'#217346',n:31},{l:'JUNE',c:'#BF5700',n:30},
@@ -150,8 +208,9 @@ const ST_OPTS=['Not started','In progress','On hold','Complete','To invoice'];
 const ST_CLR={'Not started':'#6c757d','In progress':'#0d6efd','On hold':'#dc3545','Complete':'#198754','To invoice':'#fd7e14'};
 const WDAY_IDXS=ALL_DATES.reduce((a,d,i)=>{if(d.getDay()===0||d.getDay()===6)a.push(i);return a},[]);
 const MONTH_BANDS=(()=>{let o=0;return MONTH_CFG.map(m=>{const b={...m,o};o+=m.n;return b})})();
+const CFG_KEY='strada_cfg_v2';
 
-// ── DEFAULT DATA ──────────────────────────────────────────────────────────────
+// ── DEFAULT DATA ───────────────────────────────────────────────────────────────
 const DEF_CREWS=[
   {id:'c1',name:'Alfredo',color:'#0072C8',tc:'#fff',sort_order:0},
   {id:'c2',name:'Phil',color:'#ED7D31',tc:'#fff',sort_order:1},
@@ -168,7 +227,7 @@ const DEF_HOLS=[
   {id:'h7',date:'2026-09-07',name:'Labour Day'},{id:'h8',date:'2026-10-12',name:'Thanksgiving'},
   {id:'h9',date:'2026-12-25',name:'Christmas Day'},{id:'h10',date:'2026-12-26',name:'Boxing Day'}
 ];
-let _uid=0;const uid=()=>'loc_'+(++_uid)+'_'+Date.now();
+let _uid=0;const uid=()=>'u'+(++_uid)+'_'+Date.now();
 
 function mkSeeds(){
   const rows=[];let so=0;
@@ -176,7 +235,6 @@ function mkSeeds(){
     const pid=uid();
     rows.push({type:'proj',row:{id:pid,job_num:num,client:cl,loc,loc_exp:'',status:st,collapsed:false,sort_order:so++}});
     ds.forEach((d,i)=>rows.push({type:'task',row:{id:uid(),project_id:pid,descr:d,crew:'',status:st,wknd:false,sort_order:i,seg1_s:null,seg1_e:null,seg2_s:null,seg2_e:null,seg3_s:null,seg3_e:null}}));
-    return pid;
   };
   P('24-161','Paul Morin','50 Claude Street','Not started','Deficiency - Asphalt Repairs');
   P('25-67','Kate and Rob','1205 Beaverwood Rd','Not started','Cut asphalt & install interlock to remove puddle');
@@ -222,45 +280,159 @@ function mkSeeds(){
   return rows;
 }
 
-// ── SUPABASE & STATE ──────────────────────────────────────────────────────────
-let sb=null,realtimeCh=null;
-const CFG_KEY='strada_cfg';
+// ── SUPABASE & STATE ───────────────────────────────────────────────────────────
+let sb=null,realtimeCh=null,currentUser=null;
 
 const S={
   view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',
   projects:[],tasks:[],crews:[],holidays:[],
-  loading:false,syncing:false,connected:false
+  loading:false,syncing:false
 };
 
-function loadCfg(){try{return JSON.parse(localStorage.getItem(CFG_KEY)||'null')}catch{return null}}
-function saveCfg(url,key){localStorage.setItem(CFG_KEY,JSON.stringify({url,key}))}
+// ── SCREEN MANAGEMENT ─────────────────────────────────────────────────────────
+const screens=['setup','login','forgot','newpass'];
+function showScreen(id){
+  screens.forEach(s=>document.getElementById('screen-'+s).style.display='none');
+  document.getElementById('app').style.display='none';
+  if(id==='app'){document.getElementById('app').style.display='flex'}
+  else{document.getElementById('screen-'+id).style.display='flex'}
+}
+function showSetup(){showScreen('setup')}
+function showLogin(){
+  const cfg=loadCfg();
+  if(cfg?.lastEmail)document.getElementById('li-email').value=cfg.lastEmail;
+  showScreen('login');
+}
+function showForgot(){
+  document.getElementById('fp-email').value=document.getElementById('li-email').value||'';
+  document.getElementById('fp-msg').textContent='';
+  showScreen('forgot');
+}
+function showApp(){showScreen('app')}
 
-async function connectSupabase(){
-  const url=(document.getElementById('cfg-url').value||'').trim();
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+function loadCfg(){try{return JSON.parse(localStorage.getItem(CFG_KEY)||'null')}catch{return null}}
+function saveCfg(patch){localStorage.setItem(CFG_KEY,JSON.stringify({...loadCfg(),...patch}))}
+
+async function doConnect(){
+  const url=(document.getElementById('cfg-url').value||'').trim().replace(/\/$/,'');
   const key=(document.getElementById('cfg-key').value||'').trim();
   const errEl=document.getElementById('cfg-err');
   const btn=document.getElementById('cfg-btn');
-  if(!url||!key){errEl.textContent='Please enter both the URL and the anon key.';return}
+  if(!url||!key){errEl.textContent='Please fill in both fields.';return}
   btn.disabled=true;btn.textContent='Connecting…';errEl.textContent='';
   try{
     const client=window.supabase.createClient(url,key);
+    // Test connectivity (will fail with auth error, not network error, if creds wrong)
     const{error}=await client.from('projects').select('id').limit(1);
-    if(error)throw new Error(error.message);
-    sb=client;saveCfg(url,key);
-    document.getElementById('setup-screen').style.display='none';
-    document.getElementById('app').style.display='flex';
-    await initApp();
+    if(error&&error.code!=='PGRST301'&&error.code!=='42501')throw new Error(error.message);
+    sb=client;saveCfg({url,key});
+    setupAuthListener();showLogin();
   }catch(e){
-    errEl.textContent='Connection failed: '+e.message+'. Check your URL and key, and make sure you ran the SQL schema.';
+    errEl.textContent='Connection failed: '+e.message;
     btn.disabled=false;btn.textContent='Connect';
   }
 }
 
-async function initApp(){
-  S.connected=true;S.loading=true;render();
-  await loadAll();
-  S.loading=false;render();
-  startRealtime();
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+function setupAuthListener(){
+  sb.auth.onAuthStateChange(async(event,session)=>{
+    if(event==='PASSWORD_RECOVERY'){
+      // User clicked "Forgot password" reset link
+      document.querySelector('#screen-newpass .screen-sub').textContent=
+        'Enter a new password for your account.';
+      showScreen('newpass');return;
+    }
+    if(event==='SIGNED_IN'&&window._pendingInvite){
+      // User arrived via invite link — they have a temp session but no password yet.
+      // Show set-password screen before letting them into the app.
+      window._pendingInvite=false;
+      document.querySelector('#screen-newpass .screen-sub').textContent=
+        'Welcome! Set a permanent password to complete your account setup.';
+      showScreen('newpass');return;
+    }
+    if(session?.user){
+      currentUser=session.user;
+      saveCfg({lastEmail:currentUser.email});
+      showApp();
+      S.loading=true;render();
+      await loadAll();
+      S.loading=false;render();
+      if(!realtimeCh)startRealtime();
+    } else {
+      currentUser=null;
+      if(realtimeCh){realtimeCh.unsubscribe();realtimeCh=null}
+      showLogin();
+    }
+  });
+}
+
+async function doSignIn(){
+  const email=(document.getElementById('li-email').value||'').trim();
+  const pass=document.getElementById('li-pass').value||'';
+  const errEl=document.getElementById('li-err');
+  const btn=document.getElementById('li-btn');
+  if(!email||!pass){errEl.textContent='Please enter your email and password.';return}
+  btn.disabled=true;btn.textContent='Signing in…';errEl.textContent='';
+  const{error}=await sb.auth.signInWithPassword({email,password:pass});
+  if(error){errEl.textContent=error.message==='Invalid login credentials'?'Incorrect email or password. Try again or use Forgot Password.':error.message;btn.disabled=false;btn.textContent='Sign In'}
+}
+
+async function doSignOut(){
+  if(!confirm('Sign out of Strada Schedule?'))return;
+  await sb.auth.signOut();
+}
+
+async function doForgot(){
+  const email=(document.getElementById('fp-email').value||'').trim();
+  const msgEl=document.getElementById('fp-msg');
+  const btn=document.getElementById('fp-btn');
+  if(!email){msgEl.textContent='Please enter your email address.';msgEl.style.color='#dc3545';return}
+  btn.disabled=true;btn.textContent='Sending…';
+  const cfg=loadCfg();
+  const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.href});
+  if(error){msgEl.textContent=error.message;msgEl.style.color='#dc3545';btn.disabled=false;btn.textContent='Send Reset Link';}
+  else{msgEl.textContent='✓ Reset link sent — check your email inbox (and spam folder).';msgEl.style.color='#198754';btn.disabled=false;btn.textContent='Send Reset Link';}
+}
+
+async function doUpdatePass(){
+  const p1=document.getElementById('np-pass').value;
+  const p2=document.getElementById('np-pass2').value;
+  const errEl=document.getElementById('np-err');
+  const btn=document.getElementById('np-btn');
+  if(p1.length<6){errEl.textContent='Password must be at least 6 characters.';return}
+  if(p1!==p2){errEl.textContent='Passwords do not match.';return}
+  btn.disabled=true;btn.textContent='Updating…';errEl.textContent='';
+  const{error}=await sb.auth.updateUser({password:p1});
+  if(error){
+    errEl.textContent=error.message;btn.disabled=false;btn.textContent='Update Password';
+  } else {
+    // Check if we already have a valid session (invite flow) — if so go straight in
+    const{data:{session}}=await sb.auth.getSession();
+    if(session?.user){
+      toast('✓ Password set — welcome to Strada Schedule!','ok');
+      currentUser=session.user;
+      saveCfg({lastEmail:currentUser.email});
+      showApp();S.loading=true;render();
+      await loadAll();S.loading=false;render();
+      if(!realtimeCh)startRealtime();
+    } else {
+      toast('✓ Password updated — please sign in','ok');
+      showLogin();
+    }
+  }
+}
+
+// ── DATA LAYER ────────────────────────────────────────────────────────────────
+function dbTaskToApp(t){
+  return{id:t.id,project_id:t.project_id,descr:t.descr||'',crew:t.crew||'',status:t.status,wknd:t.wknd,sort_order:t.sort_order,
+    segs:[{s:t.seg1_s,e:t.seg1_e},{s:t.seg2_s,e:t.seg2_e},{s:t.seg3_s,e:t.seg3_e}]};
+}
+function appTaskToDB(t){
+  return{id:t.id,project_id:t.project_id,descr:t.descr,crew:t.crew||null,status:t.status,wknd:t.wknd,sort_order:t.sort_order||0,
+    seg1_s:t.segs[0]?.s||null,seg1_e:t.segs[0]?.e||null,
+    seg2_s:t.segs[1]?.s||null,seg2_e:t.segs[1]?.e||null,
+    seg3_s:t.segs[2]?.s||null,seg3_e:t.segs[2]?.e||null};
 }
 
 async function loadAll(){
@@ -279,74 +451,30 @@ async function loadAll(){
 }
 
 function startRealtime(){
-  if(realtimeCh)realtimeCh.unsubscribe();
-  realtimeCh=sb.channel('schema-changes')
-    .on('postgres_changes',{event:'*',schema:'public',table:'projects'},()=>{loadAll().then(render)})
-    .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>{loadAll().then(render)})
-    .on('postgres_changes',{event:'*',schema:'public',table:'crews'},()=>{loadAll().then(render)})
-    .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},()=>{loadAll().then(render)})
+  realtimeCh=sb.channel('db-changes')
+    .on('postgres_changes',{event:'*',schema:'public',table:'projects'},()=>loadAll().then(render))
+    .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},()=>loadAll().then(render))
+    .on('postgres_changes',{event:'*',schema:'public',table:'crews'},()=>loadAll().then(render))
+    .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},()=>loadAll().then(render))
     .subscribe();
 }
 
-// ── DATA CONVERSION ───────────────────────────────────────────────────────────
-function dbTaskToApp(t){
-  return{id:t.id,project_id:t.project_id,descr:t.descr||'',crew:t.crew||'',status:t.status,wknd:t.wknd,sort_order:t.sort_order,
-    segs:[{s:t.seg1_s,e:t.seg1_e},{s:t.seg2_s,e:t.seg2_e},{s:t.seg3_s,e:t.seg3_e}]};
-}
-function appTaskToDB(t){
-  return{id:t.id,project_id:t.project_id,descr:t.descr,crew:t.crew||null,status:t.status,wknd:t.wknd,sort_order:t.sort_order||0,
-    seg1_s:t.segs[0]?.s||null,seg1_e:t.segs[0]?.e||null,
-    seg2_s:t.segs[1]?.s||null,seg2_e:t.segs[1]?.e||null,
-    seg3_s:t.segs[2]?.s||null,seg3_e:t.segs[2]?.e||null};
-}
-
-// ── API HELPERS ───────────────────────────────────────────────────────────────
 async function api(fn){
   S.syncing=true;refreshToolbar();
   try{await fn()}catch(e){toast('⚠ '+e.message,'error')}
   S.syncing=false;refreshToolbar();
 }
+const upsertProject=p=>api(async()=>{const{e}=await sb.from('projects').upsert(p);if(e)throw e});
+const deleteProject=id=>api(async()=>{const{e}=await sb.from('projects').delete().eq('id',id);if(e)throw e});
+const upsertTask=t=>api(async()=>{const{e}=await sb.from('tasks').upsert(appTaskToDB(t));if(e)throw e});
+const deleteTask=id=>api(async()=>{const{e}=await sb.from('tasks').delete().eq('id',id);if(e)throw e});
+const upsertCrew=c=>api(async()=>{const{e}=await sb.from('crews').upsert(c);if(e)throw e});
+const deleteCrew=id=>api(async()=>{const{e}=await sb.from('crews').delete().eq('id',id);if(e)throw e});
+const upsertHol=h=>api(async()=>{const{e}=await sb.from('holidays').upsert(h);if(e)throw e});
+const deleteHol=id=>api(async()=>{const{e}=await sb.from('holidays').delete().eq('id',id);if(e)throw e});
 
-async function upsertProject(p){
-  await api(async()=>{
-    const{error}=await sb.from('projects').upsert(p);
-    if(error)throw error;
-  });
-}
-async function deleteProject(id){
-  await api(async()=>{
-    const{error}=await sb.from('projects').delete().eq('id',id);
-    if(error)throw error;
-  });
-}
-async function upsertTask(t){
-  await api(async()=>{
-    const{error}=await sb.from('tasks').upsert(appTaskToDB(t));
-    if(error)throw error;
-  });
-}
-async function deleteTask(id){
-  await api(async()=>{
-    const{error}=await sb.from('tasks').delete().eq('id',id);
-    if(error)throw error;
-  });
-}
-async function upsertCrew(c){
-  await api(async()=>{const{error}=await sb.from('crews').upsert(c);if(error)throw error});
-}
-async function deleteCrew(id){
-  await api(async()=>{const{error}=await sb.from('crews').delete().eq('id',id);if(error)throw error});
-}
-async function upsertHol(h){
-  await api(async()=>{const{error}=await sb.from('holidays').upsert(h);if(error)throw error});
-}
-async function deleteHol(id){
-  await api(async()=>{const{error}=await sb.from('holidays').delete().eq('id',id);if(error)throw error});
-}
-
-// ── SEED DATA ─────────────────────────────────────────────────────────────────
 async function seedData(){
-  if(!confirm('This will insert all 41 default projects. Continue?'))return;
+  if(!confirm('Load all 41 default projects into the database?'))return;
   S.syncing=true;refreshToolbar();
   try{
     await sb.from('crews').upsert(DEF_CREWS);
@@ -367,54 +495,31 @@ const s2d=s=>s?new Date(s+'T12:00:00'):null;
 const dayOff=s=>{if(!s)return-1;return Math.round((s2d(s)-GS)/86400000)};
 const offToS=i=>{const d=new Date(GS);d.setDate(d.getDate()+i);return d2s(d)};
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
-
 function workDays(segs,holDates,wknd){
   let n=0;
-  (segs||[]).forEach(seg=>{
-    if(!seg.s||!seg.e)return;
-    let d=s2d(seg.s),e=s2d(seg.e);
-    while(d<=e){const s=d2s(d),wd=d.getDay();if(wknd||(wd>0&&wd<6&&!holDates.includes(s)))n++;d.setDate(d.getDate()+1)}
-  });
+  (segs||[]).forEach(seg=>{if(!seg.s||!seg.e)return;let d=s2d(seg.s),e=s2d(seg.e);while(d<=e){const s=d2s(d),wd=d.getDay();if(wknd||(wd>0&&wd<6&&!holDates.includes(s)))n++;d.setDate(d.getDate()+1)}});
   return n;
 }
-function projSpan(tasks){
-  let s=null,e=null;
-  tasks.forEach(t=>(t.segs||[]).forEach(sg=>{
-    if(sg.s&&(!s||sg.s<s))s=sg.s;if(sg.e&&(!e||sg.e>e))e=sg.e;
-  }));
-  return{s,e};
-}
+function projSpan(tasks){let s=null,e=null;tasks.forEach(t=>(t.segs||[]).forEach(sg=>{if(sg.s&&(!s||sg.s<s))s=sg.s;if(sg.e&&(!e||sg.e>e))e=sg.e}));return{s,e}}
 function getHolIdxs(){return ALL_DATES.reduce((a,d,i)=>{if(S.holidays.some(h=>h.date===d2s(d)))a.push(i);return a},[])}
 function crewMap(){const m={};S.crews.forEach(c=>{m[c.name]=c});return m}
 function projTasks(pid){return S.tasks.filter(t=>t.project_id===pid).sort((a,b)=>a.sort_order-b.sort_order)}
-
-function el(tag){return document.createElement(tag)}
-function txt(s){return document.createTextNode(String(s))}
-function statusBadge(st){
-  const c=ST_CLR[st]||'#6c757d',s=el('span');s.className='status-badge';
-  s.style.cssText='background:'+c+'22;color:'+c+';border:1px solid '+c+'44';s.textContent=st;return s;
-}
-function iBtn(ico,fn,col){const b=el('button');b.className='icon-btn';b.style.color=col||'#555';b.innerHTML=ico;b.onclick=fn;return b;}
+const el=tag=>document.createElement(tag);
+const txt=s=>document.createTextNode(String(s));
+function statusBadge(st){const c=ST_CLR[st]||'#6c757d',s=el('span');s.className='status-badge';s.style.cssText='background:'+c+'22;color:'+c+';border:1px solid '+c+'44';s.textContent=st;return s}
+function iBtn(ico,fn,col){const b=el('button');b.className='icon-btn';b.style.color=col||'#555';b.innerHTML=ico;b.onclick=fn;return b}
 function toast(msg,type){
-  const tc=document.getElementById('toasts');
-  const t=el('div');t.className='toast';t.textContent=msg;
-  if(type==='error')t.style.background='#7f1d1d';
-  tc.appendChild(t);requestAnimationFrame(()=>t.classList.add('show'));
-  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},3000);
+  const tc=document.getElementById('toasts');const t=el('div');t.className='toast';t.textContent=msg;
+  if(type==='error')t.style.background='#7f1d1d';tc.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},3500);
 }
 function refreshToolbar(){const h=document.getElementById('toolbar');if(h){const n=buildToolbar();h.parentNode.replaceChild(n,h)}}
-
-let bgGradCache=null;
+let bgGrad=null;
 function buildBgGrad(holI){
   const all=[...new Set([...WDAY_IDXS,...holI])].sort((a,b)=>a-b);
-  if(!all.length)return'';
-  const parts=[];let prev=0;
-  all.forEach(i=>{
-    const l=i*DW,r=(i+1)*DW,isH=holI.includes(i);
-    if(l>prev)parts.push('transparent '+prev+'px,transparent '+l+'px');
-    const clr=isH?'rgba(220,53,69,.07)':'rgba(0,0,0,.04)';
-    parts.push(clr+' '+l+'px,'+clr+' '+r+'px');prev=r;
-  });
+  if(!all.length)return'';const parts=[];let prev=0;
+  all.forEach(i=>{const l=i*DW,r=(i+1)*DW,isH=holI.includes(i);if(l>prev)parts.push('transparent '+prev+'px,transparent '+l+'px');const clr=isH?'rgba(220,53,69,.07)':'rgba(0,0,0,.04)';parts.push(clr+' '+l+'px,'+clr+' '+r+'px');prev=r});
   const tot=NDAYS*DW;if(prev<tot)parts.push('transparent '+prev+'px,transparent '+tot+'px');
   return'linear-gradient(to right,'+parts.join(',')+')'
 }
@@ -422,44 +527,32 @@ function buildBgGrad(holI){
 // ── DRAG ──────────────────────────────────────────────────────────────────────
 let drag=null;
 window.addEventListener('mousemove',e=>{
-  if(!drag)return;
-  const delta=Math.round((e.clientX-drag.startX)/DW);
-  if(delta===drag.lastDelta)return;drag.lastDelta=delta;
-  const si=dayOff(drag.origS),ei=dayOff(drag.origE);
-  let ns=drag.origS,ne=drag.origE;
+  if(!drag)return;const delta=Math.round((e.clientX-drag.startX)/DW);if(delta===drag.lastDelta)return;drag.lastDelta=delta;
+  const si=dayOff(drag.origS),ei=dayOff(drag.origE);let ns=drag.origS,ne=drag.origE;
   if(drag.type==='move'){ns=offToS(clamp(si+delta,0,NDAYS-1));ne=offToS(clamp(ei+delta,0,NDAYS-1))}
-  else if(drag.type==='left')ns=offToS(clamp(si+delta,0,ei));
-  else ne=offToS(clamp(ei+delta,si,NDAYS-1));
-  S.tasks=S.tasks.map(t=>t.id!==drag.taskId?t:{...t,segs:t.segs.map((sg,i)=>i!==drag.si?sg:{s:ns,e:ne})});
-  refreshGanttRows();
+  else if(drag.type==='left')ns=offToS(clamp(si+delta,0,ei));else ne=offToS(clamp(ei+delta,si,NDAYS-1));
+  S.tasks=S.tasks.map(t=>t.id!==drag.taskId?t:{...t,segs:t.segs.map((sg,i)=>i!==drag.si?sg:{s:ns,e:ne})});refreshGanttRows();
 });
 window.addEventListener('mouseup',()=>{
   if(!drag)return;document.body.style.cursor='';
-  const task=S.tasks.find(t=>t.id===drag.taskId);
-  if(task)upsertTask(task);
-  drag=null;
+  const task=S.tasks.find(t=>t.id===drag.taskId);if(task)upsertTask(task);drag=null;
 });
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
 function render(){
-  const toolbar=document.getElementById('toolbar');
-  const main=document.getElementById('main');
+  const toolbar=document.getElementById('toolbar');const main=document.getElementById('main');
   if(!toolbar||!main)return;
   toolbar.parentNode.replaceChild(buildToolbar(),toolbar);
-  if(S.loading){main.innerHTML='';const ls=el('div');ls.className='loading-screen';const sp=el('div');sp.className='spinner';const lbl=el('div');lbl.textContent='Loading schedule…';ls.appendChild(sp);ls.appendChild(lbl);main.appendChild(ls);return}
-  main.innerHTML='';
-  bgGradCache=buildBgGrad(getHolIdxs());
+  if(S.loading){main.innerHTML='';const ls=el('div');ls.className='loading-screen';const sp=el('div');sp.className='spinner';const lb=el('div');lb.textContent='Loading…';ls.appendChild(sp);ls.appendChild(lb);main.appendChild(ls);return}
+  main.innerHTML='';bgGrad=buildBgGrad(getHolIdxs());
   if(S.view==='gantt')main.appendChild(buildGantt());
   else if(S.view==='board')main.appendChild(buildBoard());
   else main.appendChild(buildSettings());
   if(S.modal)document.getElementById('app').appendChild(buildModal());
 }
-
 function refreshGanttRows(){
   const old=document.querySelector('.gantt-wrap');if(!old)return;
-  const sl=old.scrollLeft,st=old.scrollTop;
-  const ng=buildGantt();old.parentNode.replaceChild(ng,old);
-  ng.scrollLeft=sl;ng.scrollTop=st;
+  const sl=old.scrollLeft,st=old.scrollTop;const ng=buildGantt();old.parentNode.replaceChild(ng,old);ng.scrollLeft=sl;ng.scrollTop=st;
 }
 
 function buildToolbar(){
@@ -467,30 +560,28 @@ function buildToolbar(){
   const logo=el('span');logo.className='logo';logo.textContent='🏗 Strada Schedule 2026';t.appendChild(logo);
   const tabs=el('div');tabs.className='tabs';
   [['gantt','📅 Gantt'],['board','📋 Board'],['settings','⚙️ Settings']].forEach(([v,l])=>{
-    const b=el('button');b.className='tab'+(S.view===v?' active':'');b.textContent=l;
-    b.onclick=()=>{S.view=v;render()};tabs.appendChild(b);
-  });
-  t.appendChild(tabs);
+    const b=el('button');b.className='tab'+(S.view===v?' active':'');b.textContent=l;b.onclick=()=>{S.view=v;render()};tabs.appendChild(b);
+  });t.appendChild(tabs);
   const sp=el('div');sp.className='spacer';t.appendChild(sp);
   const addBtn=el('button');addBtn.className='btn-primary';addBtn.style.fontSize='12px';addBtn.textContent='+ Project';
   addBtn.onclick=()=>{S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:'',status:'Not started',collapsed:false,sort_order:S.projects.length}};render()};t.appendChild(addBtn);
-  const dot=el('div');dot.className='sync-dot '+(S.syncing?'busy':S.connected?'ok':'err');dot.title=S.syncing?'Syncing…':'Live';t.appendChild(dot);
+  if(currentUser){
+    const pill=el('div');pill.className='user-pill';
+    const av=el('div');av.className='user-av';av.textContent=(currentUser.email||'?').slice(0,2).toUpperCase();pill.appendChild(av);
+    const em=el('span');em.className='user-email';em.textContent=currentUser.email;pill.appendChild(em);
+    t.appendChild(pill);
+    const lo=el('button');lo.className='logout-btn';lo.textContent='Sign Out';lo.onclick=doSignOut;t.appendChild(lo);
+  }
+  const dot=el('div');dot.className='sync-dot '+(S.syncing?'busy':'ok');dot.title=S.syncing?'Syncing…':'Live';t.appendChild(dot);
   return t;
 }
 
-// ── GANTT ──────────────────────────────────────────────────────────────────────
+// ── GANTT ─────────────────────────────────────────────────────────────────────
 function buildGantt(){
-  const totalW=NDAYS*DW,holI=getHolIdxs(),cm=crewMap();
+  const totalW=NDAYS*DW,holI=getHolIdxs(),cm=crewMap(),holDates=S.holidays.map(h=>h.date);
   const wrap=el('div');wrap.className='gantt-wrap';
-  const holDates=S.holidays.map(h=>h.date);
-
   const flatRows=[];
-  S.projects.forEach(proj=>{
-    flatRows.push({type:'proj',proj});
-    if(!proj.collapsed)projTasks(proj.id).forEach(task=>flatRows.push({type:'task',proj,task}));
-  });
-
-  // Header
+  S.projects.forEach(proj=>{flatRows.push({type:'proj',proj});if(!proj.collapsed)projTasks(proj.id).forEach(task=>flatRows.push({type:'task',proj,task}))});
   const hdr=el('div');hdr.className='gantt-hdr';
   const corner=el('div');corner.className='corner';corner.style.cssText='width:'+LW+'px;height:43px';
   const ci=el('span');ci.style.cssText='color:rgba(255,255,255,.4);font-size:11px';ci.textContent=flatRows.length+' rows · '+S.projects.length+' jobs';corner.appendChild(ci);hdr.appendChild(corner);
@@ -498,113 +589,66 @@ function buildGantt(){
   const mr=el('div');mr.className='month-row';
   MONTH_BANDS.forEach(m=>{const mc=el('div');mc.className='mc';mc.style.cssText='width:'+m.n*DW+'px;height:18px;background:'+m.c;mc.textContent=m.l;mr.appendChild(mc)});calw.appendChild(mr);
   const dr=el('div');dr.className='day-row';
-  ALL_DATES.forEach((d,i)=>{
-    const wk=WDAY_IDXS.includes(i),hl=holI.includes(i),tod=i===TODAYIDX;
-    const dc=el('div');dc.className='dc';dc.style.cssText='width:'+DW+'px;height:15px;background:'+(tod?'#FFD700':hl?'#ffb3b3':wk?'#b8bcc8':'#2a4a80');
-    dc.style.color=tod?'#333':'#fff';if(tod||wk)dc.style.fontWeight='700';dc.textContent=d.getDate();dr.appendChild(dc);
-  });calw.appendChild(dr);
+  ALL_DATES.forEach((d,i)=>{const wk=WDAY_IDXS.includes(i),hl=holI.includes(i),tod=i===TODAYIDX;const dc=el('div');dc.className='dc';dc.style.cssText='width:'+DW+'px;height:15px;background:'+(tod?'#FFD700':hl?'#ffb3b3':wk?'#b8bcc8':'#2a4a80');dc.style.color=tod?'#333':'#fff';if(tod||wk)dc.style.fontWeight='700';dc.textContent=d.getDate();dr.appendChild(dc)});calw.appendChild(dr);
   const wr=el('div');wr.className='wd-row';
-  ALL_DATES.forEach((d,i)=>{
-    const wk=WDAY_IDXS.includes(i);const wc=el('div');wc.className='wc';wc.style.cssText='width:'+DW+'px;height:10px;background:'+(wk?'#9a9ea8':'#1a3a6a');wc.style.color=wk?'#555':'rgba(255,255,255,.5)';wc.textContent='SMTWTFS'[d.getDay()];wr.appendChild(wc);
-  });calw.appendChild(wr);hdr.appendChild(calw);wrap.appendChild(hdr);
-
+  ALL_DATES.forEach((d,i)=>{const wk=WDAY_IDXS.includes(i);const wc=el('div');wc.className='wc';wc.style.cssText='width:'+DW+'px;height:10px;background:'+(wk?'#9a9ea8':'#1a3a6a');wc.style.color=wk?'#555':'rgba(255,255,255,.5)';wc.textContent='SMTWTFS'[d.getDay()];wr.appendChild(wc)});calw.appendChild(wr);hdr.appendChild(calw);wrap.appendChild(hdr);
   flatRows.forEach((row,ri)=>{
     const isP=row.type==='proj';const h=isP?PH:RH;
     const g=el('div');g.className='g-row '+(isP?'proj-row':'task-row task-'+(ri%2===0?'even':'odd'));g.style.height=h+'px';
     const lc=el('div');lc.className='lc';lc.style.cssText='width:'+LW+'px;height:'+h+'px';
     if(isP){
-      lc.appendChild(iBtn(row.proj.collapsed?'▶':'▼',()=>{
-        const up={...row.proj,collapsed:!row.proj.collapsed};
-        S.projects=S.projects.map(p=>p.id===row.proj.id?up:p);
-        upsertProject(up);render();
-      },'rgba(255,255,255,.7)'));
+      lc.appendChild(iBtn(row.proj.collapsed?'▶':'▼',()=>{const up={...row.proj,collapsed:!row.proj.collapsed};S.projects=S.projects.map(p=>p.id===row.proj.id?up:p);upsertProject(up);render()},'rgba(255,255,255,.7)'));
       const info=el('div');info.style.cssText='flex:1;overflow:hidden;min-width:0;margin:0 6px';
       const top=el('div');top.style.cssText='display:flex;align-items:center;gap:5px;overflow:hidden';
       const jn=el('span');jn.style.cssText='color:rgba(255,255,255,.6);font-size:11px;font-weight:700;flex-shrink:0';jn.textContent=row.proj.job_num;top.appendChild(jn);
       const cl=el('span');cl.style.cssText='color:#fff;font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';cl.textContent=row.proj.client;top.appendChild(cl);
-      info.appendChild(top);
-      const bl=el('div');bl.style.cssText='color:rgba(255,255,255,.5);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';bl.textContent=row.proj.loc;info.appendChild(bl);
-      lc.appendChild(info);lc.appendChild(statusBadge(row.proj.status));
+      info.appendChild(top);const bl=el('div');bl.style.cssText='color:rgba(255,255,255,.5);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';bl.textContent=row.proj.loc;info.appendChild(bl);lc.appendChild(info);lc.appendChild(statusBadge(row.proj.status));
       const btns=el('div');btns.style.cssText='display:flex;gap:3px;flex-shrink:0;margin-left:4px';
-      btns.appendChild(iBtn('+',()=>{
-        const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null},{s:null,e:null},{s:null,e:null}]};
-        S.modal={type:'task',t};render();
-      },'rgba(255,255,255,.7)'));
-      btns.appendChild(iBtn('✎',()=>{S.modal={type:'proj',isNew:false,p:{...row.proj}};render()},'rgba(255,255,255,.7)'));
-      lc.appendChild(btns);
+      btns.appendChild(iBtn('+',()=>{const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null},{s:null,e:null},{s:null,e:null}]};S.modal={type:'task',t};render()},'rgba(255,255,255,.7)'));
+      btns.appendChild(iBtn('✎',()=>{S.modal={type:'proj',isNew:false,p:{...row.proj}};render()},'rgba(255,255,255,.7)'));lc.appendChild(btns);
     } else {
       const crew=cm[row.task.crew];const wd=workDays(row.task.segs,holDates,row.task.wknd);
-      lc.style.paddingLeft='22px';
-      const arr=el('span');arr.style.cssText='color:#bbb;font-size:11px;flex-shrink:0;margin-right:4px';arr.textContent='↳';lc.appendChild(arr);
+      lc.style.paddingLeft='22px';const arr=el('span');arr.style.cssText='color:#bbb;font-size:11px;flex-shrink:0;margin-right:4px';arr.textContent='↳';lc.appendChild(arr);
       const desc=el('span');desc.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#1a2b4a';desc.textContent=row.task.descr;lc.appendChild(desc);
       if(crew){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+crew.color+';color:'+crew.tc+';margin:0 4px';cb.textContent=crew.name;lc.appendChild(cb)}
       if(wd>0){const wds=el('span');wds.style.cssText='color:#555;font-size:11px;flex-shrink:0;min-width:26px;text-align:right';wds.textContent=wd+'d';lc.appendChild(wds)}
       lc.appendChild(iBtn('✎',()=>{S.modal={type:'task',t:{...row.task,segs:row.task.segs.map(s=>({...s}))}};render()},'#999'));
     }
     g.appendChild(lc);
-    const gc=el('div');gc.className='gc';gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
-    if(bgGradCache)gc.style.backgroundImage=bgGradCache;
+    const gc=el('div');gc.className='gc';gc.style.cssText='width:'+totalW+'px;height:'+h+'px';if(bgGrad)gc.style.backgroundImage=bgGrad;
     if(TODAYIDX>=0&&TODAYIDX<NDAYS){const tl=el('div');tl.className='today-line';tl.style.cssText='left:'+(TODAYIDX*DW+DW/2)+'px;height:'+h+'px';gc.appendChild(tl)}
-    if(isP){
-      const sp=projSpan(projTasks(row.proj.id));
-      if(sp.s&&sp.e){const sb2=el('div');sb2.className='proj-span';sb2.style.cssText='left:'+dayOff(sp.s)*DW+'px;width:'+(dayOff(sp.e)-dayOff(sp.s)+1)*DW+'px;top:50%;transform:translateY(-50%);height:6px';gc.appendChild(sb2)}
-    } else {
+    if(isP){const sp=projSpan(projTasks(row.proj.id));if(sp.s&&sp.e){const sb2=el('div');sb2.className='proj-span';sb2.style.cssText='left:'+dayOff(sp.s)*DW+'px;width:'+(dayOff(sp.e)-dayOff(sp.s)+1)*DW+'px;top:50%;transform:translateY(-50%);height:6px';gc.appendChild(sb2)}}
+    else{
       const crew=cm[row.task.crew];const color=crew?crew.color:'#aaa';
       row.task.segs.forEach((seg,si)=>{
-        if(!seg.s||!seg.e)return;
-        const sIdx=dayOff(seg.s),eIdx=dayOff(seg.e);
-        if(sIdx<0||eIdx<0||sIdx>NDAYS-1||eIdx>NDAYS-1||sIdx>eIdx)return;
-        const bT=3,bH=h-6;
-        const ranges=[];let rs=null,re=null;
-        for(let i=Math.max(0,sIdx);i<=Math.min(NDAYS-1,eIdx);i++){
-          const skip=!row.task.wknd&&(WDAY_IDXS.includes(i)||holI.includes(i));
-          if(!skip){if(rs===null)rs=i;re=i}else{if(rs!==null){ranges.push([rs,re]);rs=re=null}}
-        }
+        if(!seg.s||!seg.e)return;const sIdx=dayOff(seg.s),eIdx=dayOff(seg.e);if(sIdx<0||eIdx<0||sIdx>NDAYS-1||eIdx>NDAYS-1||sIdx>eIdx)return;
+        const bT=3,bH=h-6;const ranges=[];let rs=null,re=null;
+        for(let i=Math.max(0,sIdx);i<=Math.min(NDAYS-1,eIdx);i++){const skip=!row.task.wknd&&(WDAY_IDXS.includes(i)||holI.includes(i));if(!skip){if(rs===null)rs=i;re=i}else{if(rs!==null){ranges.push([rs,re]);rs=re=null}}}
         if(rs!==null)ranges.push([rs,re]);
-        ranges.forEach(([a,b],ri2)=>{
-          const bd=el('div');bd.className='bar-seg';
-          bd.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;background:'+color+
-            ';border-radius:'+(ri2===0&&a===sIdx?'3px':'0')+' '+(ri2===ranges.length-1&&b===eIdx?'3px':'0')+' '+
-            (ri2===ranges.length-1&&b===eIdx?'3px':'0')+' '+(ri2===0&&a===sIdx?'3px':'0')+
-            ';opacity:'+(si===0?1:.75);
-          gc.appendChild(bd);
-        });
-        const ov=el('div');ov.className='bar-hit';
-        ov.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;border-left:2px solid '+color+'cc;border-right:2px solid '+color+'cc';
-        ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e;
-        ov.addEventListener('mousedown',e=>{
-          e.preventDefault();e.stopPropagation();
-          const rect=ov.getBoundingClientRect();const lx=e.clientX-rect.left,rw=rect.width;
-          const type=lx<10?'left':lx>rw-10?'right':'move';
-          drag={taskId:row.task.id,si,type,startX:e.clientX,lastDelta:0,origS:seg.s,origE:seg.e};
-          document.body.style.cursor=type==='move'?'grabbing':'ew-resize';
-        });
+        ranges.forEach(([a,b],ri2)=>{const bd=el('div');bd.className='bar-seg';bd.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;background:'+color+';border-radius:'+(ri2===0&&a===sIdx?'3px':'0')+' '+(ri2===ranges.length-1&&b===eIdx?'3px':'0')+' '+(ri2===ranges.length-1&&b===eIdx?'3px':'0')+' '+(ri2===0&&a===sIdx?'3px':'0')+';opacity:'+(si===0?1:.75);gc.appendChild(bd)});
+        const ov=el('div');ov.className='bar-hit';ov.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;border-left:2px solid '+color+'cc;border-right:2px solid '+color+'cc';ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e;
+        ov.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const rect=ov.getBoundingClientRect();const lx=e.clientX-rect.left,rw=rect.width;const type=lx<10?'left':lx>rw-10?'right':'move';drag={taskId:row.task.id,si,type,startX:e.clientX,lastDelta:0,origS:seg.s,origE:seg.e};document.body.style.cursor=type==='move'?'grabbing':'ew-resize'});
         gc.appendChild(ov);
       });
     }
     g.appendChild(gc);wrap.appendChild(g);
   });
-  const spacer=el('div');spacer.style.height='60px';wrap.appendChild(spacer);
-  return wrap;
+  const spacer=el('div');spacer.style.height='60px';wrap.appendChild(spacer);return wrap;
 }
 
-// ── BOARD ──────────────────────────────────────────────────────────────────────
+// ── BOARD ─────────────────────────────────────────────────────────────────────
 function buildBoard(){
   const wrap=el('div');wrap.className='board-wrap';
   const tb=el('div');tb.style.cssText='display:flex;gap:10px;align-items:center;margin-bottom:14px';
-  const si=el('input');si.className='inp';si.style.width='220px';si.placeholder='Search projects…';si.value=S.boardSearch||'';
-  si.oninput=e=>{S.boardSearch=e.target.value;buildBoardCols(cols,cnt)};tb.appendChild(si);
+  const si=el('input');si.className='inp';si.style.width='220px';si.placeholder='Search projects…';si.value=S.boardSearch||'';si.oninput=e=>{S.boardSearch=e.target.value;buildBoardCols(cols,cnt)};tb.appendChild(si);
   const cnt=el('span');cnt.style.cssText='color:#666;font-size:12px';tb.appendChild(cnt);wrap.appendChild(tb);
-  const cols=el('div');cols.className='board-cols';wrap.appendChild(cols);
-  buildBoardCols(cols,cnt);return wrap;
+  const cols=el('div');cols.className='board-cols';wrap.appendChild(cols);buildBoardCols(cols,cnt);return wrap;
 }
 function buildBoardCols(cols,cnt){
   const cm=crewMap();const q=(S.boardSearch||'').toLowerCase();
   const filtered=q?S.projects.filter(p=>p.job_num.toLowerCase().includes(q)||p.client.toLowerCase().includes(q)||p.loc.toLowerCase().includes(q)):S.projects;
-  cnt.textContent=filtered.length+' of '+S.projects.length+' projects';
-  cols.innerHTML='';
-  const grouped={};ST_OPTS.forEach(s=>{grouped[s]=[]});
-  filtered.forEach(p=>{(grouped[p.status]||(grouped['Not started'])).push(p)});
+  cnt.textContent=filtered.length+' of '+S.projects.length+' projects';cols.innerHTML='';
+  const grouped={};ST_OPTS.forEach(s=>{grouped[s]=[]});filtered.forEach(p=>{(grouped[p.status]||(grouped['Not started'])).push(p)});
   ST_OPTS.forEach(st=>{
     const c=ST_CLR[st];const col=el('div');col.className='board-col';
     const hdr=el('div');hdr.className='board-col-hdr';hdr.style.cssText='background:'+c+'18;border:1px solid '+c+'33';
@@ -612,22 +656,15 @@ function buildBoardCols(cols,cnt){
     const sl=el('span');sl.style.cssText='font-weight:700;font-size:12px;color:'+c;sl.textContent=st;hdr.appendChild(sl);
     const cn=el('span');cn.style.cssText='margin-left:auto;background:'+c+';color:#fff;border-radius:10px;font-size:11px;padding:0 6px;font-weight:700';cn.textContent=grouped[st].length;hdr.appendChild(cn);col.appendChild(hdr);
     grouped[st].forEach(p=>{
-      const card=el('div');card.className='board-card';
-      card.onclick=()=>{S.modal={type:'proj',isNew:false,p:{...p}};render()};
+      const card=el('div');card.className='board-card';card.onclick=()=>{S.modal={type:'proj',isNew:false,p:{...p}};render()};
       const top=el('div');top.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin-bottom:3px';
       const jn=el('span');jn.style.cssText='font-weight:700;font-size:11px;color:#1F3864';jn.textContent=p.job_num;top.appendChild(jn);top.appendChild(statusBadge(p.status));card.appendChild(top);
       const cl=el('div');cl.style.cssText='font-weight:700;font-size:12px;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px';cl.textContent=p.client;card.appendChild(cl);
       const lo=el('div');lo.style.cssText='font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px';lo.textContent=p.loc;card.appendChild(lo);
       const crd=el('div');crd.style.cssText='display:flex;flex-wrap:wrap;gap:3px';
-      const tasks=projTasks(p.id);
-      [...new Set(tasks.map(t=>t.crew).filter(Boolean))].forEach(cn2=>{
-        const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}
-      });
-      card.appendChild(crd);
-      const tl=el('div');tl.style.cssText='font-size:11px;color:#888;margin-top:4px';tl.textContent=tasks.length+' task'+(tasks.length!==1?'s':'');card.appendChild(tl);
-      col.appendChild(card);
-    });
-    cols.appendChild(col);
+      [...new Set(projTasks(p.id).map(t=>t.crew).filter(Boolean))].forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
+      card.appendChild(crd);const tl=el('div');tl.style.cssText='font-size:11px;color:#888;margin-top:4px';tl.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');card.appendChild(tl);col.appendChild(card);
+    });cols.appendChild(col);
   });
 }
 
@@ -635,20 +672,20 @@ function buildBoardCols(cols,cnt){
 function buildSettings(){
   const wrap=el('div');wrap.className='settings-wrap';
   const stabs=el('div');stabs.className='settings-tabs';
-  [['crews','👷 Crews'],['holidays','📅 Holidays'],['data','💾 Data']].forEach(([t,l])=>{
-    const b=el('button');b.className='settings-tab';
-    b.style.cssText='background:'+(S.settingsTab===t?'#1F3864':'#fff')+';color:'+(S.settingsTab===t?'#fff':'#333');
+  [['crews','👷 Crews'],['holidays','📅 Holidays'],['team','👤 Team'],['data','💾 Data']].forEach(([t,l])=>{
+    const b=el('button');b.className='settings-tab';b.style.cssText='background:'+(S.settingsTab===t?'#1F3864':'#fff')+';color:'+(S.settingsTab===t?'#fff':'#333');
     b.textContent=l;b.onclick=()=>{S.settingsTab=t;render()};stabs.appendChild(b);
   });
   wrap.appendChild(stabs);
   if(S.settingsTab==='crews')wrap.appendChild(buildCrewsPanel());
   else if(S.settingsTab==='holidays')wrap.appendChild(buildHolsPanel());
+  else if(S.settingsTab==='team')wrap.appendChild(buildTeamPanel());
   else wrap.appendChild(buildDataPanel());
   return wrap;
 }
+
 function buildCrewsPanel(){
-  const d=el('div');
-  const hdr=el('div');hdr.className='panel-hdr';
+  const d=el('div');const hdr=el('div');hdr.className='panel-hdr';
   const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700';h.textContent='Crew Members';hdr.appendChild(h);
   const ab=el('button');ab.className='btn-primary';ab.style.fontSize='12px';ab.textContent='+ Add Crew';
   ab.onclick=()=>{S.modal={type:'crew',isNew:true,c:{id:uid(),name:'',color:'#4472C4',tc:'#fff',sort_order:S.crews.length}};render()};hdr.appendChild(ab);d.appendChild(hdr);
@@ -660,30 +697,56 @@ function buildCrewsPanel(){
     const eb=el('button');eb.className='btn-sm';eb.textContent='Edit';eb.onclick=()=>{S.modal={type:'crew',isNew:false,c:{...c}};render()};card.appendChild(eb);
     const db=el('button');db.style.cssText='padding:3px 10px;border:1px solid #ffcccc;border-radius:5px;cursor:pointer;font-size:12px;background:#fff5f5;color:#dc3545';
     db.textContent='×';db.onclick=()=>{if(confirm('Delete '+c.name+'?')){deleteCrew(c.id).then(()=>{S.crews=S.crews.filter(x=>x.id!==c.id);render()})}};card.appendChild(db);d.appendChild(card);
-  });
-  return d;
+  });return d;
 }
+
 function buildHolsPanel(){
-  const d=el('div');
-  const hdr=el('div');hdr.className='panel-hdr';
-  const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700';h.textContent='Ontario Holidays 2026';hdr.appendChild(h);
-  const ab=el('button');ab.className='btn-primary';ab.style.fontSize='12px';ab.textContent='+ Add Holiday';
-  ab.onclick=async()=>{
-    const nh={id:uid(),date:'2026-04-01',name:'New Holiday'};
-    await upsertHol(nh);S.holidays=[...S.holidays,nh];render();
-  };hdr.appendChild(ab);d.appendChild(hdr);
+  const d=el('div');const hdr=el('div');hdr.className='panel-hdr';
+  const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700';h.textContent='Holidays 2026';hdr.appendChild(h);
+  const ab=el('button');ab.className='btn-primary';ab.style.fontSize='12px';ab.textContent='+ Add';
+  ab.onclick=async()=>{const nh={id:uid(),date:'2026-04-01',name:'New Holiday'};await upsertHol(nh);S.holidays=[...S.holidays,nh];render()};hdr.appendChild(ab);d.appendChild(hdr);
   [...S.holidays].sort((a,b)=>a.date.localeCompare(b.date)).forEach(h=>{
     const card=el('div');card.className='hol-card';
     const dot=el('div');dot.style.cssText='width:8px;height:8px;border-radius:50%;background:#dc3545;flex-shrink:0';card.appendChild(dot);
     const di=el('input');di.className='inp';di.type='date';di.value=h.date;di.style.cssText='border:none;font-size:13px;font-weight:700;color:#1F3864;outline:none;background:transparent;width:130px';
     di.onchange=async e=>{const nh={...h,date:e.target.value};await upsertHol(nh);S.holidays=S.holidays.map(x=>x.id===h.id?nh:x);render()};card.appendChild(di);
     const ni=el('input');ni.className='inp';ni.value=h.name;ni.style.cssText='flex:1;border:none;outline:none;background:transparent;font-size:12px';
-    ni.onchange=async e=>{const nh={...h,name:e.target.value};await upsertHol(nh);S.holidays=S.holidays.map(x=>x.id===h.id?nh:x)};card.appendChild(ni);
+    ni.onchange=async e=>{const nh={...h,name:e.target.value};await upsertHol(nh)};card.appendChild(ni);
     const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:0';
-    db.textContent='×';db.onclick=()=>{deleteHol(h.id).then(()=>{S.holidays=S.holidays.filter(x=>x.id!==h.id);render()})};card.appendChild(db);d.appendChild(card);
-  });
+    db.textContent='×';db.onclick=()=>deleteHol(h.id).then(()=>{S.holidays=S.holidays.filter(x=>x.id!==h.id);render()});card.appendChild(db);d.appendChild(card);
+  });return d;
+}
+
+function buildTeamPanel(){
+  const d=el('div');
+  const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700;margin-bottom:12px';h.textContent='Team Members & Access';d.appendChild(h);
+  const you=el('div');you.className='user-card';
+  const av=el('div');av.className='crew-av';av.style.cssText='background:#1F3864;color:#fff;width:34px;height:34px;font-size:13px';av.textContent=(currentUser?.email||'?').slice(0,2).toUpperCase();you.appendChild(av);
+  const info=el('div');info.style.cssText='flex:1';
+  const em=el('div');em.style.cssText='font-weight:700;color:#1a2b4a;font-size:13px';em.textContent=currentUser?.email||'';info.appendChild(em);
+  const yl=el('div');yl.style.cssText='font-size:11px;color:#888';yl.textContent='You — currently signed in';info.appendChild(yl);you.appendChild(info);d.appendChild(you);
+
+  const ic=el('div');ic.className='info-card';ic.style.marginTop='16px';
+  ic.innerHTML='<strong>Adding team members</strong><br><br>'+
+    'To invite someone to the schedule:<br>'+
+    '1. Go to your <strong>Supabase dashboard</strong><br>'+
+    '2. Navigate to <strong>Authentication → Users</strong><br>'+
+    '3. Click <strong>Invite user</strong> and enter their email<br>'+
+    '4. They receive an email with a link to set their password<br>'+
+    '5. They visit this URL and sign in<br><br>'+
+    '<strong>Removing access:</strong> Delete the user from Supabase → Authentication → Users. Their login stops working immediately.';
+  d.appendChild(ic);
+
+  const cfg=loadCfg();
+  if(cfg?.url){
+    const dashLink=el('a');
+    dashLink.href=cfg.url.replace('supabase.co','supabase.com/dashboard/project/'+(cfg.url.split('//')[1].split('.')[0])+'/auth/users');
+    dashLink.target='_blank';dashLink.style.cssText='display:inline-block;margin-top:10px;padding:7px 14px;background:#1F3864;color:#fff;border-radius:6px;font-weight:700;font-size:12px;text-decoration:none';
+    dashLink.textContent='Open Supabase Auth Dashboard ↗';d.appendChild(dashLink);
+  }
   return d;
 }
+
 function buildDataPanel(){
   const d=el('div');
   const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700;margin-bottom:12px';h.textContent='Data & Import/Export';d.appendChild(h);
@@ -694,142 +757,76 @@ function buildDataPanel(){
     actions.forEach(a=>c.appendChild(a));d.appendChild(c);
   }
   const seedBtn=el('button');seedBtn.className='btn-primary';seedBtn.style.fontSize='12px';seedBtn.textContent='🌱 Load Sample Data (41 projects)';seedBtn.onclick=seedData;
-  card('Seed initial data','Load all 41 projects from the 2026 job board into the database. Only needed on first use — skip if you already have data.',[seedBtn]);
-
+  card('Seed initial data','Load all 41 projects from the 2026 job board. Skip if you already have data.',[seedBtn]);
   const expBtn=el('button');expBtn.className='btn-primary';expBtn.style.fontSize='12px';expBtn.textContent='⬇ Export JSON backup';
-  expBtn.onclick=()=>{
-    const blob=new Blob([JSON.stringify({projects:S.projects,tasks:S.tasks,crews:S.crews,holidays:S.holidays},null,2)],{type:'application/json'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='strada_backup_'+TODAY+'.json';a.click();
-  };
+  expBtn.onclick=()=>{const blob=new Blob([JSON.stringify({projects:S.projects,tasks:S.tasks,crews:S.crews,holidays:S.holidays},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='strada_backup_'+TODAY+'.json';a.click()};
   card('Export backup','Download all current data as a JSON file.',[expBtn]);
-
   const fi=el('input');fi.type='file';fi.accept='.json';fi.style.display='none';
-  fi.onchange=e=>{
-    const f=e.target.files[0];if(!f)return;
-    const r=new FileReader();r.onload=async ev=>{
-      try{const data=JSON.parse(ev.target.result);
-        if(!data.projects)throw new Error('Invalid file');
-        if(!confirm('This will replace all data in Supabase. Continue?'))return;
-        S.syncing=true;refreshToolbar();
-        if(data.crews?.length)await sb.from('crews').upsert(data.crews);
-        if(data.holidays?.length)await sb.from('holidays').upsert(data.holidays);
-        if(data.projects?.length)for(let i=0;i<data.projects.length;i+=20)await sb.from('projects').upsert(data.projects.slice(i,i+20));
-        if(data.tasks?.length)for(let i=0;i<data.tasks.length;i+=50)await sb.from('tasks').upsert(data.tasks.map(appTaskToDB).slice(i,i+50));
-        await loadAll();toast('✓ Import complete','ok');render();
-      }catch(err){toast('⚠ Import failed: '+err.message,'error')}
-      S.syncing=false;refreshToolbar();
-    };r.readAsText(f);
-  };
+  fi.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>{try{const data=JSON.parse(ev.target.result);if(!data.projects)throw new Error('Invalid file');if(!confirm('Replace all data?'))return;S.syncing=true;refreshToolbar();if(data.crews?.length)await sb.from('crews').upsert(data.crews);if(data.holidays?.length)await sb.from('holidays').upsert(data.holidays);if(data.projects?.length)for(let i=0;i<data.projects.length;i+=20)await sb.from('projects').upsert(data.projects.slice(i,i+20));if(data.tasks?.length)for(let i=0;i<data.tasks.length;i+=50)await sb.from('tasks').upsert(data.tasks.map(appTaskToDB).slice(i,i+50));await loadAll();toast('✓ Import complete','ok');render()}catch(err){toast('⚠ Import failed: '+err.message,'error')}S.syncing=false;refreshToolbar()};r.readAsText(f)};
   const impBtn=el('button');impBtn.className='btn-sec';impBtn.style.fontSize='12px';impBtn.textContent='⬆ Import JSON';impBtn.onclick=()=>fi.click();
-  const resetBtn=el('button');resetBtn.className='btn-danger';resetBtn.style.fontSize='12px';resetBtn.style.marginLeft='8px';resetBtn.textContent='Reset connection';
-  resetBtn.onclick=()=>{if(confirm('Clear Supabase credentials from this browser?')){localStorage.removeItem(CFG_KEY);location.reload()}};
+  const resetBtn=el('button');resetBtn.className='btn-danger';resetBtn.style.cssText='font-size:12px;margin-left:8px;padding:7px 14px;background:#fff;color:#dc3545;border:1px solid #dc3545;border-radius:6px;cursor:pointer';resetBtn.textContent='Reset connection';
+  resetBtn.onclick=()=>{if(confirm('Clear credentials and return to setup?')){localStorage.removeItem(CFG_KEY);location.reload()}};
   card('Import & Reset','Restore from a backup or switch to a different Supabase project.',[fi,impBtn,resetBtn]);
   return d;
 }
 
 // ── MODALS ────────────────────────────────────────────────────────────────────
 function buildModal(){
-  const bg=el('div');bg.className='modal-bg';
-  bg.onclick=e=>{if(e.target===bg){S.modal=null;render()}};
+  const bg=el('div');bg.className='modal-bg';bg.onclick=e=>{if(e.target===bg){S.modal=null;render()}};
   const m=el('div');m.className='modal';
-  if(S.modal.type==='proj')buildProjModal(m);
-  else if(S.modal.type==='task')buildTaskModal(m);
-  else if(S.modal.type==='crew')buildCrewModal(m);
+  if(S.modal.type==='proj')buildProjModal(m);else if(S.modal.type==='task')buildTaskModal(m);else if(S.modal.type==='crew')buildCrewModal(m);
   bg.appendChild(m);return bg;
 }
-function mhdr(m,title){
-  const h=el('div');h.className='modal-hdr';
-  const t=el('h3');t.textContent=title;h.appendChild(t);
-  const c=el('button');c.className='modal-close';c.innerHTML='&times;';c.onclick=()=>{S.modal=null;render()};h.appendChild(c);m.appendChild(h);
-}
+function mhdr(m,title){const h=el('div');h.className='modal-hdr';const t=el('h3');t.textContent=title;h.appendChild(t);const c=el('button');c.className='modal-close';c.innerHTML='&times;';c.onclick=()=>{S.modal=null;render()};h.appendChild(c);m.appendChild(h)}
 function lbl2(t){const l=el('label');l.className='lbl';l.textContent=t;return l}
 function inp2(val,fn,type,opts){
   const i=el(type==='select'?'select':'input');i.className='inp';
-  if(type==='select'){(opts||[]).forEach(([v,t])=>{const o=el('option');o.value=v;o.textContent=t;if(v===val)o.selected=true;i.appendChild(o)});
-  }else{if(type)i.type=type;i.value=val||'';if(type==='date'){i.min='2026-01-01';i.max='2026-12-31'}}
+  if(type==='select'){(opts||[]).forEach(([v,t])=>{const o=el('option');o.value=v;o.textContent=t;if(v===val)o.selected=true;i.appendChild(o)})}
+  else{if(type)i.type=type;i.value=val||'';if(type==='date'){i.min='2026-01-01';i.max='2026-12-31'}}
   if(fn){i.onchange=fn;i.oninput=fn}return i;
 }
 
 function buildProjModal(m){
-  const p=S.modal.p;
-  mhdr(m,S.modal.isNew?'New Project':'Edit Project: '+p.job_num);
+  const p=S.modal.p;mhdr(m,S.modal.isNew?'New Project':'Edit Project: '+p.job_num);
   const g=el('div');g.className='fg';
-  const addF=(parent,lText,val,key,fullw,type,opts)=>{
-    const w=el('div');if(fullw)w.className='fg-full';
-    w.appendChild(lbl2(lText));w.appendChild(inp2(val,e=>p[key]=e.target.value,type,opts));parent.appendChild(w);
-  };
-  addF(g,'Job Number',p.job_num,'job_num',false);
-  const sw=el('div');sw.appendChild(lbl2('Status'));sw.appendChild(inp2(p.status,e=>p.status=e.target.value,'select',ST_OPTS.map(s=>[s,s])));g.appendChild(sw);
-  addF(g,'Client',p.client,'client',true);
-  addF(g,'Location / Project Name',p.loc,'loc',true);
-  addF(g,'Locate Expiry',p.loc_exp,'loc_exp',false);
-  m.appendChild(g);
-
-  // Inline task list
+  const addF=(parent,lText,val,key,full,type,opts)=>{const w=el('div');if(full)w.className='fg-full';w.appendChild(lbl2(lText));w.appendChild(inp2(val,e=>p[key]=e.target.value,type,opts));parent.appendChild(w)};
+  addF(g,'Job Number',p.job_num,'job_num',false);const sw=el('div');sw.appendChild(lbl2('Status'));sw.appendChild(inp2(p.status,e=>p.status=e.target.value,'select',ST_OPTS.map(s=>[s,s])));g.appendChild(sw);
+  addF(g,'Client',p.client,'client',true);addF(g,'Location / Project Name',p.loc,'loc',true);addF(g,'Locate Expiry',p.loc_exp,'loc_exp',false);m.appendChild(g);
   const tsec=el('div');tsec.style.cssText='margin-top:14px;border-top:1px solid #e4e8f0;padding-top:12px';
   const tasks=[...projTasks(p.id)];
   const thdr2=el('div');thdr2.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
   const tcnt=el('span');tcnt.style.cssText='font-weight:700;font-size:13px;color:#1F3864';tcnt.textContent='Tasks ('+tasks.length+')';thdr2.appendChild(tcnt);
-  const addt=el('button');addt.className='btn-sm';addt.style.fontWeight='700';addt.textContent='+ Add Task';
-  addt.onclick=()=>{tasks.push({id:uid(),project_id:p.id,descr:'',crew:'',status:p.status,wknd:false,sort_order:tasks.length,segs:[{s:null,e:null},{s:null,e:null},{s:null,e:null}]});rTL()};
-  thdr2.appendChild(addt);tsec.appendChild(thdr2);
+  const addt=el('button');addt.className='btn-sm';addt.style.fontWeight='700';addt.textContent='+ Task';
+  addt.onclick=()=>{tasks.push({id:uid(),project_id:p.id,descr:'',crew:'',status:p.status,wknd:false,sort_order:tasks.length,segs:[{s:null,e:null},{s:null,e:null},{s:null,e:null}]});rTL()};thdr2.appendChild(addt);tsec.appendChild(thdr2);
   const tl=el('div');tl.className='task-list';
-  function rTL(){tl.innerHTML='';tcnt.textContent='Tasks ('+tasks.length+')';
-    tasks.forEach((t,ti)=>{
-      const row=el('div');row.className='task-edit-row';
-      const di=inp2(t.descr,e=>{tasks[ti].descr=e.target.value});di.placeholder='Task description';di.style.flex='1';row.appendChild(di);
-      const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:15px;padding:0 4px';
-      db.textContent='×';db.onclick=()=>{tasks.splice(ti,1);rTL()};row.appendChild(db);tl.appendChild(row);
-    });
-  }
+  function rTL(){tl.innerHTML='';tcnt.textContent='Tasks ('+tasks.length+')';tasks.forEach((t,ti)=>{const row=el('div');row.className='task-edit-row';const di=inp2(t.descr,e=>{tasks[ti].descr=e.target.value});di.placeholder='Task description';di.style.flex='1';row.appendChild(di);const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:15px;padding:0 4px';db.textContent='×';db.onclick=()=>{tasks.splice(ti,1);rTL()};row.appendChild(db);tl.appendChild(row)})}
   rTL();tsec.appendChild(tl);m.appendChild(tsec);
-
-  const footer=el('div');footer.className='modal-footer';
-  const lb=el('div');
-  if(!S.modal.isNew){
-    const db=el('button');db.className='btn-danger';db.textContent='Delete Project';
-    db.onclick=async()=>{if(confirm('Delete "'+p.client+'"?')){await deleteProject(p.id);S.projects=S.projects.filter(x=>x.id!==p.id);S.tasks=S.tasks.filter(x=>x.project_id!==p.id);S.modal=null;render()}};lb.appendChild(db);
-  }
-  footer.appendChild(lb);
-  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+  const footer=el('div');footer.className='modal-footer';const lb=el('div');
+  if(!S.modal.isNew){const db=el('button');db.className='btn-danger';db.textContent='Delete Project';db.onclick=async()=>{if(confirm('Delete "'+p.client+'"?')){await deleteProject(p.id);S.projects=S.projects.filter(x=>x.id!==p.id);S.tasks=S.tasks.filter(x=>x.project_id!==p.id);S.modal=null;render()}};lb.appendChild(db)}
+  footer.appendChild(lb);const rb=el('div');rb.style.cssText='display:flex;gap:8px';
   const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.onclick=()=>{S.modal=null;render()};rb.appendChild(cancel);
   const save=el('button');save.className='btn-primary';save.textContent='Save';
-  save.onclick=async()=>{
-    S.modal=null;render();
-    await upsertProject(p);
-    for(const t of tasks)await upsertTask(t);
-    await loadAll();render();
-  };
+  save.onclick=async()=>{S.modal=null;render();await upsertProject(p);for(const t of tasks)await upsertTask(t);await loadAll();render()};
   rb.appendChild(save);footer.appendChild(rb);m.appendChild(footer);
 }
 
 function buildTaskModal(m){
-  const t=S.modal.t;
-  const holDates=S.holidays.map(h=>h.date);
-  mhdr(m,'Edit Task');
+  const t=S.modal.t;const holDates=S.holidays.map(h=>h.date);mhdr(m,'Edit Task');
   const g=el('div');g.className='fg';
   const dw=el('div');dw.className='fg-full';dw.appendChild(lbl2('Description'));dw.appendChild(inp2(t.descr,e=>t.descr=e.target.value));g.appendChild(dw);
   const crw=el('div');crw.appendChild(lbl2('Crew'));crw.appendChild(inp2(t.crew,e=>t.crew=e.target.value,'select',[['','— Unassigned —'],...S.crews.map(c=>[c.name,c.name])]));g.appendChild(crw);
   const stw=el('div');stw.appendChild(lbl2('Status'));stw.appendChild(inp2(t.status,e=>t.status=e.target.value,'select',ST_OPTS.map(s=>[s,s])));g.appendChild(stw);
-  const ww=el('div');ww.className='fg-full';ww.style.marginTop='8px';
-  const wl=el('label');wl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444';
-  const cb=el('input');cb.type='checkbox';cb.checked=t.wknd;cb.onchange=e=>{t.wknd=e.target.checked;renderSegs()};
-  wl.appendChild(cb);wl.appendChild(txt('Include weekends & holidays in Work Days'));ww.appendChild(wl);g.appendChild(ww);
-  m.appendChild(g);
-  const segsDiv=el('div');segsDiv.style.marginTop='12px';
-  const segLabels=['Primary dates','Return 1 (optional)','Return 2 (optional)'];
-  const segCls=['seg0','seg1','seg2'];const segC=['#1F3864','#8B4513','#1a6b3a'];
+  const ww=el('div');ww.className='fg-full';ww.style.marginTop='8px';const wl=el('label');wl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444';
+  const cb=el('input');cb.type='checkbox';cb.checked=t.wknd;cb.onchange=e=>{t.wknd=e.target.checked;renderSegs()};wl.appendChild(cb);wl.appendChild(document.createTextNode('Include weekends & holidays in Work Days'));ww.appendChild(wl);g.appendChild(ww);m.appendChild(g);
+  const segsDiv=el('div');segsDiv.style.marginTop='12px';const segLabels=['Primary dates','Return 1 (optional)','Return 2 (optional)'];const segCls=['seg0','seg1','seg2'];const segC=['#1F3864','#8B4513','#1a6b3a'];
   const wdDiv=el('div');
   function renderSegs(){
     segsDiv.innerHTML='';
     t.segs.forEach((seg,si)=>{
-      const box=el('div');box.className='seg-box '+segCls[si];
-      const sl=el('div');sl.style.cssText='font-weight:700;font-size:11px;margin-bottom:6px;color:'+segC[si];sl.textContent=segLabels[si];box.appendChild(sl);
+      const box=el('div');box.className='seg-box '+segCls[si];const sl=el('div');sl.style.cssText='font-weight:700;font-size:11px;margin-bottom:6px;color:'+segC[si];sl.textContent=segLabels[si];box.appendChild(sl);
       const sg=el('div');sg.className='seg-grid';
-      const sw2=el('div');sw2.style.flex='1';sw2.appendChild(lbl2('Start'));
-      sw2.appendChild(inp2(seg.s||'',e=>{t.segs=t.segs.map((x,i)=>i===si?{...x,s:e.target.value||null}:x);renderWd()},'date'));sg.appendChild(sw2);
-      const ew=el('div');ew.style.flex='1';ew.appendChild(lbl2('End'));
-      ew.appendChild(inp2(seg.e||'',e=>{t.segs=t.segs.map((x,i)=>i===si?{...x,e:e.target.value||null}:x);renderWd()},'date'));sg.appendChild(ew);
+      const sw2=el('div');sw2.style.flex='1';sw2.appendChild(lbl2('Start'));sw2.appendChild(inp2(seg.s||'',e=>{t.segs=t.segs.map((x,i)=>i===si?{...x,s:e.target.value||null}:x);renderWd()},'date'));sg.appendChild(sw2);
+      const ew=el('div');ew.style.flex='1';ew.appendChild(lbl2('End'));ew.appendChild(inp2(seg.e||'',e=>{t.segs=t.segs.map((x,i)=>i===si?{...x,e:e.target.value||null}:x);renderWd()},'date'));sg.appendChild(ew);
       if(seg.s&&seg.e){const wn=el('div');wn.style.cssText='text-align:center;min-width:46px';const wll=el('div');wll.style.cssText='font-size:10px;color:#888';wll.textContent='Days';wn.appendChild(wll);const wv=el('div');wv.style.cssText='font-size:16px;font-weight:700;color:#1F3864';wv.textContent=workDays([seg],holDates,t.wknd);wn.appendChild(wv);sg.appendChild(wn)}
       if(si>0){const cl=el('button');cl.style.cssText='color:#999;background:none;border:none;cursor:pointer;font-size:14px;padding:0;align-self:flex-end;margin-bottom:2px';cl.textContent='×';cl.onclick=()=>{t.segs=t.segs.map((x,i)=>i===si?{s:null,e:null}:x);renderSegs()};sg.appendChild(cl)}
       box.appendChild(sg);segsDiv.appendChild(box);
@@ -838,22 +835,15 @@ function buildTaskModal(m){
   function renderWd(){const wd=workDays(t.segs,holDates,t.wknd);if(wd>0){wdDiv.className='wd-total';wdDiv.textContent='Total work days: '+wd}else{wdDiv.className='';wdDiv.textContent=''}}
   renderSegs();m.appendChild(segsDiv);m.appendChild(wdDiv);
   const footer=el('div');footer.className='modal-footer';
-  const db=el('button');db.className='btn-danger';db.textContent='Delete Task';
-  db.onclick=async()=>{await deleteTask(t.id);S.tasks=S.tasks.filter(x=>x.id!==t.id);S.modal=null;render()};footer.appendChild(db);
-  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
-  const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.onclick=()=>{S.modal=null;render()};rb.appendChild(cancel);
+  const db=el('button');db.className='btn-danger';db.textContent='Delete Task';db.onclick=async()=>{await deleteTask(t.id);S.tasks=S.tasks.filter(x=>x.id!==t.id);S.modal=null;render()};footer.appendChild(db);
+  const rb=el('div');rb.style.cssText='display:flex;gap:8px';const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.onclick=()=>{S.modal=null;render()};rb.appendChild(cancel);
   const save=el('button');save.className='btn-primary';save.textContent='Save';
-  save.onclick=async()=>{
-    S.modal=null;
-    if(S.tasks.find(x=>x.id===t.id))S.tasks=S.tasks.map(x=>x.id===t.id?t:x);
-    else S.tasks=[...S.tasks,t];
-    render();await upsertTask(t);
-  };rb.appendChild(save);footer.appendChild(rb);m.appendChild(footer);
+  save.onclick=async()=>{S.modal=null;if(S.tasks.find(x=>x.id===t.id))S.tasks=S.tasks.map(x=>x.id===t.id?t:x);else S.tasks=[...S.tasks,t];render();await upsertTask(t)};
+  rb.appendChild(save);footer.appendChild(rb);m.appendChild(footer);
 }
 
 function buildCrewModal(m){
-  const c=S.modal.c;
-  mhdr(m,S.modal.isNew?'Add Crew Member':'Edit Crew Member');
+  const c=S.modal.c;mhdr(m,S.modal.isNew?'Add Crew Member':'Edit Crew Member');
   m.appendChild(lbl2('Name'));m.appendChild(inp2(c.name,e=>c.name=e.target.value));
   m.appendChild(lbl2('Bar Colour'));
   const crow=el('div');crow.style.cssText='display:flex;gap:8px;align-items:center;margin-top:3px';
@@ -862,35 +852,37 @@ function buildCrewModal(m){
   const ct=inp2(c.color,e=>{c.color=e.target.value;cp.value=e.target.value});ct.style.flex='1';crow.appendChild(ct);m.appendChild(crow);
   m.appendChild(lbl2('Text colour on badge'));
   const tcrow=el('div');tcrow.style.cssText='display:flex;gap:8px;margin-top:3px';
-  ['#ffffff','#000000','#333333'].forEach(tc=>{
-    const b=el('button');b.style.cssText='flex:1;padding:7px;border-radius:5px;cursor:pointer;font-weight:700;font-size:13px;background:'+c.color+';color:'+tc+';border:'+(c.tc===tc?'2px solid #1F3864':'1px solid #d0d7e3');
-    b.textContent='Aa';b.onclick=()=>{c.tc=tc;tcrow.querySelectorAll('button').forEach((x,i)=>x.style.border=(['#ffffff','#000000','#333333'][i]===tc?'2px solid #1F3864':'1px solid #d0d7e3'))};
-    tcrow.appendChild(b);
-  });m.appendChild(tcrow);
-  const footer=el('div');footer.className='modal-footer';
-  const lb=el('div');
+  ['#ffffff','#000000','#333333'].forEach(tc=>{const b=el('button');b.style.cssText='flex:1;padding:7px;border-radius:5px;cursor:pointer;font-weight:700;font-size:13px;background:'+c.color+';color:'+tc+';border:'+(c.tc===tc?'2px solid #1F3864':'1px solid #d0d7e3');b.textContent='Aa';b.onclick=()=>{c.tc=tc;tcrow.querySelectorAll('button').forEach((x,i)=>x.style.border=(['#ffffff','#000000','#333333'][i]===tc?'2px solid #1F3864':'1px solid #d0d7e3'))};tcrow.appendChild(b)});m.appendChild(tcrow);
+  const footer=el('div');footer.className='modal-footer';const lb=el('div');
   if(!S.modal.isNew){const db=el('button');db.className='btn-danger';db.textContent='Delete';db.onclick=()=>{deleteCrew(c.id).then(()=>{S.crews=S.crews.filter(x=>x.id!==c.id);S.modal=null;render()})};lb.appendChild(db)}
-  footer.appendChild(lb);
-  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+  footer.appendChild(lb);const rb=el('div');rb.style.cssText='display:flex;gap:8px';
   const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.onclick=()=>{S.modal=null;render()};rb.appendChild(cancel);
   const save=el('button');save.className='btn-primary';save.textContent='Save';
-  save.onclick=async()=>{
-    if(S.modal.isNew)S.crews=[...S.crews,c];else S.crews=S.crews.map(x=>x.id===c.id?c:x);
-    S.modal=null;render();await upsertCrew(c);
-  };rb.appendChild(save);footer.appendChild(rb);m.appendChild(footer);
+  save.onclick=async()=>{if(S.modal.isNew)S.crews=[...S.crews,c];else S.crews=S.crews.map(x=>x.id===c.id?c:x);S.modal=null;render();await upsertCrew(c)};
+  rb.appendChild(save);footer.appendChild(rb);m.appendChild(footer);
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (async function init(){
   const cfg=loadCfg();
-  if(cfg?.url&&cfg?.key){
-    document.getElementById('cfg-url').value=cfg.url;
-    document.getElementById('cfg-key').value=cfg.key;
-    document.getElementById('setup-screen').style.display='none';
-    document.getElementById('app').style.display='flex';
-    try{sb=window.supabase.createClient(cfg.url,cfg.key);await initApp()}
-    catch(e){document.getElementById('setup-screen').style.display='flex';document.getElementById('app').style.display='none';document.getElementById('cfg-err').textContent='Reconnection failed: '+e.message}
-  }
+  if(!cfg?.url||!cfg?.key){showSetup();return}
+  document.getElementById('cfg-url').value=cfg.url;
+  document.getElementById('cfg-key').value=cfg.key;
+  try{
+    sb=window.supabase.createClient(cfg.url,cfg.key);
+    // Detect if user arrived via an invite link (URL hash contains type=invite)
+    const hashParams=new URLSearchParams(window.location.hash.replace(/^#/,''));
+    if(hashParams.get('type')==='invite'){
+      window._pendingInvite=true;
+      // Clean the token from the URL bar so it can't be reused
+      history.replaceState(null,'',window.location.pathname);
+    }
+    setupAuthListener();
+    const{data:{session}}=await sb.auth.getSession();
+    // If no session AND no invite token in URL, show login
+    if(!session&&!window._pendingInvite){showLogin()}
+    // Otherwise onAuthStateChange will fire and route correctly
+  }catch(e){showSetup();document.getElementById('cfg-err').textContent='Error: '+e.message}
 })();
 </script>
 </body>
