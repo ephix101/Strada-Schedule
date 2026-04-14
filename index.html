@@ -127,6 +127,26 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .btn-sec{padding:7px 14px;background:#fff;border:1px solid #cdd3de;border-radius:6px;font-size:12px;cursor:pointer}
 .btn-danger{padding:7px 14px;background:#fff;color:#dc3545;border:1px solid #dc3545;border-radius:6px;font-size:12px;cursor:pointer}
 .btn-sm{padding:4px 10px;border-radius:5px;border:1px solid #d0d7e3;background:#f8f9fb;font-size:12px;cursor:pointer}
+/* AI Import modal */
+.drop-zone{border:2px dashed #cdd3de;border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:#fafbfc;margin-top:4px}
+.drop-zone:hover,.drop-zone.drag-over{border-color:#1F3864;background:#f0f4ff}
+.drop-zone-icon{font-size:30px;margin-bottom:6px;opacity:.5}
+.drop-zone-text{font-size:13px;color:#777;line-height:1.5}
+.drop-zone-file{font-size:12px;color:#1F3864;font-weight:700;margin-top:6px;min-height:18px}
+.import-or{display:flex;align-items:center;gap:10px;margin:14px 0;color:#bbb;font-size:12px}
+.import-or::before,.import-or::after{content:'';flex:1;height:1px;background:#e4e8f0}
+.import-textarea{width:100%;padding:9px 10px;border:1px solid #cdd3de;border-radius:7px;font-size:12px;resize:vertical;min-height:90px;outline:none;font-family:inherit;color:#333}
+.import-textarea:focus{border-color:#1F3864}
+.import-spin-wrap{display:flex;flex-direction:column;align-items:center;gap:14px;padding:36px 0}
+.import-error{background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin-bottom:12px;color:#dc2626;font-size:13px;line-height:1.5}
+.import-error strong{display:block;font-weight:700;margin-bottom:3px}
+.preview-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:12px}
+.preview-table th{background:#f0f4ff;color:#1F3864;font-size:11px;font-weight:700;padding:6px 8px;text-align:left;border-bottom:2px solid #c5d0e8}
+.preview-table td{padding:5px 6px;border-bottom:1px solid #f0f2f5;vertical-align:middle}
+.preview-inp{width:100%;padding:4px 7px;border:1px solid #e4e8f0;border-radius:4px;font-size:12px;background:#fff;outline:none;color:#333}
+.preview-inp:focus{border-color:#1F3864}
+.import-btn{padding:5px 12px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap}
+.import-btn:hover{background:rgba(255,255,255,.25)}
 /* Filter bar */
 .filter-bar{display:flex;align-items:center;gap:6px;padding:0 14px;min-height:40px;background:#f8f9fb;border-bottom:1px solid #d1d5db;flex-shrink:0;flex-wrap:wrap}
 .filter-bar.active{background:#fffbeb;border-bottom-color:#f59e0b}
@@ -203,6 +223,7 @@ input,select,textarea{font-family:inherit;font-size:12px}
 <div class="toast-ctr" id="toasts"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script>
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const GS=new Date(2026,3,1),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
@@ -585,6 +606,7 @@ function openModal(){
   if(S.modal.type==='proj')buildProjModal(m);
   else if(S.modal.type==='task')buildTaskModal(m);
   else if(S.modal.type==='crew')buildCrewModal(m);
+  else if(S.modal.type==='import')buildImportModal(m);
   bg.appendChild(m);root.appendChild(bg);
 }
 // Escape key closes any open modal
@@ -764,6 +786,71 @@ function buildFilterBar(){
   return bar;
 }
 
+// ── AI DOCUMENT IMPORT ────────────────────────────────────────────────────────
+async function fetchApiKey(){
+  try{const{data,error}=await sb.from('settings').select('value').eq('key','anthropic_api_key').single();
+  return(!error&&data)?data.value:null}catch{return null}
+}
+async function saveApiKey(key){
+  const{error}=await sb.from('settings').upsert({key:'anthropic_api_key',value:key.trim()});return!error;
+}
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();r.onload=e=>resolve(e.target.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(file);
+  });
+}
+async function docxToText(file){
+  if(typeof mammoth==='undefined')throw new Error('Word doc parsing unavailable. Please paste the text directly instead.');
+  const buf=await file.arrayBuffer();
+  const result=await mammoth.extractRawText({arrayBuffer:buf});
+  if(!result.value||result.value.trim().length<20)throw new Error('Could not extract readable text from this file. Try pasting the content manually.');
+  return result.value;
+}
+const CLAUDE_SYSTEM=`You extract project info from construction quotes and price schedules.
+Return ONLY a valid JSON object — no markdown, no explanation, nothing else:
+{"job_num":"","client":"","location":"","tasks":[{"description":"","quantity":""}]}
+Rules: job_num=project/job number if shown, else ""; client=customer/company name; location=project address or site name; tasks=each scope item or line item as one entry; quantity=qty+unit if shown (e.g. "304 m²", "50mm HL3F") else "".`;
+
+async function callClaude(apiKey,content){
+  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-allow-browser':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,system:CLAUDE_SYSTEM,messages:[{role:'user',content}]})
+  });
+  if(!resp.ok){
+    let msg='Claude API error '+resp.status;
+    try{const e=await resp.json();msg=e.error?.message||msg}catch{}
+    throw new Error(msg);
+  }
+  const data=await resp.json();
+  const raw=(data.content||[])[0]?.text||'';
+  const clean=raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+  const parsed=JSON.parse(clean);
+  if(!Array.isArray(parsed.tasks))throw new Error('Unexpected response — Claude did not return tasks array.');
+  return parsed;
+}
+async function runAnalysis(file,pasteText){
+  const apiKey=await fetchApiKey();
+  if(!apiKey)throw new Error('No Anthropic API key found. Go to Settings → Data → API Keys and save your key first.');
+  if(pasteText&&pasteText.trim().length>20){
+    return await callClaude(apiKey,'Extract project info from this construction document:\n\n'+pasteText.trim());
+  }
+  if(!file)throw new Error('Please select a file or paste some text.');
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='pdf'){
+    const b64=await fileToBase64(file);
+    return await callClaude(apiKey,[
+      {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
+      {type:'text',text:'Extract the project information from this construction quote or price schedule.'}
+    ]);
+  }else if(ext==='docx'){
+    const text=await docxToText(file);
+    return await callClaude(apiKey,'Extract project info from this construction document:\n\n'+text);
+  }else{
+    throw new Error('File type ".'+ext+'" is not supported. Please use a PDF or .docx file, or paste the text directly.');
+  }
+}
+
 // ── DRAG ──────────────────────────────────────────────────────────────────────
 let drag=null;
 window.addEventListener('mousemove',e=>{
@@ -830,6 +917,13 @@ function buildToolbar(){
     S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:'',status:'Not started',collapsed:false,sort_order:S.projects.length}};
     openModal();
   };t.appendChild(addBtn);
+  const impBtn=el('button');impBtn.className='import-btn';impBtn.textContent='📄 Import';
+  impBtn.title='Import project from a PDF or Word document using AI';
+  impBtn.onclick=()=>{
+    S.modal={type:'import',state:'input',pasteText:'',file:null,error:null,
+      editProj:{job_num:'',client:'',location:'',status:'Not started'},editTasks:[]};
+    openModal();
+  };t.appendChild(impBtn);
   if(currentUser){
     const pill=el('div');pill.className='user-pill';
     const av=el('div');av.className='user-av';av.textContent=(currentUser.email||'?').slice(0,2).toUpperCase();pill.appendChild(av);
@@ -1102,12 +1196,39 @@ function buildTeamPanel(){
 function buildDataPanel(){
   const d=el('div');
   const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700;margin-bottom:12px';h.textContent='Data & Import/Export';d.appendChild(h);
-  function card(title,desc,actions){
+  function card(title,desc,body){
     const c=el('div');c.style.cssText='background:#fff;border-radius:8px;padding:16px;margin-bottom:12px;border:1px solid #e4e8f0';
     const t=el('p');t.style.cssText='font-weight:700;color:#1F3864;margin-bottom:4px';t.textContent=title;c.appendChild(t);
-    const de=el('p');de.style.cssText='color:#666;font-size:12px;margin-bottom:10px';de.textContent=desc;c.appendChild(de);
-    actions.forEach(a=>c.appendChild(a));d.appendChild(c);
+    const de=el('p');de.style.cssText='color:#666;font-size:12px;margin-bottom:10px;line-height:1.5';de.textContent=desc;c.appendChild(de);
+    if(Array.isArray(body))body.forEach(a=>c.appendChild(a));else c.appendChild(body);
+    d.appendChild(c);
   }
+  // ── API Key ──────────────────────────────────────────────────────────────
+  const akCard=el('div');akCard.style.cssText='background:#fff;border-radius:8px;padding:16px;margin-bottom:12px;border:1px solid #e4e8f0';
+  const akTitle=el('p');akTitle.style.cssText='font-weight:700;color:#1F3864;margin-bottom:4px';akTitle.textContent='🤖 Anthropic API Key';akCard.appendChild(akTitle);
+  const akDesc=el('p');akDesc.style.cssText='color:#666;font-size:12px;margin-bottom:10px;line-height:1.5';
+  akDesc.innerHTML='Required for AI document import. Stored in your Supabase database, not the app file. Get your key at <a href="https://console.anthropic.com" target="_blank" style="color:#1F3864">console.anthropic.com</a>.';
+  akCard.appendChild(akDesc);
+  const akRow=el('div');akRow.style.cssText='display:flex;gap:8px;align-items:center';
+  const akInp=el('input');akInp.className='inp';akInp.type='password';akInp.style.cssText='flex:1;font-family:monospace;font-size:12px';
+  akInp.placeholder='sk-ant-api03-…';akRow.appendChild(akInp);
+  const akShow=el('button');akShow.className='btn-sm';akShow.textContent='Show';
+  akShow.onclick=()=>{akInp.type=akInp.type==='password'?'text':'password';akShow.textContent=akInp.type==='password'?'Show':'Hide'};
+  akRow.appendChild(akShow);
+  const akSave=el('button');akSave.className='btn-primary';akSave.style.fontSize='12px';akSave.textContent='Save Key';
+  akSave.onclick=async()=>{
+    const key=akInp.value.trim();
+    if(!key){toast('Please enter your API key.','error');return}
+    if(!key.startsWith('sk-ant-')&&!key.startsWith('sk-')){toast('That doesn\'t look like a valid Anthropic key.','error');return}
+    akSave.disabled=true;akSave.textContent='Saving…';
+    const ok=await saveApiKey(key);
+    akSave.disabled=false;akSave.textContent='Save Key';
+    if(ok)toast('✓ API key saved','ok');else toast('⚠ Failed to save — check Supabase settings table exists.','error');
+  };
+  akRow.appendChild(akSave);akCard.appendChild(akRow);
+  // Load masked existing key
+  fetchApiKey().then(k=>{if(k)akInp.value=k});
+  d.appendChild(akCard);
   const seedBtn=el('button');seedBtn.className='btn-primary';seedBtn.style.fontSize='12px';
   seedBtn.textContent='🌱 Load Sample Data (41 projects)';seedBtn.onclick=seedData;
   card('Seed initial data','Load all 41 projects from the 2026 job board. Skip if you already have data.',[seedBtn]);
@@ -1138,6 +1259,143 @@ function buildDataPanel(){
   const impBtn=el('button');impBtn.className='btn-sec';impBtn.style.fontSize='12px';impBtn.textContent='⬆ Import JSON';impBtn.onclick=()=>fi.click();
   card('Import & Restore','Restore from a JSON backup file.',[fi,impBtn]);
   return d;
+}
+
+// ── IMPORT MODAL ──────────────────────────────────────────────────────────────
+function buildImportModal(m){
+  const ms=S.modal;
+  mhdr(m,'Import from Document');
+  if(ms.state==='analyzing'){
+    const wrap=el('div');wrap.className='import-spin-wrap';
+    const sp=el('div');sp.className='spinner';wrap.appendChild(sp);
+    const lb=el('div');lb.style.cssText='color:#666;font-size:13px;text-align:center;line-height:1.6';
+    lb.innerHTML='Analyzing with Claude AI…<br><small style="color:#aaa">This usually takes 5–15 seconds</small>';
+    wrap.appendChild(lb);m.appendChild(wrap);return;
+  }
+  if(ms.state==='error'){
+    const eb=el('div');eb.className='import-error';
+    const es=el('strong');es.textContent='Could not analyze document';eb.appendChild(es);
+    eb.appendChild(document.createTextNode(ms.error||'Unknown error'));m.appendChild(eb);
+  }
+  if(ms.state==='preview'){buildImportPreview(m,ms);return}
+  buildImportInput(m,ms);
+}
+
+function buildImportInput(m,ms){
+  const zone=el('div');zone.className='drop-zone';
+  const ico=el('div');ico.className='drop-zone-icon';ico.textContent='📄';zone.appendChild(ico);
+  const dt=el('div');dt.className='drop-zone-text';dt.textContent='Click to select a PDF or Word (.docx) file';zone.appendChild(dt);
+  const fl=el('div');fl.className='drop-zone-file';fl.textContent=ms.file?'📎 '+ms.file.name:'';zone.appendChild(fl);
+  const fi=el('input');fi.type='file';fi.accept='.pdf,.docx';fi.style.display='none';
+  fi.onchange=e=>{
+    const f=e.target.files[0];ms.file=f||null;
+    fl.textContent=f?'📎 '+f.name:'';dt.textContent=f?'File selected — click Analyze to continue':'Click to select a PDF or Word (.docx) file';
+  };
+  zone.onclick=()=>fi.click();
+  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag-over')});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('drag-over'));
+  zone.addEventListener('drop',e=>{
+    e.preventDefault();zone.classList.remove('drag-over');
+    const f=e.dataTransfer.files[0];if(!f)return;
+    ms.file=f;fl.textContent='📎 '+f.name;dt.textContent='File selected — click Analyze to continue';
+  });
+  m.appendChild(fi);m.appendChild(zone);
+  const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or paste text directly';m.appendChild(orDiv);
+  const ta=el('textarea');ta.className='import-textarea';
+  ta.placeholder='Paste the quote text, scope of work, or price schedule here…';
+  ta.value=ms.pasteText||'';ta.oninput=e=>{ms.pasteText=e.target.value};m.appendChild(ta);
+  const note=el('p');note.style.cssText='font-size:11px;color:#aaa;margin-top:8px;line-height:1.5';
+  note.textContent='Requires an Anthropic API key (Settings → Data). Analysis takes ~5–15 seconds per document.';m.appendChild(note);
+  const footer=el('div');footer.className='modal-footer';
+  const lb=el('div');footer.appendChild(lb);
+  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+  const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.addEventListener('click',closeModal);rb.appendChild(cancel);
+  const btn=el('button');btn.className='btn-primary';btn.textContent='🤖 Analyze Document';
+  btn.addEventListener('click',async()=>{
+    if(!ms.file&&!(ms.pasteText&&ms.pasteText.trim().length>20)){
+      toast('Please select a file or paste at least a few sentences of text.','error');return;
+    }
+    ms.state='analyzing';openModal();
+    try{
+      const result=await runAnalysis(ms.file,ms.pasteText||'');
+      ms.editProj={job_num:result.job_num||'',client:result.client||'',location:result.location||'',status:'Not started'};
+      ms.editTasks=(result.tasks||[]).filter(t=>(t.description||'').trim()).map(t=>({id:uid(),description:(t.description||'').trim(),quantity:(t.quantity||'').trim()}));
+      if(ms.editTasks.length===0)throw new Error('No tasks were extracted. Try pasting the document text directly.');
+      ms.state='preview';ms.error=null;
+    }catch(e){ms.error=e.message;ms.state='error'}
+    openModal();
+  });
+  rb.appendChild(btn);footer.appendChild(rb);m.appendChild(footer);
+}
+
+function buildImportPreview(m,ms){
+  // Project fields
+  const sec=el('div');sec.style.cssText='background:#f0f4ff;border-radius:8px;padding:14px;margin-bottom:12px;border:1px solid #c5d0e8';
+  const stl=el('p');stl.style.cssText='font-weight:700;font-size:13px;color:#1F3864;margin-bottom:10px';stl.textContent='Extracted Project — edit before importing';sec.appendChild(stl);
+  const grid=el('div');grid.className='fg';
+  const addF=(lbl,key,full)=>{
+    const w=el('div');if(full)w.className='fg-full';
+    const l=el('label');l.className='lbl';l.textContent=lbl;w.appendChild(l);
+    const i=el('input');i.className='inp';i.value=ms.editProj[key]||'';i.oninput=e=>{ms.editProj[key]=e.target.value};w.appendChild(i);grid.appendChild(w);
+  };
+  addF('Job Number','job_num',false);
+  const sw=el('div');const sl=el('label');sl.className='lbl';sl.textContent='Status';sw.appendChild(sl);
+  sw.appendChild(inp2(ms.editProj.status||'Not started',e=>{ms.editProj.status=e.target.value},'select',ST_OPTS.map(s=>[s,s])));grid.appendChild(sw);
+  addF('Client','client',true);addF('Location / Project Name','location',true);
+  sec.appendChild(grid);m.appendChild(sec);
+  // Tasks header
+  const th=el('div');th.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px';
+  const tc=el('span');tc.style.cssText='font-weight:700;font-size:13px;color:#1F3864';tc.textContent='Tasks ('+ms.editTasks.length+' extracted)';th.appendChild(tc);
+  const addT=el('button');addT.className='btn-sm';addT.textContent='+ Add Task';
+  addT.onclick=()=>{ms.editTasks.push({id:uid(),description:'',quantity:''});openModal()};th.appendChild(addT);m.appendChild(th);
+  // Tasks table
+  const tbl=el('table');tbl.className='preview-table';
+  const thead=el('thead');const hr=el('tr');
+  [['Task Description','60%'],['Quantity / Unit','25%'],['','15%']].forEach(([t,w])=>{
+    const th2=el('th');th2.textContent=t;th2.style.width=w;hr.appendChild(th2);
+  });thead.appendChild(hr);tbl.appendChild(thead);
+  const tbody=el('tbody');
+  ms.editTasks.forEach((task,ti)=>{
+    const tr=el('tr');
+    const td1=el('td');const di=el('input');di.className='preview-inp';di.value=task.description;di.placeholder='Task description';
+    di.oninput=e=>{ms.editTasks[ti].description=e.target.value};td1.appendChild(di);tr.appendChild(td1);
+    const td2=el('td');const qi=el('input');qi.className='preview-inp';qi.value=task.quantity;qi.placeholder='e.g. 304 m²';
+    qi.oninput=e=>{ms.editTasks[ti].quantity=e.target.value};td2.appendChild(qi);tr.appendChild(td2);
+    const td3=el('td');td3.style.textAlign='center';
+    const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px';
+    db.textContent='×';db.onclick=()=>{ms.editTasks.splice(ti,1);openModal()};td3.appendChild(db);tr.appendChild(td3);
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(tbody);m.appendChild(tbl);
+  // Footer
+  const footer=el('div');footer.className='modal-footer';
+  const lb=el('div');
+  const reBtn=el('button');reBtn.className='btn-sec';reBtn.textContent='← Re-analyze';reBtn.onclick=()=>{ms.state='input';openModal()};lb.appendChild(reBtn);footer.appendChild(lb);
+  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+  const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.addEventListener('click',closeModal);rb.appendChild(cancel);
+  const impBtn=el('button');impBtn.className='btn-primary';
+  impBtn.textContent='✓ Import '+ms.editTasks.length+' task'+(ms.editTasks.length!==1?'s':'');
+  impBtn.addEventListener('click',async()=>{
+    if(!ms.editProj.client&&!ms.editProj.location){toast('Please enter a client name or location.','error');return}
+    if(ms.editTasks.length===0){toast('Please add at least one task.','error');return}
+    impBtn.disabled=true;impBtn.textContent='Importing…';
+    try{
+      const pid=uid();
+      const proj={id:pid,job_num:ms.editProj.job_num||'',client:ms.editProj.client||'',
+        loc:ms.editProj.location||'',loc_exp:'',status:ms.editProj.status||'Not started',collapsed:false,sort_order:S.projects.length};
+      await upsertProject(proj);
+      const tasks=ms.editTasks.map((t,i)=>({
+        id:t.id,project_id:pid,
+        descr:t.description+(t.quantity?' — '+t.quantity:''),
+        crew:'',status:proj.status,wknd:false,sort_order:i,
+        segs:[{s:null,e:null},{s:null,e:null},{s:null,e:null}]
+      }));
+      for(const task of tasks)await upsertTask(task);
+      await loadAll();closeModal();render();
+      toast('✓ "'+proj.client+'" imported — '+tasks.length+' task'+(tasks.length!==1?'s':''),'ok');
+    }catch(e){toast('⚠ Import failed: '+e.message,'error');impBtn.disabled=false;impBtn.textContent='✓ Import';}
+  });
+  rb.appendChild(impBtn);footer.appendChild(rb);m.appendChild(footer);
 }
 
 // ── MODALS ────────────────────────────────────────────────────────────────────
