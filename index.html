@@ -127,6 +127,22 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .btn-sec{padding:7px 14px;background:#fff;border:1px solid #cdd3de;border-radius:6px;font-size:12px;cursor:pointer}
 .btn-danger{padding:7px 14px;background:#fff;color:#dc3545;border:1px solid #dc3545;border-radius:6px;font-size:12px;cursor:pointer}
 .btn-sm{padding:4px 10px;border-radius:5px;border:1px solid #d0d7e3;background:#f8f9fb;font-size:12px;cursor:pointer}
+/* Filter bar */
+.filter-bar{display:flex;align-items:center;gap:6px;padding:0 14px;min-height:40px;background:#f8f9fb;border-bottom:1px solid #d1d5db;flex-shrink:0;flex-wrap:wrap}
+.filter-bar.active{background:#fffbeb;border-bottom-color:#f59e0b}
+.fb-label{font-size:11px;font-weight:700;color:#6b7280;white-space:nowrap;flex-shrink:0}
+.fb-sep{width:1px;height:20px;background:#d1d5db;flex-shrink:0;margin:0 2px}
+.fb-crew-btn{padding:2px 9px;border-radius:12px;border:1.5px solid transparent;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:opacity .12s,transform .1s}
+.fb-crew-btn.on{opacity:1}
+.fb-crew-btn.off{opacity:.35;filter:grayscale(.4)}
+.fb-crew-btn:hover{opacity:.9!important;transform:scale(1.04)}
+.fb-sel{padding:3px 6px;border:1px solid #cdd3de;border-radius:5px;font-size:12px;background:#fff;cursor:pointer;height:26px;max-width:130px}
+.fb-date{width:108px;padding:3px 6px;border:1px solid #cdd3de;border-radius:5px;font-size:12px;height:26px}
+.fb-chk-lbl{display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer;white-space:nowrap;user-select:none}
+.fb-clear{padding:2px 10px;border-radius:5px;border:1px solid #f59e0b;background:#fff8ed;color:#b45309;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+.fb-save-btn{padding:2px 10px;border-radius:5px;border:1px solid #cdd3de;background:#fff;color:#374151;font-size:11px;cursor:pointer;white-space:nowrap}
+.fb-del-btn{padding:2px 8px;border-radius:5px;border:1px solid #fecaca;background:#fff5f5;color:#dc2626;font-size:11px;cursor:pointer}
+.filter-count{background:#f59e0b;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:0 5px;min-width:16px;text-align:center;line-height:16px}
 </style>
 </head>
 <body>
@@ -178,6 +194,7 @@ input,select,textarea{font-family:inherit;font-size:12px}
 <!-- Main app -->
 <div class="app" id="app" style="display:none">
   <div class="toolbar" id="toolbar"></div>
+  <div id="filter-bar" class="filter-bar" style="display:none"></div>
   <div class="main" id="main"></div>
 </div>
 
@@ -202,6 +219,8 @@ const ST_CLR={'Not started':'#6c757d','In progress':'#0d6efd','On hold':'#dc3545
 const WDAY_IDXS=ALL_DATES.reduce((a,d,i)=>{if(d.getDay()===0||d.getDay()===6)a.push(i);return a},[]);
 const MONTH_BANDS=(()=>{let o=0;return MONTH_CFG.map(m=>{const b={...m,o};o+=m.n;return b})})();
 const CFG_KEY='strada_cfg_v2';
+const FILTER_KEY='strada_filter_v1';
+const PRESETS_KEY='strada_presets_v1';
 
 // ── DEFAULT DATA ───────────────────────────────────────────────────────────────
 const DEF_CREWS=[
@@ -279,7 +298,10 @@ let sb=null,realtimeCh=null,currentUser=null;
 const S={
   view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',
   projects:[],tasks:[],crews:[],holidays:[],
-  loading:false,syncing:false
+  loading:false,syncing:false,
+  // Phase 2: filter & sort state (persisted to localStorage per user)
+  filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default'},
+  presets:[] // [{id,name,filter}]
 };
 
 // Preserve scroll across re-renders
@@ -293,6 +315,24 @@ function restoreScroll(){
   const g=document.querySelector('.gantt-wrap'),b=document.querySelector('.board-wrap');
   if(g){g.scrollLeft=_scroll.ganttX;g.scrollTop=_scroll.ganttY}
   if(b){b.scrollLeft=_scroll.boardX;b.scrollTop=_scroll.boardY}
+}
+
+// ── FILTER PERSISTENCE ────────────────────────────────────────────────────────
+function _filterKey(){return FILTER_KEY+(currentUser?'_'+currentUser.email:'')}
+function _presetsKey(){return PRESETS_KEY+(currentUser?'_'+currentUser.email:'')}
+function saveFilters(){
+  try{
+    localStorage.setItem(_filterKey(),JSON.stringify(S.filter));
+    localStorage.setItem(_presetsKey(),JSON.stringify(S.presets));
+  }catch(e){}
+}
+function loadFilters(){
+  try{
+    const f=JSON.parse(localStorage.getItem(_filterKey())||'null');
+    if(f)S.filter={crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',...f};
+    const p=JSON.parse(localStorage.getItem(_presetsKey())||'null');
+    if(Array.isArray(p))S.presets=p;
+  }catch(e){}
 }
 
 // ── SCREEN MANAGEMENT ─────────────────────────────────────────────────────────
@@ -365,6 +405,7 @@ function setupAuthListener(){
 async function enterApp(user){
   currentUser=user;
   saveCfg({lastEmail:user.email});
+  loadFilters(); // Phase 2: restore saved filters for this user
   showApp();
   S.loading=true;render();
   await loadAll();
@@ -548,6 +589,180 @@ function openModal(){
 // Escape key closes any open modal
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.modal)closeModal()});
 
+// ── FILTER & SORT LOGIC ───────────────────────────────────────────────────────
+function taskOverlapsRange(task,from,to){
+  return (task.segs||[]).some(seg=>{
+    if(!seg.s||!seg.e)return false;
+    if(from&&seg.e<from)return false;
+    if(to&&seg.s>to)return false;
+    return true;
+  });
+}
+function isFilterActive(){
+  const f=S.filter;
+  return f.crews.length>0||f.hideComplete||!!f.dateFrom||!!f.dateTo||f.sortBy!=='default';
+}
+function countActiveFilters(){
+  const f=S.filter;
+  let n=0;
+  if(f.crews.length>0)n++;
+  if(f.hideComplete)n++;
+  if(f.dateFrom||f.dateTo)n++;
+  if(f.sortBy!=='default')n++;
+  return n;
+}
+function clearFilters(){
+  S.filter={crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default'};
+  saveFilters();
+}
+function applyFilters(){
+  let projects=[...S.projects];
+  const f=S.filter;
+  // 1. Hide complete projects
+  if(f.hideComplete)projects=projects.filter(p=>p.status!=='Complete');
+  // 2. Crew filter — keep project if at least one task matches
+  if(f.crews.length>0)projects=projects.filter(p=>projTasks(p.id).some(t=>f.crews.includes(t.crew)));
+  // 3. Date range — keep project if at least one task overlaps range
+  if(f.dateFrom||f.dateTo)projects=projects.filter(p=>projTasks(p.id).some(t=>taskOverlapsRange(t,f.dateFrom,f.dateTo)));
+  // 4. Sort
+  if(f.sortBy==='startDate'){
+    projects=[...projects].sort((a,b)=>{
+      const sa=projSpan(projTasks(a.id)).s||'9999-12-31';
+      const sb=projSpan(projTasks(b.id)).s||'9999-12-31';
+      return sa.localeCompare(sb);
+    });
+  }else if(f.sortBy==='client'){
+    projects=[...projects].sort((a,b)=>a.client.localeCompare(b.client));
+  }else if(f.sortBy==='jobNum'){
+    projects=[...projects].sort((a,b)=>a.job_num.localeCompare(b.job_num));
+  }
+  // Build per-project visible task arrays (crew+date filter applied to tasks too)
+  const visibleTasks={};
+  projects.forEach(p=>{
+    let tasks=projTasks(p.id);
+    if(f.crews.length>0)tasks=tasks.filter(t=>f.crews.includes(t.crew));
+    if(f.dateFrom||f.dateTo)tasks=tasks.filter(t=>taskOverlapsRange(t,f.dateFrom,f.dateTo));
+    visibleTasks[p.id]=tasks;
+  });
+  return{projects,visibleTasks};
+}
+
+// ── FILTER BAR ────────────────────────────────────────────────────────────────
+function mkSep(){const s=document.createElement('div');s.className='fb-sep';return s}
+
+function buildFilterBar(){
+  const bar=document.createElement('div');
+  bar.id='filter-bar';
+  bar.className='filter-bar'+(isFilterActive()?' active':'');
+
+  // Only show on Gantt view
+  if(S.view!=='gantt'||S.loading){bar.style.display='none';return bar}
+  bar.style.display='flex';
+
+  // ── Crew chips ─────────────────────────────────────────────────────────────
+  const crewLbl=document.createElement('span');crewLbl.className='fb-label';crewLbl.textContent='Crew:';bar.appendChild(crewLbl);
+  S.crews.forEach(crew=>{
+    const btn=document.createElement('button');
+    btn.className='fb-crew-btn '+(S.filter.crews.length===0||S.filter.crews.includes(crew.name)?'on':'off');
+    btn.style.cssText='background:'+crew.color+';color:'+crew.tc+';border-color:'+crew.color;
+    btn.textContent=crew.name;
+    btn.title='Filter to '+crew.name+' only';
+    btn.addEventListener('click',()=>{
+      if(S.filter.crews.includes(crew.name)){
+        S.filter.crews=S.filter.crews.filter(c=>c!==crew.name);
+      }else{
+        S.filter.crews=[...S.filter.crews,crew.name];
+      }
+      saveFilters();render();
+    });
+    bar.appendChild(btn);
+  });
+
+  bar.appendChild(mkSep());
+
+  // ── Date range ──────────────────────────────────────────────────────────────
+  const fromLbl=document.createElement('span');fromLbl.className='fb-label';fromLbl.textContent='From:';bar.appendChild(fromLbl);
+  const fromI=document.createElement('input');fromI.type='date';fromI.className='fb-date';fromI.value=S.filter.dateFrom||'';
+  fromI.onchange=e=>{S.filter.dateFrom=e.target.value||null;saveFilters();render()};bar.appendChild(fromI);
+  const toLbl=document.createElement('span');toLbl.className='fb-label';toLbl.textContent='To:';bar.appendChild(toLbl);
+  const toI=document.createElement('input');toI.type='date';toI.className='fb-date';toI.value=S.filter.dateTo||'';
+  toI.onchange=e=>{S.filter.dateTo=e.target.value||null;saveFilters();render()};bar.appendChild(toI);
+
+  bar.appendChild(mkSep());
+
+  // ── Sort ────────────────────────────────────────────────────────────────────
+  const sortLbl=document.createElement('span');sortLbl.className='fb-label';sortLbl.textContent='Sort:';bar.appendChild(sortLbl);
+  const sortSel=document.createElement('select');sortSel.className='fb-sel';
+  [['default','Default order'],['startDate','Start date'],['client','Client name'],['jobNum','Job #']].forEach(([v,t])=>{
+    const o=document.createElement('option');o.value=v;o.textContent=t;if(v===S.filter.sortBy)o.selected=true;sortSel.appendChild(o);
+  });
+  sortSel.onchange=e=>{S.filter.sortBy=e.target.value;saveFilters();render()};bar.appendChild(sortSel);
+
+  bar.appendChild(mkSep());
+
+  // ── Hide complete ───────────────────────────────────────────────────────────
+  const hcLbl=document.createElement('label');hcLbl.className='fb-chk-lbl';
+  const hcCb=document.createElement('input');hcCb.type='checkbox';hcCb.checked=S.filter.hideComplete;
+  hcCb.onchange=e=>{S.filter.hideComplete=e.target.checked;saveFilters();render()};
+  hcLbl.appendChild(hcCb);hcLbl.appendChild(document.createTextNode('Hide Complete'));bar.appendChild(hcLbl);
+
+  bar.appendChild(mkSep());
+
+  // ── Presets ──────────────────────────────────────────────────────────────────
+  const presLbl=document.createElement('span');presLbl.className='fb-label';presLbl.textContent='Preset:';bar.appendChild(presLbl);
+  const presSel=document.createElement('select');presSel.className='fb-sel';
+  const blankOpt=document.createElement('option');blankOpt.value='';blankOpt.textContent='— Select —';presSel.appendChild(blankOpt);
+  S.presets.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;presSel.appendChild(o)});
+  // Track currently-selected preset id for delete button
+  let _selPreset='';
+  presSel.onchange=e=>{
+    _selPreset=e.target.value;
+    const preset=S.presets.find(p=>p.id===e.target.value);
+    if(preset){S.filter={...preset.filter,crews:[...(preset.filter.crews||[])]};saveFilters();render()}
+    else{presSel.value=''}
+  };
+  bar.appendChild(presSel);
+
+  // Save preset button
+  const saveBtn=document.createElement('button');saveBtn.className='fb-save-btn';saveBtn.textContent='💾 Save';
+  saveBtn.title='Save current filters as a named preset';
+  saveBtn.onclick=()=>{
+    const name=prompt('Name this preset (e.g. "Phil\'s Week"):');
+    if(!name||!name.trim())return;
+    const preset={id:'p_'+Date.now(),name:name.trim(),filter:{...S.filter,crews:[...S.filter.crews]}};
+    S.presets=[...S.presets,preset];
+    saveFilters();render();
+    toast('✓ Preset "'+preset.name+'" saved','ok');
+  };
+  bar.appendChild(saveBtn);
+
+  // Delete preset button — only if we have presets
+  if(S.presets.length>0){
+    const delBtn=document.createElement('button');delBtn.className='fb-del-btn';delBtn.textContent='🗑';
+    delBtn.title='Delete selected preset';
+    delBtn.onclick=()=>{
+      const cur=presSel.value;
+      if(!cur){toast('Select a preset to delete first','error');return}
+      const preset=S.presets.find(p=>p.id===cur);
+      if(!preset)return;
+      if(!confirm('Delete preset "'+preset.name+'"?'))return;
+      S.presets=S.presets.filter(p=>p.id!==cur);
+      saveFilters();render();
+    };
+    bar.appendChild(delBtn);
+  }
+
+  // ── Active filter count + clear ─────────────────────────────────────────────
+  if(isFilterActive()){
+    const n=countActiveFilters();
+    const badge=document.createElement('span');badge.className='filter-count';badge.textContent=n;bar.appendChild(badge);
+    const clrBtn=document.createElement('button');clrBtn.className='fb-clear';clrBtn.textContent='✕ Clear all';
+    clrBtn.onclick=()=>{clearFilters();render()};bar.appendChild(clrBtn);
+  }
+
+  return bar;
+}
+
 // ── DRAG ──────────────────────────────────────────────────────────────────────
 let drag=null;
 window.addEventListener('mousemove',e=>{
@@ -571,11 +786,14 @@ function render(){
   if(!toolbar||!main)return;
   saveScroll(); // FIX CP4: capture before DOM change
   toolbar.parentNode.replaceChild(buildToolbar(),toolbar);
+  // Rebuild filter bar (Phase 2)
+  const fb=document.getElementById('filter-bar');
+  if(fb){const nfb=buildFilterBar();fb.parentNode.replaceChild(nfb,fb)}
   if(S.loading){
     main.innerHTML='';
-    const ls=el('div');ls.className='loading-screen';
-    const sp=el('div');sp.className='spinner';
-    const lb=el('div');lb.textContent='Loading schedule…';
+    const ls=document.createElement('div');ls.className='loading-screen';
+    const sp=document.createElement('div');sp.className='spinner';
+    const lb=document.createElement('div');lb.textContent='Loading schedule…';
     ls.appendChild(sp);ls.appendChild(lb);main.appendChild(ls);
     return;
   }
@@ -627,7 +845,7 @@ function buildGantt(){
   const totalW=NDAYS*DW,holI=getHolIdxs(),cm=crewMap(),holDates=S.holidays.map(h=>h.date);
   const wrap=el('div');wrap.className='gantt-wrap';
 
-  // FIX CP6: empty state
+  // Empty state — no projects at all
   if(S.projects.length===0){
     const es=el('div');es.className='empty-state';
     const ico=el('div');ico.className='empty-state-icon';ico.textContent='📋';es.appendChild(ico);
@@ -638,14 +856,36 @@ function buildGantt(){
     wrap.appendChild(es);return wrap;
   }
 
+  // Apply filters & sort (Phase 2)
+  const{projects:visProjs,visibleTasks}=applyFilters();
+  const totalProjCount=S.projects.length;
+
+  // Empty state — filters produced no results
+  if(visProjs.length===0){
+    const es=el('div');es.className='empty-state';
+    const ico=el('div');ico.className='empty-state-icon';ico.textContent='🔍';es.appendChild(ico);
+    const title=el('div');title.className='empty-state-title';title.textContent='No projects match the active filters';es.appendChild(title);
+    const body=el('div');body.className='empty-state-body';
+    body.textContent='Try adjusting or removing your crew, date, or status filters to see more projects.';es.appendChild(body);
+    const btn=el('button');btn.className='empty-state-btn';btn.textContent='✕ Clear all filters';
+    btn.onclick=()=>{clearFilters();render()};es.appendChild(btn);
+    wrap.appendChild(es);return wrap;
+  }
+
   const flatRows=[];
-  S.projects.forEach(proj=>{flatRows.push({type:'proj',proj});if(!proj.collapsed)projTasks(proj.id).forEach(task=>flatRows.push({type:'task',proj,task}))});
+  visProjs.forEach(proj=>{
+    flatRows.push({type:'proj',proj});
+    if(!proj.collapsed)(visibleTasks[proj.id]||[]).forEach(task=>flatRows.push({type:'task',proj,task}));
+  });
 
   // Header
   const hdr=el('div');hdr.className='gantt-hdr';
   const corner=el('div');corner.className='corner';corner.style.cssText='width:'+LW+'px;height:43px';
   const ci=el('span');ci.style.cssText='color:rgba(255,255,255,.4);font-size:11px';
-  ci.textContent=flatRows.length+' rows · '+S.projects.length+' jobs';corner.appendChild(ci);hdr.appendChild(corner);
+  const filteredInfo=isFilterActive()
+    ?visProjs.length+' of '+totalProjCount+' jobs (filtered)'
+    :flatRows.length+' rows · '+totalProjCount+' jobs';
+  ci.textContent=filteredInfo;corner.appendChild(ci);hdr.appendChild(corner);
   const calw=el('div');calw.className='cal-wrap';calw.style.width=totalW+'px';
   const mr=el('div');mr.className='month-row';
   MONTH_BANDS.forEach(m=>{const mc=el('div');mc.className='mc';mc.style.cssText='width:'+m.n*DW+'px;height:18px;background:'+m.c;mc.textContent=m.l;mr.appendChild(mc)});calw.appendChild(mr);
