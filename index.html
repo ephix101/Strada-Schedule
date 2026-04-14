@@ -123,20 +123,7 @@ input,select,textarea{font-family:inherit;font-size:12px}
 </head>
 <body>
 
-<!-- ① Supabase connection setup (one-time) -->
-<div id="screen-setup" class="screen screen-bg-dark" style="display:none">
-  <div class="screen-card">
-    <div class="screen-logo">🏗 Strada Schedule</div>
-    <div class="screen-sub">Enter your Supabase project details to connect.<br>You only need to do this once on this device.</div>
-    <label class="screen-lbl">Supabase Project URL</label>
-    <input id="cfg-url" class="screen-inp" placeholder="https://xxxxxxxxxxx.supabase.co" />
-    <label class="screen-lbl">Supabase Anon (public) Key</label>
-    <input id="cfg-key" class="screen-inp" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" />
-    <button class="screen-btn" id="cfg-btn" onclick="doConnect()">Connect</button>
-    <div class="screen-err" id="cfg-err"></div>
-    <div class="screen-note">The anon key is safe to share with teammates — it can only access data when a user is signed in.</div>
-  </div>
-</div>
+<!-- Setup screen removed — credentials are built in -->
 
 <!-- ② Sign in -->
 <div id="screen-login" class="screen screen-bg-dark" style="display:none">
@@ -153,7 +140,7 @@ input,select,textarea{font-family:inherit;font-size:12px}
     <a class="screen-link" onclick="showForgot()">Forgot password?</a>
     <hr class="screen-divider">
     <div class="screen-note">Don't have an account? Ask your administrator to invite you via the Supabase dashboard.</div>
-    <a class="screen-link" style="color:#aaa" onclick="showSetup()">Change database connection</a>
+
   </div>
 </div>
 
@@ -290,14 +277,14 @@ const S={
 };
 
 // ── SCREEN MANAGEMENT ─────────────────────────────────────────────────────────
-const screens=['setup','login','forgot','newpass'];
+const screens=['login','forgot','newpass'];
 function showScreen(id){
   screens.forEach(s=>document.getElementById('screen-'+s).style.display='none');
   document.getElementById('app').style.display='none';
   if(id==='app'){document.getElementById('app').style.display='flex'}
   else{document.getElementById('screen-'+id).style.display='flex'}
 }
-function showSetup(){showScreen('setup')}
+function showSetup(){showScreen('login')} // Setup screen removed
 function showLogin(){
   const cfg=loadCfg();
   if(cfg?.lastEmail)document.getElementById('li-email').value=cfg.lastEmail;
@@ -314,41 +301,17 @@ function showApp(){showScreen('app')}
 function loadCfg(){try{return JSON.parse(localStorage.getItem(CFG_KEY)||'null')}catch{return null}}
 function saveCfg(patch){localStorage.setItem(CFG_KEY,JSON.stringify({...loadCfg(),...patch}))}
 
-async function doConnect(){
-  const url=(document.getElementById('cfg-url').value||'').trim().replace(/\/$/,'');
-  const key=(document.getElementById('cfg-key').value||'').trim();
-  const errEl=document.getElementById('cfg-err');
-  const btn=document.getElementById('cfg-btn');
-  if(!url||!key){errEl.textContent='Please fill in both fields.';return}
-  btn.disabled=true;btn.textContent='Connecting…';errEl.textContent='';
-  try{
-    const client=window.supabase.createClient(url,key);
-    // Test connectivity (will fail with auth error, not network error, if creds wrong)
-    const{error}=await client.from('projects').select('id').limit(1);
-    if(error&&error.code!=='PGRST301'&&error.code!=='42501')throw new Error(error.message);
-    sb=client;saveCfg({url,key});
-    setupAuthListener();showLogin();
-  }catch(e){
-    errEl.textContent='Connection failed: '+e.message;
-    btn.disabled=false;btn.textContent='Connect';
-  }
-}
+// doConnect removed — credentials are hardcoded
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 function setupAuthListener(){
   sb.auth.onAuthStateChange(async(event,session)=>{
-    if(event==='PASSWORD_RECOVERY'){
-      // User clicked "Forgot password" reset link
-      document.querySelector('#screen-newpass .screen-sub').textContent=
-        'Enter a new password for your account.';
-      showScreen('newpass');return;
-    }
-    if(event==='SIGNED_IN'&&window._pendingInvite){
-      // User arrived via invite link — they have a temp session but no password yet.
-      // Show set-password screen before letting them into the app.
+    if(event==='PASSWORD_RECOVERY'||event==='SIGNED_IN'&&window._pendingInvite){
       window._pendingInvite=false;
-      document.querySelector('#screen-newpass .screen-sub').textContent=
-        'Welcome! Set a permanent password to complete your account setup.';
+      const isInvite=event==='SIGNED_IN';
+      document.querySelector('#screen-newpass .screen-sub').textContent=isInvite
+        ?'Welcome! Set a permanent password to complete your account setup.'
+        :'Enter a new password for your account.';
       showScreen('newpass');return;
     }
     if(session?.user){
@@ -764,9 +727,7 @@ function buildDataPanel(){
   const fi=el('input');fi.type='file';fi.accept='.json';fi.style.display='none';
   fi.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>{try{const data=JSON.parse(ev.target.result);if(!data.projects)throw new Error('Invalid file');if(!confirm('Replace all data?'))return;S.syncing=true;refreshToolbar();if(data.crews?.length)await sb.from('crews').upsert(data.crews);if(data.holidays?.length)await sb.from('holidays').upsert(data.holidays);if(data.projects?.length)for(let i=0;i<data.projects.length;i+=20)await sb.from('projects').upsert(data.projects.slice(i,i+20));if(data.tasks?.length)for(let i=0;i<data.tasks.length;i+=50)await sb.from('tasks').upsert(data.tasks.map(appTaskToDB).slice(i,i+50));await loadAll();toast('✓ Import complete','ok');render()}catch(err){toast('⚠ Import failed: '+err.message,'error')}S.syncing=false;refreshToolbar()};r.readAsText(f)};
   const impBtn=el('button');impBtn.className='btn-sec';impBtn.style.fontSize='12px';impBtn.textContent='⬆ Import JSON';impBtn.onclick=()=>fi.click();
-  const resetBtn=el('button');resetBtn.className='btn-danger';resetBtn.style.cssText='font-size:12px;margin-left:8px;padding:7px 14px;background:#fff;color:#dc3545;border:1px solid #dc3545;border-radius:6px;cursor:pointer';resetBtn.textContent='Reset connection';
-  resetBtn.onclick=()=>{if(confirm('Clear credentials and return to setup?')){localStorage.removeItem(CFG_KEY);location.reload()}};
-  card('Import & Reset','Restore from a backup or switch to a different Supabase project.',[fi,impBtn,resetBtn]);
+  card('Import & Restore','Restore schedule data from a previously exported JSON backup.',[fi,impBtn]);
   return d;
 }
 
@@ -864,25 +825,36 @@ function buildCrewModal(m){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (async function init(){
-  const cfg=loadCfg();
-  if(!cfg?.url||!cfg?.key){showSetup();return}
-  document.getElementById('cfg-url').value=cfg.url;
-  document.getElementById('cfg-key').value=cfg.key;
+  // Credentials are built into this file — no setup screen needed
+  const SUPABASE_URL='https://fzkhsifaajcdvnthaxff.supabase.co';
+  const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6a2hzaWZhYWpjZHZudGhheGZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDIzOTMsImV4cCI6MjA5MTY3ODM5M30.lZheM3v971YAGBTbA2-zLuglXXCe10C1fUWmrWYJj3M';
   try{
-    sb=window.supabase.createClient(cfg.url,cfg.key);
-    // Detect if user arrived via an invite link (URL hash contains type=invite)
+    // IMPORTANT: detect invite BEFORE creating the client.
+    // Supabase JS v2 processes the URL hash immediately on client creation,
+    // firing onAuthStateChange synchronously — the flag must be set first.
     const hashParams=new URLSearchParams(window.location.hash.replace(/^#/,''));
-    if(hashParams.get('type')==='invite'){
-      window._pendingInvite=true;
-      // Clean the token from the URL bar so it can't be reused
+    const urlType=hashParams.get('type');
+    if(urlType==='invite'||urlType==='recovery'){
+      window._pendingInvite=(urlType==='invite');
       history.replaceState(null,'',window.location.pathname);
     }
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
     setupAuthListener();
     const{data:{session}}=await sb.auth.getSession();
-    // If no session AND no invite token in URL, show login
-    if(!session&&!window._pendingInvite){showLogin()}
-    // Otherwise onAuthStateChange will fire and route correctly
-  }catch(e){showSetup();document.getElementById('cfg-err').textContent='Error: '+e.message}
+    // If user has a session from an invite click, show set-password screen
+    if(session&&window._pendingInvite){
+      window._pendingInvite=false;
+      document.querySelector('#screen-newpass .screen-sub').textContent=
+        'Welcome! Set a permanent password to complete your account setup.';
+      showScreen('newpass');
+    } else if(!session&&!window._pendingInvite){
+      showLogin();
+    }
+    // If session exists or invite pending, onAuthStateChange handles routing
+  }catch(e){
+    console.error('Supabase init failed:',e);
+    showLogin();
+  }
 })();
 </script>
 </body>
