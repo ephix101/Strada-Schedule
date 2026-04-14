@@ -305,24 +305,18 @@ function saveCfg(patch){localStorage.setItem(CFG_KEY,JSON.stringify({...loadCfg(
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 function setupAuthListener(){
+  // Handles auth changes that happen AFTER the initial page load
+  // (login form submission, sign-out, token refresh).
+  // Invite and recovery flows are handled directly in init() via getSession().
   sb.auth.onAuthStateChange(async(event,session)=>{
-    if(event==='PASSWORD_RECOVERY'||event==='SIGNED_IN'&&window._pendingInvite){
-      window._pendingInvite=false;
-      const isInvite=event==='SIGNED_IN';
-      document.querySelector('#screen-newpass .screen-sub').textContent=isInvite
-        ?'Welcome! Set a permanent password to complete your account setup.'
-        :'Enter a new password for your account.';
-      showScreen('newpass');return;
-    }
-    if(session?.user){
+    if(!window._initComplete) return; // ignore events during startup
+    if(event==='SIGNED_IN'&&session?.user){
       currentUser=session.user;
       saveCfg({lastEmail:currentUser.email});
-      showApp();
-      S.loading=true;render();
-      await loadAll();
-      S.loading=false;render();
+      showApp();S.loading=true;render();
+      await loadAll();S.loading=false;render();
       if(!realtimeCh)startRealtime();
-    } else {
+    } else if(event==='SIGNED_OUT'){
       currentUser=null;
       if(realtimeCh){realtimeCh.unsubscribe();realtimeCh=null}
       showLogin();
@@ -370,10 +364,12 @@ async function doUpdatePass(){
   if(error){
     errEl.textContent=error.message;btn.disabled=false;btn.textContent='Update Password';
   } else {
-    // Check if we already have a valid session (invite flow) — if so go straight in
+    // User already has an active session (from invite/recovery token).
+    // Take them straight into the app — no need to sign in again.
     const{data:{session}}=await sb.auth.getSession();
     if(session?.user){
-      toast('✓ Password set — welcome to Strada Schedule!','ok');
+      window._initComplete=true;
+      toast('✓ Password set — welcome!','ok');
       currentUser=session.user;
       saveCfg({lastEmail:currentUser.email});
       showApp();S.loading=true;render();
@@ -825,34 +821,57 @@ function buildCrewModal(m){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (async function init(){
-  // Credentials are built into this file — no setup screen needed
   const SUPABASE_URL='https://fzkhsifaajcdvnthaxff.supabase.co';
   const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6a2hzaWZhYWpjZHZudGhheGZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMDIzOTMsImV4cCI6MjA5MTY3ODM5M30.lZheM3v971YAGBTbA2-zLuglXXCe10C1fUWmrWYJj3M';
   try{
-    // IMPORTANT: detect invite BEFORE creating the client.
-    // Supabase JS v2 processes the URL hash immediately on client creation,
-    // firing onAuthStateChange synchronously — the flag must be set first.
+    // Step 1: Read URL type BEFORE touching anything else.
+    // The invite/recovery token lives in the URL hash: #type=invite&access_token=...
+    // We must NOT clear the hash before Supabase reads it.
     const hashParams=new URLSearchParams(window.location.hash.replace(/^#/,''));
-    const urlType=hashParams.get('type');
-    if(urlType==='invite'||urlType==='recovery'){
-      window._pendingInvite=(urlType==='invite');
-      history.replaceState(null,'',window.location.pathname);
-    }
+    const urlType=hashParams.get('type'); // 'invite', 'recovery', or null
+
+    // Step 2: Create the Supabase client WITH the hash still in the URL.
+    // Supabase JS v2 reads window.location.hash during async initialization.
+    // getSession() waits for that initialization before returning.
     sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+    // Step 3: Register the listener for post-init auth events.
     setupAuthListener();
+
+    // Step 4: Await Supabase finishing hash token processing.
+    // getSession() internally awaits initializePromise which includes
+    // reading and exchanging any tokens found in the URL hash.
     const{data:{session}}=await sb.auth.getSession();
-    // If user has a session from an invite click, show set-password screen
-    if(session&&window._pendingInvite){
-      window._pendingInvite=false;
+
+    // Step 5: Clean the URL now that tokens have been safely read.
+    if(urlType)history.replaceState(null,'',window.location.pathname);
+
+    // Step 6: Route to the correct screen based on what we found.
+    if(urlType==='invite'&&session){
+      // New invited user — temporary session, needs to set a permanent password.
       document.querySelector('#screen-newpass .screen-sub').textContent=
         'Welcome! Set a permanent password to complete your account setup.';
       showScreen('newpass');
-    } else if(!session&&!window._pendingInvite){
+    }else if(urlType==='recovery'&&session){
+      // Password reset link clicked — show the set-password screen.
+      document.querySelector('#screen-newpass .screen-sub').textContent=
+        'Enter a new password for your account.';
+      showScreen('newpass');
+    }else if(session&&!urlType){
+      // Returning user with a valid stored session — go straight to the app.
+      currentUser=session.user;
+      saveCfg({lastEmail:currentUser.email});
+      showApp();S.loading=true;render();
+      await loadAll();S.loading=false;render();
+      if(!realtimeCh)startRealtime();
+    }else{
+      // No session, no special URL — show the sign-in screen.
       showLogin();
     }
-    // If session exists or invite pending, onAuthStateChange handles routing
+
+    window._initComplete=true;
   }catch(e){
-    console.error('Supabase init failed:',e);
+    console.error('Init failed:',e);
     showLogin();
   }
 })();
