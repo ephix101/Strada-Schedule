@@ -223,7 +223,6 @@ input,select,textarea{font-family:inherit;font-size:12px}
 <div class="toast-ctr" id="toasts"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script>
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const GS=new Date(2026,3,1),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
@@ -458,16 +457,25 @@ function setupAuthListener(){
   });
 }
 
+// enterApp is guarded by _appBusy so concurrent auth events never run it twice.
+// Two simultaneous calls would cancel each other's loading timeouts, causing a stuck spinner.
+let _appBusy=false;
 async function enterApp(user){
-  currentUser=user;
-  saveCfg({lastEmail:user.email});
-  loadFilters();
-  showApp();
-  setLoading(true);render();
-  try{await loadAll();}
-  catch(e){console.error('[Strada] loadAll failed:',e);toast('Failed to load data — check connection.','error');}
-  setLoading(false);renderSafe();
-  if(!realtimeCh)startRealtime();
+  if(_appBusy){console.log('[Strada] enterApp already running — skipping duplicate call');return}
+  _appBusy=true;
+  try{
+    currentUser=user;
+    saveCfg({lastEmail:user.email});
+    loadFilters();
+    showApp();
+    setLoading(true);renderSafe();
+    try{await loadAll();}
+    catch(e){console.error('[Strada] loadAll failed:',e);toast('Failed to load data — check connection.','error');}
+    setLoading(false);renderSafe();
+    if(!realtimeCh)startRealtime();
+  }finally{
+    _appBusy=false;
+  }
 }
 
 async function doSignIn(){
@@ -835,7 +843,17 @@ function fileToBase64(file){
   });
 }
 async function docxToText(file){
-  if(typeof mammoth==='undefined')throw new Error('Word doc parsing unavailable. Please paste the text directly instead.');
+  // Load mammoth.js on demand — only when a .docx file is actually being analysed.
+  // This avoids a blocking synchronous CDN request on every page load.
+  if(typeof mammoth==='undefined'){
+    await new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
+      s.onload=resolve;
+      s.onerror=()=>reject(new Error('Could not load Word doc parser. Please paste the text manually instead.'));
+      document.head.appendChild(s);
+    });
+  }
   const buf=await file.arrayBuffer();
   const result=await mammoth.extractRawText({arrayBuffer:buf});
   if(!result.value||result.value.trim().length<20)throw new Error('Could not extract readable text from this file. Try pasting the content manually.');
