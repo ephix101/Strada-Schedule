@@ -539,17 +539,20 @@ function appTaskToDB(t){
 
 async function loadAll(){
   S.syncing=true;refreshToolbar();
-  const[pr,tk,cr,hl]=await Promise.all([
-    sb.from('projects').select('*').order('sort_order'),
-    sb.from('tasks').select('*').order('project_id').order('sort_order'),
-    sb.from('crews').select('*').order('sort_order'),
-    sb.from('holidays').select('*').order('date')
-  ]);
-  if(!pr.error&&pr.data)S.projects=pr.data;
-  if(!tk.error&&tk.data)S.tasks=tk.data.map(dbTaskToApp);
-  if(!cr.error&&cr.data)S.crews=cr.data;
-  if(!hl.error&&hl.data)S.holidays=hl.data;
-  S.syncing=false;refreshToolbar();
+  try{
+    const[pr,tk,cr,hl]=await Promise.all([
+      sb.from('projects').select('*').order('sort_order'),
+      sb.from('tasks').select('*').order('project_id').order('sort_order'),
+      sb.from('crews').select('*').order('sort_order'),
+      sb.from('holidays').select('*').order('date')
+    ]);
+    if(!pr.error&&pr.data)S.projects=pr.data;
+    if(!tk.error&&tk.data)S.tasks=tk.data.map(dbTaskToApp);
+    if(!cr.error&&cr.data)S.crews=cr.data;
+    if(!hl.error&&hl.data)S.holidays=hl.data;
+  }finally{
+    S.syncing=false;refreshToolbar();
+  }
 }
 
 function startRealtime(){
@@ -563,8 +566,9 @@ function startRealtime(){
 
 async function api(fn){
   S.syncing=true;refreshToolbar();
-  try{await fn()}catch(e){toast('⚠ '+e.message,'error')}
-  S.syncing=false;refreshToolbar();
+  try{await fn()}
+  catch(e){toast('⚠ '+e.message,'error')}
+  finally{S.syncing=false;refreshToolbar()}
 }
 const upsertProject=p=>api(async()=>{const{error}=await sb.from('projects').upsert(p);if(error)throw error});
 const deleteProject=id=>api(async()=>{const{error}=await sb.from('projects').delete().eq('id',id);if(error)throw error});
