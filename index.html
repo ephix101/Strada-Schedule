@@ -163,6 +163,41 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .fb-save-btn{padding:2px 10px;border-radius:5px;border:1px solid #cdd3de;background:#fff;color:#374151;font-size:11px;cursor:pointer;white-space:nowrap}
 .fb-del-btn{padding:2px 8px;border-radius:5px;border:1px solid #fecaca;background:#fff5f5;color:#dc2626;font-size:11px;cursor:pointer}
 .filter-count{background:#f59e0b;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:0 5px;min-width:16px;text-align:center;line-height:16px}
+/* ── Phase 7 ──────────────────────────────────────────────────────────── */
+.job-val-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;background:#d4edda;color:#155724;border:1px solid #c3e6cb;white-space:nowrap;flex-shrink:0;margin-left:3px}
+.toggle-row{display:flex;align-items:center;padding:6px 0}
+.toggle-lbl{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#374151;font-weight:600;user-select:none}
+.modal-sec{margin-top:14px;padding-top:10px;border-top:1px solid #e4e8f0}
+.modal-sec-hdr{font-size:10px;font-weight:800;color:#1F3864;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+.invoice-prompt{font-size:11px;color:#fd7e14;margin-top:3px;min-height:16px;line-height:1.4}
+.req-flag{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:3px}
+.req-flag.on{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+/* ── Export modal ─────────────────────────────────────────────────────────── */
+.modal-wide{width:820px;max-width:97vw}
+.exp-tabs{display:flex;gap:2px;margin-bottom:14px;background:#f0f2f5;border-radius:7px;padding:3px}
+.exp-tab{flex:1;padding:6px 0;border:none;background:transparent;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer;color:#555;transition:all .15s}
+.exp-tab.active{background:#1F3864;color:#fff}
+.exp-ctrl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:#f8f9fb;border-radius:6px;border:1px solid #e4e8f0}
+.exp-ctrl label{font-size:11px;font-weight:700;color:#555;white-space:nowrap}
+.exp-ctrl input[type=date]{padding:4px 7px;border:1px solid #cdd3de;border-radius:5px;font-size:12px;height:28px}
+.exp-ctrl select{padding:3px 7px;border:1px solid #cdd3de;border-radius:5px;font-size:12px;height:28px}
+.exp-ctrl .spacer{flex:1}
+.print-frame-wrap{border:1px solid #d0d7e3;border-radius:6px;overflow:hidden;background:#fff}
+.exp-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.exp-tbl th{background:#1F3864;color:#fff;font-size:10px;font-weight:700;padding:5px 7px;text-align:left;white-space:nowrap}
+.exp-tbl td{padding:5px 7px;border-bottom:1px solid #f0f2f5;vertical-align:top;line-height:1.4}
+.exp-tbl tr:nth-child(even) td{background:#f8fafc}
+.exp-scroll{max-height:420px;overflow-y:auto}
+.fs-crew-hdr{font-size:11px;font-weight:800;padding:6px 10px;border-radius:5px;margin:10px 0 4px;letter-spacing:.3px}
+.fs-task-row{display:flex;align-items:baseline;gap:6px;padding:3px 8px;border-radius:4px;font-size:11px;margin-bottom:2px}
+.fs-job{color:#555;font-size:10px;min-width:50px;flex-shrink:0}
+.fs-desc{flex:1;color:#1a2b4a}
+.fs-dates{color:#888;font-size:10px;white-space:nowrap}
+.fs-nowork{color:#bbb;font-size:11px;padding:4px 8px;font-style:italic}
+@media print{
+  .modal-bg,.toolbar,.filter-bar{display:none!important}
+  .print-only{display:block!important}
+}
 </style>
 </head>
 <body>
@@ -391,6 +426,31 @@ function renderSafe(){
     }
   }
 }
+// ── PHASE 7: CURRENCY HELPERS ─────────────────────────────────────────────────
+function centsToDisplay(cents){
+  if(!cents||cents===0)return'';
+  return'$'+(cents/100).toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0});
+}
+function centsToBadge(cents){
+  if(!cents||cents===0)return null;
+  const d=cents/100;
+  if(d>=1000000)return'$'+(d/1000000).toFixed(1).replace(/\.0$/,'')+'M';
+  if(d>=1000)return'$'+(d/1000).toFixed(1).replace(/\.0$/,'')+'k';
+  return'$'+Math.round(d).toLocaleString('en-CA');
+}
+function dollarsToCents(str){
+  if(!str||str.toString().trim()==='')return null;
+  const n=parseFloat(str.toString().replace(/[$,\s]/g,''));
+  if(isNaN(n)||n<=0)return null;
+  return Math.round(n*100);
+}
+// ── PHASE 7: MODAL SECTION HELPER ────────────────────────────────────────────
+function mkSecHdr(parent,label){
+  const sec=el('div');sec.className='modal-sec';
+  const hdr=el('div');hdr.className='modal-sec-hdr';hdr.textContent=label;sec.appendChild(hdr);
+  parent.appendChild(sec);return sec;
+}
+
 const AUTH_SCREENS=['login','forgot','newpass'];
 function showScreen(id){
   AUTH_SCREENS.forEach(s=>document.getElementById('screen-'+s).style.display='none');
@@ -720,6 +780,7 @@ function openModal(){
   else if(S.modal.type==='task')buildTaskModal(m);
   else if(S.modal.type==='crew')buildCrewModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
+  else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
 }
 // Escape key closes any open modal
@@ -899,6 +960,369 @@ function buildFilterBar(){
   return bar;
 }
 
+// ── EXPORT MODAL ─────────────────────────────────────────────────────────────
+function buildExportModal(m){
+  const ms=S.modal;
+  m.classList.add('modal-wide');
+  mhdr(m,'📊 Export');
+
+  // ── Tab bar ──────────────────────────────────────────────────────────────
+  const tabBar=el('div');tabBar.className='exp-tabs';
+  [['schedule','📅 Field Schedule'],['status','📋 Status Report'],['csv','⬇ CSV Download']].forEach(([id,lbl])=>{
+    const b=el('button');b.className='exp-tab'+(ms.tab===id?' active':'');b.textContent=lbl;
+    b.onclick=()=>{ms.tab=id;openModal()};tabBar.appendChild(b);
+  });m.appendChild(tabBar);
+
+  if(ms.tab==='schedule')buildFieldScheduleTab(m,ms);
+  else if(ms.tab==='status')buildStatusReportTab(m,ms);
+  else buildCsvTab(m,ms);
+
+  // Close only — no Save
+  const footer=el('div');footer.className='modal-footer';
+  const lb=el('div');footer.appendChild(lb);
+  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+  const close=el('button');close.className='btn-sec';close.textContent='Close';
+  close.addEventListener('click',closeModal);rb.appendChild(close);
+  footer.appendChild(rb);m.appendChild(footer);
+}
+
+// ── Helper: get filtered project list for export ──────────────────────────
+function exportProjects(){
+  buildProjTaskCache();
+  return applyFilters().projects;
+}
+
+// ── Helper: format a date string nicely ──────────────────────────────────
+function fmtDate(s){if(!s)return'';const d=new Date(s+'T12:00:00');return d.toLocaleDateString('en-CA',{month:'short',day:'numeric'})}
+function fmtDateLong(s){if(!s)return'';const d=new Date(s+'T12:00:00');return d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'})}
+
+// ── TAB 1: Field Schedule ─────────────────────────────────────────────────
+function buildFieldScheduleTab(m,ms){
+  const holDates=S.holidays.map(h=>h.date);
+  const cm=crewMap();
+
+  // Controls
+  const ctrl=el('div');ctrl.className='exp-ctrl';
+  ctrl.innerHTML='<label>Week from</label>';
+  const fromI=el('input');fromI.type='date';fromI.value=ms.dateFrom||'';
+  fromI.onchange=e=>{ms.dateFrom=e.target.value;rebuildBody()};ctrl.appendChild(fromI);
+  const toLbl=el('span');toLbl.style.cssText='font-size:11px;font-weight:700;color:#555';toLbl.textContent='to';ctrl.appendChild(toLbl);
+  const toI=el('input');toI.type='date';toI.value=ms.dateTo||'';
+  toI.onchange=e=>{ms.dateTo=e.target.value;rebuildBody()};ctrl.appendChild(toI);
+
+  // Quick-week nav
+  const prevBtn=el('button');prevBtn.className='btn-sm';prevBtn.textContent='◀ Prev week';
+  prevBtn.onclick=()=>{
+    const d=new Date((ms.dateFrom||TODAY)+'T12:00:00');d.setDate(d.getDate()-7);
+    const d2=new Date((ms.dateTo||TODAY)+'T12:00:00');d2.setDate(d2.getDate()-7);
+    ms.dateFrom=d.toISOString().slice(0,10);ms.dateTo=d2.toISOString().slice(0,10);
+    fromI.value=ms.dateFrom;toI.value=ms.dateTo;rebuildBody();
+  };ctrl.appendChild(prevBtn);
+  const nextBtn=el('button');nextBtn.className='btn-sm';nextBtn.textContent='Next week ▶';
+  nextBtn.onclick=()=>{
+    const d=new Date((ms.dateFrom||TODAY)+'T12:00:00');d.setDate(d.getDate()+7);
+    const d2=new Date((ms.dateTo||TODAY)+'T12:00:00');d2.setDate(d2.getDate()+7);
+    ms.dateFrom=d.toISOString().slice(0,10);ms.dateTo=d2.toISOString().slice(0,10);
+    fromI.value=ms.dateFrom;toI.value=ms.dateTo;rebuildBody();
+  };ctrl.appendChild(nextBtn);
+
+  const sp=el('div');sp.className='spacer';ctrl.appendChild(sp);
+  const printBtn=el('button');printBtn.className='btn-primary';printBtn.style.fontSize='12px';printBtn.textContent='🖨 Print';
+  printBtn.onclick=()=>printFieldSchedule(ms);ctrl.appendChild(printBtn);
+  m.appendChild(ctrl);
+
+  // Filter notice
+  if(isFilterActive()){
+    const fn=el('div');fn.style.cssText='font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:5px 10px;margin-bottom:8px';
+    fn.textContent='ℹ Active crew/date filters are applied — showing filtered crews only.';m.appendChild(fn);
+  }
+
+  // Body
+  const bodyWrap=el('div');bodyWrap.className='exp-scroll print-frame-wrap';m.appendChild(bodyWrap);
+
+  function rebuildBody(){
+    bodyWrap.innerHTML='';
+    const from=ms.dateFrom,to=ms.dateTo;
+    if(!from||!to){
+      const emp=el('div');emp.style.cssText='padding:20px;text-align:center;color:#aaa;font-size:12px';emp.textContent='Select a date range above.';bodyWrap.appendChild(emp);return;
+    }
+
+    const projs=exportProjects();
+
+    // Collect visible crew names (respecting filter)
+    let crewNames=S.crews.map(c=>c.name);
+    if(S.filter.crews.length>0)crewNames=crewNames.filter(n=>S.filter.crews.includes(n));
+
+    // Build crew → tasks map for the date window
+    const crewTasks={};
+    crewNames.forEach(cn2=>{crewTasks[cn2]=[]});
+
+    projs.forEach(proj=>{
+      projTasks(proj.id).forEach(task=>{
+        if(!task.crew||!crewTasks[task.crew])return;
+        // Check if any segment overlaps [from,to]
+        const overlapping=(task.segs||[]).filter(seg=>{
+          if(!seg.s||!seg.e)return false;
+          return seg.e>=from&&seg.s<=to;
+        });
+        if(overlapping.length===0)return;
+        crewTasks[task.crew].push({proj,task,segs:overlapping});
+      });
+    });
+
+    const hasAny=crewNames.some(cn2=>crewTasks[cn2].length>0);
+    if(!hasAny){
+      const emp=el('div');emp.style.cssText='padding:20px;text-align:center;color:#aaa;font-size:12px';
+      emp.textContent='No tasks scheduled in this date range.';bodyWrap.appendChild(emp);return;
+    }
+
+    crewNames.forEach(cn2=>{
+      const crew=cm[cn2];if(!crew)return;
+      const tasks=crewTasks[cn2];
+
+      const hdr=el('div');hdr.className='fs-crew-hdr';
+      hdr.style.cssText='background:'+crew.color+';color:'+crew.tc+';font-size:11px;font-weight:800;padding:6px 10px;border-radius:5px;margin:10px 0 4px;letter-spacing:.3px';
+      hdr.textContent=crew.name+(tasks.length===0?' — No work scheduled':' — '+tasks.length+' task'+(tasks.length!==1?'s':''));
+      bodyWrap.appendChild(hdr);
+
+      if(tasks.length===0){
+        const nw=el('div');nw.className='fs-nowork';nw.textContent='No work scheduled this period.';bodyWrap.appendChild(nw);return;
+      }
+      tasks.forEach(({proj,task,segs})=>{
+        const row=el('div');row.className='fs-task-row';row.style.background=crew.color+'12';
+        const jn=el('span');jn.className='fs-job';jn.textContent=proj.job_num;row.appendChild(jn);
+        const desc=el('span');desc.className='fs-desc';desc.textContent=task.descr||'(no description)';row.appendChild(desc);
+        const wd=workDays(segs,holDates,task.wknd);
+        const dspan=el('span');dspan.className='fs-dates';
+        const rangeStr=segs.map(sg=>fmtDate(sg.s)+(sg.s!==sg.e?'–'+fmtDate(sg.e):'')).join(', ');
+        dspan.textContent=rangeStr+(wd>0?' ('+wd+'d)':'');row.appendChild(dspan);
+        const loc=el('span');loc.style.cssText='font-size:10px;color:#888;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis';
+        loc.textContent=proj.loc;row.appendChild(loc);
+        bodyWrap.appendChild(row);
+      });
+    });
+  }
+  rebuildBody();
+}
+
+function printFieldSchedule(ms){
+  const holDates=S.holidays.map(h=>h.date);
+  const cm=crewMap();
+  const from=ms.dateFrom,to=ms.dateTo;
+  const projs=exportProjects();
+
+  let crewNames=S.crews.map(c=>c.name);
+  if(S.filter.crews.length>0)crewNames=crewNames.filter(n=>S.filter.crews.includes(n));
+
+  const crewTasks={};crewNames.forEach(cn2=>{crewTasks[cn2]=[]});
+  projs.forEach(proj=>{
+    projTasks(proj.id).forEach(task=>{
+      if(!task.crew||!crewTasks[task.crew])return;
+      const overlapping=(task.segs||[]).filter(seg=>seg.s&&seg.e&&seg.e>=from&&seg.s<=to);
+      if(overlapping.length)crewTasks[task.crew].push({proj,task,segs:overlapping});
+    });
+  });
+
+  let rows='';
+  crewNames.forEach(cn2=>{
+    const crew=cm[cn2];if(!crew)return;
+    const tasks=crewTasks[cn2];if(tasks.length===0)return;
+    rows+=`<tr><td colspan="5" style="background:${crew.color};color:${crew.tc};font-weight:800;font-size:12px;padding:6px 10px">${crew.name}</td></tr>`;
+    tasks.forEach(({proj,task,segs})=>{
+      const wd=workDays(segs,holDates,task.wknd);
+      const dates=segs.map(sg=>fmtDate(sg.s)+(sg.s!==sg.e?'–'+fmtDate(sg.e):'')).join(', ');
+      rows+=`<tr>
+        <td style="color:#666;font-size:10px;white-space:nowrap">${proj.job_num}</td>
+        <td>${task.descr||''}</td>
+        <td style="color:#555">${proj.client}</td>
+        <td style="color:#555;font-size:10px">${proj.loc}</td>
+        <td style="white-space:nowrap;color:#444">${dates}${wd>0?' ('+wd+'d)':''}</td>
+      </tr>`;
+    });
+  });
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Field Schedule ${fmtDateLong(from)} – ${fmtDateLong(to)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:11px;padding:16px}
+    h2{font-size:14px;margin-bottom:4px;color:#1F3864}p{font-size:11px;color:#666;margin-bottom:12px}
+    table{width:100%;border-collapse:collapse}th{background:#1F3864;color:#fff;padding:5px 8px;text-align:left;font-size:10px}
+    td{padding:4px 8px;border-bottom:1px solid #eee;vertical-align:top}
+    tr:nth-child(even) td{background:#f8f8f8}
+    @media print{body{padding:8px}}
+  </style></head><body>
+  <h2>🏗 Strada — Field Schedule</h2>
+  <p>Week: ${fmtDateLong(from)} – ${fmtDateLong(to)}${isFilterActive()?' · Filtered view':''}</p>
+  <table><thead><tr><th>Job #</th><th>Task</th><th>Client</th><th>Location</th><th>Dates</th></tr></thead>
+  <tbody>${rows}</tbody></table>
+  <p style="margin-top:12px;font-size:10px;color:#aaa">Printed ${new Date().toLocaleString('en-CA')} · Strada Construction Group Inc.</p>
+  </body></html>`;
+
+  const w=window.open('','_blank','width=900,height=700');
+  w.document.write(html);w.document.close();
+  setTimeout(()=>w.print(),400);
+}
+
+// ── TAB 2: Status Report ──────────────────────────────────────────────────
+function buildStatusReportTab(m,ms){
+  const ctrl=el('div');ctrl.className='exp-ctrl';
+  const notice=el('span');notice.style.cssText='font-size:11px;color:#374151';
+  const projs=exportProjects();
+  notice.textContent=projs.length+' project'+(projs.length!==1?'s':'')+' shown'+(isFilterActive()?' (filters active)':'');
+  ctrl.appendChild(notice);
+  const sp=el('div');sp.className='spacer';ctrl.appendChild(sp);
+  const printBtn=el('button');printBtn.className='btn-primary';printBtn.style.fontSize='12px';printBtn.textContent='🖨 Print';
+  printBtn.onclick=()=>printStatusReport();ctrl.appendChild(printBtn);
+  m.appendChild(ctrl);
+
+  const holDates=S.holidays.map(h=>h.date);
+
+  const wrap=el('div');wrap.className='exp-scroll print-frame-wrap';
+  const tbl=el('table');tbl.className='exp-tbl';
+  const thead=el('thead');const hr=el('tr');
+  ['Job #','Client','Location','Status','Value','PO #','Est #','Inv #','Loc','Soil','Crews','Start','End','Days'].forEach(h=>{
+    const th=el('th');th.textContent=h;hr.appendChild(th);
+  });
+  thead.appendChild(hr);tbl.appendChild(thead);
+  const tbody=el('tbody');
+  projs.forEach(p=>{
+    const tr=el('tr');
+    const tasks=projTasks(p.id);
+    const sp2=projSpan(tasks);
+    const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join(', ')||'—';
+    const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
+    const c=ST_CLR[p.status]||'#666';
+    const cells=[
+      p.job_num,p.client,p.loc,
+      null, // status — special
+      p.job_value?centsToDisplay(p.job_value):'—',
+      p.po_num||'—',p.estimate_num||'—',p.invoice_num||'—',
+      p.locates_req?'✓':'—',p.soils_req?'✓':'—',
+      crews,fmtDate(sp2.s)||'—',fmtDate(sp2.e)||'—',
+      totalWd>0?totalWd+'d':'—'
+    ];
+    cells.forEach((val,ci)=>{
+      const td=el('td');
+      if(ci===3){
+        // Status cell with colour dot
+        const dot=el('span');dot.style.cssText='display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-right:4px;flex-shrink:0;vertical-align:middle';
+        td.appendChild(dot);td.appendChild(document.createTextNode(p.status));
+      } else {
+        td.textContent=val;
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(tbody);wrap.appendChild(tbl);m.appendChild(wrap);
+}
+
+function printStatusReport(){
+  const holDates=S.holidays.map(h=>h.date);
+  const projs=exportProjects();
+  let rows='';
+  projs.forEach(p=>{
+    const tasks=projTasks(p.id);
+    const sp2=projSpan(tasks);
+    const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join(', ')||'—';
+    const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
+    const c=ST_CLR[p.status]||'#666';
+    rows+=`<tr>
+      <td>${p.job_num}</td><td>${p.client}</td><td style="max-width:160px">${p.loc}</td>
+      <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${c};margin-right:3px;vertical-align:middle"></span>${p.status}</td>
+      <td>${p.job_value?centsToDisplay(p.job_value):'—'}</td>
+      <td>${p.po_num||'—'}</td><td>${p.estimate_num||'—'}</td><td>${p.invoice_num||'—'}</td>
+      <td>${p.locates_req?'✓':'—'}</td><td>${p.soils_req?'✓':'—'}</td>
+      <td>${crews}</td><td>${fmtDate(sp2.s)||'—'}</td><td>${fmtDate(sp2.e)||'—'}</td>
+      <td>${totalWd>0?totalWd+'d':'—'}</td>
+    </tr>`;
+  });
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Status Report — Strada</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;padding:12px}
+    h2{font-size:13px;margin-bottom:3px;color:#1F3864}p{font-size:10px;color:#666;margin-bottom:10px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#1F3864;color:#fff;padding:4px 6px;text-align:left;font-size:9px;white-space:nowrap}
+    td{padding:3px 6px;border-bottom:1px solid #eee;vertical-align:top;font-size:10px}
+    tr:nth-child(even) td{background:#f8f8f8}
+    @media print{body{padding:6px}@page{size:landscape}}
+  </style></head><body>
+  <h2>🏗 Strada — Project Status Report</h2>
+  <p>${projs.length} project${projs.length!==1?'s':''}${isFilterActive()?' · Filtered view':''} · Printed ${new Date().toLocaleDateString('en-CA')}</p>
+  <table><thead><tr>
+    <th>Job #</th><th>Client</th><th>Location</th><th>Status</th><th>Value</th>
+    <th>PO #</th><th>Est #</th><th>Inv #</th><th>Loc</th><th>Soil</th>
+    <th>Crews</th><th>Start</th><th>End</th><th>Days</th>
+  </tr></thead><tbody>${rows}</tbody></table>
+  <p style="margin-top:10px;font-size:9px;color:#aaa">Strada Construction Group Inc.</p>
+  </body></html>`;
+
+  const w=window.open('','_blank','width=1100,height=750');
+  w.document.write(html);w.document.close();
+  setTimeout(()=>w.print(),400);
+}
+
+// ── TAB 3: CSV Export ─────────────────────────────────────────────────────
+function buildCsvTab(m,ms){
+  const holDates=S.holidays.map(h=>h.date);
+  const projs=exportProjects();
+
+  const ctrl=el('div');ctrl.className='exp-ctrl';
+  const notice=el('span');notice.style.cssText='font-size:11px;color:#374151';
+  notice.textContent=projs.length+' project'+(projs.length!==1?'s':'')+' will be exported'+(isFilterActive()?' (filters active)':'');
+  ctrl.appendChild(notice);
+  m.appendChild(ctrl);
+
+  // Preview first few rows
+  const wrap=el('div');wrap.className='exp-scroll print-frame-wrap';
+  const tbl=el('table');tbl.className='exp-tbl';
+  const headers=['Job #','Client','Location','Status','Job Value ($)','PO #','Estimate #','Invoice #','Locates Req','Soils Req','Start Date','End Date','Total Work Days','Crews','Task Count','Tasks'];
+  const thead=el('thead');const hr=el('tr');headers.forEach(h=>{const th=el('th');th.textContent=h;hr.appendChild(th)});thead.appendChild(hr);tbl.appendChild(thead);
+  const tbody=el('tbody');
+  const MAX_PREVIEW=8;
+  projs.slice(0,MAX_PREVIEW).forEach(p=>{
+    const tr=el('tr');csvRowValues(p,holDates).forEach(v=>{const td=el('td');td.textContent=v;tr.appendChild(td)});tbody.appendChild(tr);
+  });
+  if(projs.length>MAX_PREVIEW){
+    const tr=el('tr');const td=el('td');td.colSpan=headers.length;td.style.cssText='color:#888;font-style:italic;text-align:center;padding:8px';
+    td.textContent='… and '+(projs.length-MAX_PREVIEW)+' more rows in the downloaded file';tr.appendChild(td);tbody.appendChild(tr);
+  }
+  tbl.appendChild(tbody);wrap.appendChild(tbl);m.appendChild(wrap);
+
+  // Download button
+  const dlRow=el('div');dlRow.style.cssText='margin-top:12px;display:flex;justify-content:flex-end';
+  const dlBtn=el('button');dlBtn.className='btn-primary';dlBtn.style.fontSize='12px';
+  dlBtn.textContent='⬇ Download CSV ('+projs.length+' rows)';
+  dlBtn.onclick=()=>{
+    const csv=[headers,...projs.map(p=>csvRowValues(p,holDates))]
+      .map(row=>row.map(v=>{const s=String(v==null?'':v);return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s}).join(','))
+      .join('\r\n');
+    const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='strada_export_'+TODAY+'.csv';a.click();
+    toast('✓ CSV downloaded','ok');
+  };
+  dlRow.appendChild(dlBtn);m.appendChild(dlRow);
+}
+
+function csvRowValues(p,holDates){
+  const tasks=projTasks(p.id);
+  const sp2=projSpan(tasks);
+  const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
+  const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join('; ')||'';
+  const taskDescs=tasks.map(t=>t.descr).filter(Boolean).join('; ');
+  return[
+    p.job_num,p.client,p.loc,p.status,
+    p.job_value?(p.job_value/100).toFixed(2):'',
+    p.po_num||'',p.estimate_num||'',p.invoice_num||'',
+    p.locates_req?'Yes':'No',p.soils_req?'Yes':'No',
+    sp2.s||'',sp2.e||'',totalWd||0,
+    crews,tasks.length,taskDescs
+  ];
+}
+
 // ── AI DOCUMENT IMPORT ────────────────────────────────────────────────────────
 async function fetchApiKey(){
   try{const{data,error}=await sb.from('settings').select('value').eq('key','anthropic_api_key').single();
@@ -1052,7 +1476,7 @@ function buildToolbar(){
   const sp=el('div');sp.className='spacer';t.appendChild(sp);
   const addBtn=el('button');addBtn.className='btn-primary';addBtn.style.fontSize='12px';addBtn.textContent='+ Project';
   addBtn.onclick=()=>{
-    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:'',status:'Not started',collapsed:false,sort_order:S.projects.length}};
+    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:false,soils_req:false}};
     openModal();
   };t.appendChild(addBtn);
   const impBtn=el('button');impBtn.className='import-btn';impBtn.textContent='📄 Import';
@@ -1062,6 +1486,17 @@ function buildToolbar(){
       editProj:{job_num:'',client:'',location:'',status:'Not started'},editTasks:[]};
     openModal();
   };t.appendChild(impBtn);
+  const expBtn=el('button');expBtn.className='import-btn';expBtn.textContent='📊 Export';
+  expBtn.title='Export schedule, status report, or CSV';
+  expBtn.onclick=()=>{
+    // Default date range: current Mon–Fri
+    const now=new Date();const dow=now.getDay();const mon=new Date(now);
+    mon.setDate(now.getDate()-(dow===0?6:dow-1));
+    const fri=new Date(mon);fri.setDate(mon.getDate()+4);
+    const fmt=d=>d.toISOString().slice(0,10);
+    S.modal={type:'export',tab:'schedule',dateFrom:fmt(mon),dateTo:fmt(fri)};
+    openModal();
+  };t.appendChild(expBtn);
   if(currentUser){
     const pill=el('div');pill.className='user-pill';
     const av=el('div');av.className='user-av';av.textContent=(currentUser.email||'?').slice(0,2).toUpperCase();pill.appendChild(av);
@@ -1139,6 +1574,9 @@ function buildGantt(){
       info.appendChild(top);
       const bl=el('div');bl.style.cssText='color:rgba(255,255,255,.5);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';bl.textContent=row.proj.loc;info.appendChild(bl);
       lc.appendChild(info);lc.appendChild(statusBadge(row.proj.status));
+      if(row.proj.job_value){const vb=el('span');vb.className='job-val-badge';vb.textContent=centsToBadge(row.proj.job_value);lc.appendChild(vb)}
+      if(row.proj.locates_req){const lb2=el('span');lb2.className='req-flag on';lb2.title='Locates required';lb2.textContent='📍LOC';lc.appendChild(lb2)}
+      if(row.proj.soils_req){const sb3=el('span');sb3.className='req-flag on';sb3.title='Soils report required';sb3.textContent='⚗SOI';lc.appendChild(sb3)}
       const btns=el('div');btns.style.cssText='display:flex;gap:3px;flex-shrink:0;margin-left:4px';
       btns.appendChild(iBtn('+',()=>{
         const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null},{s:null,e:null},{s:null,e:null}]};
@@ -1226,7 +1664,11 @@ function buildBoardCols(cols,cnt){
     const hdr=el('div');hdr.className='board-col-hdr';hdr.style.cssText='background:'+c+'18;border:1px solid '+c+'33';
     const dot=el('div');dot.style.cssText='width:10px;height:10px;border-radius:50%;background:'+c+';flex-shrink:0';hdr.appendChild(dot);
     const sl=el('span');sl.style.cssText='font-weight:700;font-size:12px;color:'+c;sl.textContent=st;hdr.appendChild(sl);
-    const cn=el('span');cn.style.cssText='margin-left:auto;background:'+c+';color:#fff;border-radius:10px;font-size:11px;padding:0 6px;font-weight:700';cn.textContent=grouped[st].length;hdr.appendChild(cn);col.appendChild(hdr);
+    const right=el('div');right.style.cssText='margin-left:auto;display:flex;align-items:center;gap:5px';
+    const cn=el('span');cn.style.cssText='background:'+c+';color:#fff;border-radius:10px;font-size:11px;padding:0 6px;font-weight:700';cn.textContent=grouped[st].length;right.appendChild(cn);
+    const colVal=grouped[st].reduce((s,p)=>s+(p.job_value||0),0);
+    if(colVal>0){const tv=el('span');tv.style.cssText='font-size:10px;color:'+c+';font-weight:700;opacity:.85';tv.textContent=centsToBadge(colVal);right.appendChild(tv)}
+    hdr.appendChild(right);col.appendChild(hdr);
     if(grouped[st].length===0&&!q){
       const emp=el('div');emp.style.cssText='color:#bbb;font-size:12px;text-align:center;padding:20px 8px';emp.textContent='No projects';col.appendChild(emp);
     }
@@ -1241,8 +1683,10 @@ function buildBoardCols(cols,cnt){
       const crd=el('div');crd.style.cssText='display:flex;flex-wrap:wrap;gap:3px';
       [...new Set(projTasks(p.id).map(t=>t.crew).filter(Boolean))].forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
       card.appendChild(crd);
-      const tl=el('div');tl.style.cssText='font-size:11px;color:#888;margin-top:4px';
-      tl.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');card.appendChild(tl);
+      const bl2=el('div');bl2.style.cssText='font-size:11px;color:#888;margin-top:4px;display:flex;justify-content:space-between;align-items:center';
+      const tcount=el('span');tcount.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');bl2.appendChild(tcount);
+      if(p.job_value){const vl=el('span');vl.style.cssText='font-weight:700;color:#155724;font-size:11px';vl.textContent=centsToDisplay(p.job_value);bl2.appendChild(vl)}
+      card.appendChild(bl2);
       col.appendChild(card);
     });
     cols.appendChild(col);
@@ -1561,17 +2005,67 @@ function mkFooter(m,leftBtn,onSave){
 function buildProjModal(m){
   const p=S.modal.p;
   mhdr(m,S.modal.isNew?'New Project':'Edit: '+p.job_num);
-  const g=el('div');g.className='fg';
-  const addF=(parent,lText,val,key,full,type,opts)=>{
-    const w=el('div');if(full)w.className='fg-full';
-    w.appendChild(lbl2(lText));w.appendChild(inp2(val,e=>{p[key]=e.target.value},type,opts));parent.appendChild(w);
-  };
-  addF(g,'Job Number',p.job_num,'job_num',false);
-  const sw=el('div');sw.appendChild(lbl2('Status'));sw.appendChild(inp2(p.status,e=>{p.status=e.target.value},'select',ST_OPTS.map(s=>[s,s])));g.appendChild(sw);
-  addF(g,'Client',p.client,'client',true);
-  addF(g,'Location / Project Name',p.loc,'loc',true);
-  addF(g,'Locate Expiry',p.loc_exp,'loc_exp',false);
-  m.appendChild(g);
+
+  // Shared invoice prompt — referenced by both status selector and invoice# input
+  const invoicePrompt=el('div');invoicePrompt.className='invoice-prompt';
+  function chkInvoice(){invoicePrompt.textContent=(p.status==='To invoice'&&!p.invoice_num)?'⚠ Add an Invoice # below in the Financial section.':'';}
+
+  // ── Section 1: Identity ────────────────────────────────────────────────────
+  const g1=el('div');g1.className='fg';
+  // Job #
+  const jnw=el('div');jnw.appendChild(lbl2('Job Number'));jnw.appendChild(inp2(p.job_num,e=>{p.job_num=e.target.value}));g1.appendChild(jnw);
+  // Status
+  const stw=el('div');stw.appendChild(lbl2('Status'));
+  const stSel=inp2(p.status,null,'select',ST_OPTS.map(s=>[s,s]));
+  stSel.onchange=e=>{p.status=e.target.value;chkInvoice()};
+  stw.appendChild(stSel);stw.appendChild(invoicePrompt);g1.appendChild(stw);
+  // Client
+  const cliw=el('div');cliw.className='fg-full';cliw.appendChild(lbl2('Client'));cliw.appendChild(inp2(p.client,e=>{p.client=e.target.value}));g1.appendChild(cliw);
+  // Location
+  const locw=el('div');locw.className='fg-full';locw.appendChild(lbl2('Location / Project Name'));locw.appendChild(inp2(p.loc,e=>{p.loc=e.target.value}));g1.appendChild(locw);
+  m.appendChild(g1);
+
+  // ── Section 2: Requirements ────────────────────────────────────────────────
+  const sec2=mkSecHdr(m,'🔧 Requirements');
+  // Locates toggle
+  const locRow=el('div');locRow.className='toggle-row';
+  const locLbl=el('label');locLbl.className='toggle-lbl';
+  const locCb=el('input');locCb.type='checkbox';locCb.checked=!!p.locates_req;
+  locLbl.appendChild(locCb);locLbl.appendChild(document.createTextNode('Locates Required'));locRow.appendChild(locLbl);sec2.appendChild(locRow);
+  // Locate expiry — shown only when locates_req is on
+  const locExpRow=el('div');locExpRow.style.cssText='padding-left:26px;'+(p.locates_req?'':'display:none');
+  locExpRow.appendChild(lbl2('Locate Expiry Date'));
+  const locExpInp=inp2(p.loc_exp||'',e=>{p.loc_exp=e.target.value||null},'date');
+  locExpRow.appendChild(locExpInp);sec2.appendChild(locExpRow);
+  locCb.onchange=e=>{p.locates_req=e.target.checked;locExpRow.style.display=e.target.checked?'block':'none'};
+  // Soils toggle
+  const soilRow=el('div');soilRow.className='toggle-row';soilRow.style.marginTop='2px';
+  const soilLbl=el('label');soilLbl.className='toggle-lbl';
+  const soilCb=el('input');soilCb.type='checkbox';soilCb.checked=!!p.soils_req;
+  soilCb.onchange=e=>{p.soils_req=e.target.checked};
+  soilLbl.appendChild(soilCb);soilLbl.appendChild(document.createTextNode('Soils Report Required'));soilRow.appendChild(soilLbl);sec2.appendChild(soilRow);
+
+  // ── Section 3: Financial ───────────────────────────────────────────────────
+  const sec3=mkSecHdr(m,'💰 Financial');
+  const g3=el('div');g3.className='fg';
+  // Job Value
+  const jvw=el('div');jvw.className='fg-full';jvw.appendChild(lbl2('Job Value (CAD $)'));
+  const jvInp=el('input');jvInp.className='inp';jvInp.type='text';jvInp.placeholder='e.g. 12500';
+  jvInp.value=p.job_value?((p.job_value/100).toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0})):'';
+  jvInp.oninput=e=>{p.job_value=dollarsToCents(e.target.value)};
+  jvw.appendChild(jvInp);g3.appendChild(jvw);
+  // PO Number
+  const pow=el('div');pow.appendChild(lbl2('PO Number'));pow.appendChild(inp2(p.po_num||'',e=>{p.po_num=e.target.value||null}));g3.appendChild(pow);
+  // Estimate Number
+  const estw=el('div');estw.appendChild(lbl2('Estimate #'));estw.appendChild(inp2(p.estimate_num||'',e=>{p.estimate_num=e.target.value||null}));g3.appendChild(estw);
+  // Invoice Number (full width so the prompt has room)
+  const invw=el('div');invw.className='fg-full';invw.appendChild(lbl2('Invoice #'));
+  const invInp=inp2(p.invoice_num||'',e=>{p.invoice_num=e.target.value||null;chkInvoice()});
+  invw.appendChild(invInp);g3.appendChild(invw);
+  sec3.appendChild(g3);
+  chkInvoice(); // show prompt immediately if modal opens already in "To invoice" with no invoice#
+
+  // ── Section 4: Tasks (unchanged logic) ────────────────────────────────────
   const tsec=el('div');tsec.style.cssText='margin-top:14px;border-top:1px solid #e4e8f0;padding-top:12px';
   const tasks=[...projTasks(p.id)];
   const thdr2=el('div');thdr2.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
