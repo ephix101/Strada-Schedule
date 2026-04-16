@@ -198,6 +198,11 @@ input,select,textarea{font-family:inherit;font-size:12px}
   .modal-bg,.toolbar,.filter-bar{display:none!important}
   .print-only{display:block!important}
 }
+/* Phase 10: task value badge */
+.task-val-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;background:#dcfce7;color:#166534;border:1px solid #86efac;white-space:nowrap;flex-shrink:0;margin-left:3px}
+.recon-line{font-size:11px;padding:6px 10px;border-radius:5px;margin-top:6px;font-weight:600}
+.recon-ok{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+.recon-warn{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}
 /* Phase 9: Archive */
 .btn-archive{padding:7px 14px;background:#fff;color:#d97706;border:1px solid #d97706;border-radius:6px;font-size:12px;cursor:pointer}
 .btn-archive:hover{background:#fffbeb}
@@ -462,11 +467,21 @@ function dollarsToCents(str){
   if(isNaN(n)||n<=0)return null;
   return Math.round(n*100);
 }
-// Phase 8: value-per-working-day for a project (cents/day)
+// Phase 10: value-per-working-day — uses task_value sum when available,
+// falls back to project job_value / total days.
 function projValuePerDay(proj){
-  if(!proj.job_value||proj.job_value<=0)return null;
   const holDates=S.holidays.map(h=>h.date);
   const tasks=projTasks(proj.id);
+  // Try task-level values first
+  const tasksWithValue=tasks.filter(t=>t.task_value&&t.task_value>0);
+  if(tasksWithValue.length>0){
+    const totalVal=tasksWithValue.reduce((s,t)=>s+t.task_value,0);
+    const totalDays=tasksWithValue.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
+    if(totalDays<=0)return null;
+    return totalVal/totalDays;
+  }
+  // Fall back to project job_value / all task days
+  if(!proj.job_value||proj.job_value<=0)return null;
   const totalDays=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
   if(totalDays<=0)return null;
   return proj.job_value/totalDays;
@@ -640,11 +655,13 @@ function dbTaskToApp(t){
     ?t.segments.map(sg=>({s:sg.s||null,e:sg.e||null}))
     :[{s:null,e:null}];
   return{id:t.id,project_id:t.project_id,descr:t.descr||'',crew:t.crew||'',
-    status:t.status,wknd:t.wknd,sort_order:t.sort_order,segs};
+    status:t.status,wknd:t.wknd,sort_order:t.sort_order,
+    task_value:t.task_value||null,segs};
 }
 function appTaskToDB(t){
   return{id:t.id,project_id:t.project_id,descr:t.descr,crew:t.crew||null,
     status:t.status,wknd:t.wknd,sort_order:t.sort_order||0,
+    task_value:t.task_value||null,
     segments:(t.segs||[]).filter(sg=>sg.s||sg.e).map(sg=>({s:sg.s||null,e:sg.e||null}))};
 }
 
@@ -1106,13 +1123,14 @@ function buildExportModal(m){
 
   // ── Tab bar ──────────────────────────────────────────────────────────────
   const tabBar=el('div');tabBar.className='exp-tabs';
-  [['schedule','📅 Field Schedule'],['status','📋 Status Report'],['csv','⬇ CSV Download']].forEach(([id,lbl])=>{
+  [['schedule','📅 Field Schedule'],['status','📋 Status Report'],['csv','⬇ CSV Download'],['gantt','🗓 Gantt PDF']].forEach(([id,lbl])=>{
     const b=el('button');b.className='exp-tab'+(ms.tab===id?' active':'');b.textContent=lbl;
     b.onclick=()=>{ms.tab=id;openModal()};tabBar.appendChild(b);
   });m.appendChild(tabBar);
 
   if(ms.tab==='schedule')buildFieldScheduleTab(m,ms);
   else if(ms.tab==='status')buildStatusReportTab(m,ms);
+  else if(ms.tab==='gantt')buildGanttPdfTab(m,ms);
   else buildCsvTab(m,ms);
 
   // Close only — no Save
@@ -1318,7 +1336,7 @@ function buildStatusReportTab(m,ms){
   const wrap=el('div');wrap.className='exp-scroll print-frame-wrap';
   const tbl=el('table');tbl.className='exp-tbl';
   const thead=el('thead');const hr=el('tr');
-  ['Job #','Client','Location','Status','Value','PO #','Est #','Inv #','Loc','Soil','Crews','Start','End','Days'].forEach(h=>{
+  ['Job #','Client','Location','Status','Contract Value','Task Values','PO #','Est #','Inv #','Loc','Soil','Crews','Start','End','Days'].forEach(h=>{
     const th=el('th');th.textContent=h;hr.appendChild(th);
   });
   thead.appendChild(hr);tbl.appendChild(thead);
@@ -1329,11 +1347,13 @@ function buildStatusReportTab(m,ms){
     const sp2=projSpan(tasks);
     const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join(', ')||'—';
     const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
+    const taskValTotal=tasks.reduce((s,t)=>s+(t.task_value||0),0);
     const c=ST_CLR[p.status]||'#666';
     const cells=[
       p.job_num,p.client,p.loc,
       null, // status — special
       p.job_value?centsToDisplay(p.job_value):'—',
+      taskValTotal>0?centsToDisplay(taskValTotal):'—',
       p.po_num||'—',p.estimate_num||'—',p.invoice_num||'—',
       p.locates_req?'✓':'—',p.soils_req?'✓':'—',
       crews,fmtDate(sp2.s)||'—',fmtDate(sp2.e)||'—',
@@ -1345,6 +1365,11 @@ function buildStatusReportTab(m,ms){
         // Status cell with colour dot
         const dot=el('span');dot.style.cssText='display:inline-block;width:7px;height:7px;border-radius:50%;background:'+c+';margin-right:4px;flex-shrink:0;vertical-align:middle';
         td.appendChild(dot);td.appendChild(document.createTextNode(p.status));
+      } else if(ci===5&&taskValTotal>0&&p.job_value){
+        // Task values cell — highlight if differs from contract
+        const diff=Math.abs(taskValTotal-p.job_value)/p.job_value;
+        if(diff>0.05)td.style.cssText='color:#92400e;font-weight:700';
+        td.textContent=val;
       } else {
         td.textContent=val;
       }
@@ -1364,11 +1389,13 @@ function printStatusReport(){
     const sp2=projSpan(tasks);
     const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join(', ')||'—';
     const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
+    const taskValTotal=tasks.reduce((s,t)=>s+(t.task_value||0),0);
     const c=ST_CLR[p.status]||'#666';
     rows+=`<tr>
-      <td>${p.job_num}</td><td>${p.client}</td><td style="max-width:160px">${p.loc}</td>
+      <td>${p.job_num}</td><td>${p.client}</td><td style="max-width:140px">${p.loc}</td>
       <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${c};margin-right:3px;vertical-align:middle"></span>${p.status}</td>
       <td>${p.job_value?centsToDisplay(p.job_value):'—'}</td>
+      <td${taskValTotal>0&&p.job_value&&Math.abs(taskValTotal-p.job_value)/p.job_value>0.05?' style="color:#92400e;font-weight:700"':''}>${taskValTotal>0?centsToDisplay(taskValTotal):'—'}</td>
       <td>${p.po_num||'—'}</td><td>${p.estimate_num||'—'}</td><td>${p.invoice_num||'—'}</td>
       <td>${p.locates_req?'✓':'—'}</td><td>${p.soils_req?'✓':'—'}</td>
       <td>${crews}</td><td>${fmtDate(sp2.s)||'—'}</td><td>${fmtDate(sp2.e)||'—'}</td>
@@ -1390,7 +1417,8 @@ function printStatusReport(){
   <h2>🏗 Strada — Project Status Report</h2>
   <p>${projs.length} project${projs.length!==1?'s':''}${isFilterActive()?' · Filtered view':''} · Printed ${new Date().toLocaleDateString('en-CA')}</p>
   <table><thead><tr>
-    <th>Job #</th><th>Client</th><th>Location</th><th>Status</th><th>Value</th>
+    <th>Job #</th><th>Client</th><th>Location</th><th>Status</th>
+    <th>Contract</th><th>Task Values</th>
     <th>PO #</th><th>Est #</th><th>Inv #</th><th>Loc</th><th>Soil</th>
     <th>Crews</th><th>Start</th><th>End</th><th>Days</th>
   </tr></thead><tbody>${rows}</tbody></table>
@@ -1401,6 +1429,262 @@ function printStatusReport(){
   w.document.write(html);w.document.close();
   setTimeout(()=>w.print(),400);
 }
+
+// ── TAB 4: Gantt PDF Export ───────────────────────────────────────────────
+function buildGanttPdfTab(m,ms){
+  // Default date range: current month
+  if(!ms.ganttFrom||!ms.ganttTo){
+    const now=new Date();
+    const firstDay=new Date(now.getFullYear(),now.getMonth(),1);
+    const lastDay=new Date(now.getFullYear(),now.getMonth()+1,0);
+    ms.ganttFrom=firstDay.toISOString().slice(0,10);
+    ms.ganttTo=lastDay.toISOString().slice(0,10);
+  }
+  if(!ms.ganttCrews)ms.ganttCrews=[...S.crews.map(c=>c.name)];
+
+  const ctrl=el('div');ctrl.className='exp-ctrl';
+  const fromLbl=el('label');fromLbl.textContent='From';ctrl.appendChild(fromLbl);
+  const fromI=el('input');fromI.type='date';fromI.value=ms.ganttFrom;
+  fromI.onchange=e=>{ms.ganttFrom=e.target.value};ctrl.appendChild(fromI);
+  const toLbl=el('label');toLbl.textContent='to';ctrl.appendChild(toLbl);
+  const toI=el('input');toI.type='date';toI.value=ms.ganttTo;
+  toI.onchange=e=>{ms.ganttTo=e.target.value};ctrl.appendChild(toI);
+  const sp=el('div');sp.className='spacer';ctrl.appendChild(sp);
+  const printBtn=el('button');printBtn.className='btn-primary';printBtn.style.fontSize='12px';printBtn.textContent='🖨 Print / Save PDF';
+  printBtn.onclick=()=>printGanttPdf(ms);ctrl.appendChild(printBtn);
+  m.appendChild(ctrl);
+
+  // Crew checkboxes
+  const crewRow=el('div');crewRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px;padding:8px 10px;background:#f8f9fb;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:10px';
+  const crewHdr=el('span');crewHdr.style.cssText='font-size:11px;font-weight:700;color:#555;width:100%';crewHdr.textContent='Crews to include:';crewRow.appendChild(crewHdr);
+  S.crews.forEach(crew=>{
+    const lbl=el('label');lbl.style.cssText='display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer';
+    const cb=el('input');cb.type='checkbox';cb.checked=ms.ganttCrews.includes(crew.name);
+    cb.onchange=e=>{if(e.target.checked)ms.ganttCrews=[...ms.ganttCrews,crew.name];else ms.ganttCrews=ms.ganttCrews.filter(n=>n!==crew.name)};
+    const dot=el('span');dot.style.cssText='width:10px;height:10px;border-radius:50%;background:'+crew.color+';flex-shrink:0';
+    lbl.appendChild(cb);lbl.appendChild(dot);lbl.appendChild(document.createTextNode(crew.name));crewRow.appendChild(lbl);
+  });
+  m.appendChild(crewRow);
+
+  const hint=el('div');hint.style.cssText='font-size:11px;color:#6b7280;padding:0 2px';
+  hint.textContent='Opens a print-ready window with the Gantt chart and task list. Use browser Print → Save as PDF.';
+  m.appendChild(hint);
+}
+
+function printGanttPdf(ms){
+  const from=ms.ganttFrom,to=ms.ganttTo;
+  if(!from||!to){toast('Select a date range first.','error');return}
+  const crewFilter=ms.ganttCrews||S.crews.map(c=>c.name);
+  const holDates=S.holidays.map(h=>h.date);
+  const cm=crewMap();
+  buildProjTaskCache();
+
+  const svgStr=buildGanttSVG(from,to,crewFilter);
+
+  // Build task table rows
+  const projs=applyFilters().projects.filter(p=>!p.archived);
+  let tableRows='';
+  projs.forEach(p=>{
+    const tasks=projTasks(p.id).filter(t=>!crewFilter.length||crewFilter.includes(t.crew));
+    tasks.forEach(task=>{
+      const overlapping=(task.segs||[]).filter(seg=>seg.s&&seg.e&&seg.e>=from&&seg.s<=to);
+      if(!overlapping.length)return;
+      const crew=cm[task.crew];
+      const wd=workDays(overlapping,holDates,task.wknd);
+      const dates=overlapping.map(sg=>fmtDate(sg.s)+(sg.s!==sg.e?'–'+fmtDate(sg.e):'')).join(', ');
+      const tv=task.task_value?centsToDisplay(task.task_value):'—';
+      tableRows+=`<tr>
+        <td>${p.job_num}</td>
+        <td>${p.client}</td>
+        <td>${task.descr||''}</td>
+        <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${crew?crew.color:'#aaa'};margin-right:4px;vertical-align:middle"></span>${task.crew||'—'}</td>
+        <td>${dates}</td>
+        <td>${wd>0?wd+'d':'—'}</td>
+        <td>${tv}</td>
+      </tr>`;
+    });
+  });
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Strada — Schedule Export ${fmtDateLong(from)} – ${fmtDateLong(to)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:11px;padding:14px;background:#fff}
+.header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #1F3864}
+.header h2{font-size:15px;color:#1F3864;font-weight:800}
+.header p{font-size:10px;color:#666}
+.gantt-scroll{overflow-x:auto;margin-bottom:16px;border:1px solid #e4e8f0;border-radius:4px}
+table{width:100%;border-collapse:collapse;font-size:10px;margin-top:10px}
+th{background:#1F3864;color:#fff;padding:4px 7px;text-align:left;white-space:nowrap}
+td{padding:3px 7px;border-bottom:1px solid #f0f2f5;vertical-align:top}
+tr:nth-child(even) td{background:#f8fafc}
+.footer{margin-top:12px;font-size:9px;color:#aaa;border-top:1px solid #e4e8f0;padding-top:6px}
+@media print{
+  body{padding:6px}
+  .gantt-scroll{overflow-x:visible}
+  @page{size:landscape;margin:10mm}
+}
+</style></head><body>
+<div class="header">
+  <div><h2>🏗 Strada — Schedule Export</h2><p>${fmtDateLong(from)} – ${fmtDateLong(to)}${crewFilter.length<S.crews.length?' · Filtered crews':''}</p></div>
+  <p>Printed ${new Date().toLocaleString('en-CA',{dateStyle:'medium',timeStyle:'short'})}</p>
+</div>
+<div class="gantt-scroll">${svgStr}</div>
+<table>
+  <thead><tr><th>Job #</th><th>Client</th><th>Task</th><th>Crew</th><th>Dates</th><th>Days</th><th>Value</th></tr></thead>
+  <tbody>${tableRows||'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:12px">No tasks scheduled in this date range for the selected crews.</td></tr>'}</tbody>
+</table>
+<div class="footer">Strada Construction Group Inc. · Exported ${new Date().toLocaleString('en-CA')}</div>
+</body></html>`;
+
+  const w=window.open('','_blank','width=1200,height=800');
+  if(!w){toast('Pop-up blocked. Allow pop-ups for this site and try again.','error');return}
+  w.document.write(html);w.document.close();
+  setTimeout(()=>w.print(),600);
+}
+
+// buildGanttSVG: renders a print-quality SVG Gantt for the given date range and crew filter.
+function buildGanttSVG(from,to,crewFilter){
+  const dayW=18,leftW=300,rowH=22,projH=28,hdrH=32; // header = month(18)+day(14)
+  const holDates=S.holidays.map(h=>h.date);
+  const cm=crewMap();
+  buildProjTaskCache();
+
+  // Build list of dates in range
+  const fromD=new Date(from+'T12:00:00'),toD=new Date(to+'T12:00:00');
+  const nDays=Math.round((toD-fromD)/86400000)+1;
+  if(nDays<=0||nDays>550)return'<svg><text y="20" x="10">Invalid date range</text></svg>';
+
+  const dates=Array.from({length:nDays},(_,i)=>{const d=new Date(fromD);d.setDate(d.getDate()+i);return d});
+  const dateStrs=dates.map(d=>d.toISOString().slice(0,10));
+  const totalW=leftW+nDays*dayW;
+
+  // Collect rows
+  const projs=applyFilters().projects.filter(p=>!p.archived);
+  const rows=[];
+  projs.forEach(proj=>{
+    const tasks=projTasks(proj.id).filter(t=>!crewFilter.length||crewFilter.includes(t.crew));
+    const hasWork=tasks.some(t=>(t.segs||[]).some(sg=>sg.s&&sg.e&&sg.e>=from&&sg.s<=to));
+    if(!hasWork)return;
+    rows.push({type:'proj',proj});
+    tasks.forEach(task=>{
+      const hasSegs=(task.segs||[]).some(sg=>sg.s&&sg.e&&sg.e>=from&&sg.s<=to);
+      if(hasSegs)rows.push({type:'task',proj,task});
+    });
+  });
+
+  const totalH=hdrH+rows.length*(rowH)+4;
+  let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" style="font-family:Arial,sans-serif">`;
+
+  // ── Background: weekend columns ──────────────────────────────────────────
+  dates.forEach((d,i)=>{
+    const wd=d.getDay();
+    if(wd===0||wd===6){
+      svg+=`<rect x="${leftW+i*dayW}" y="0" width="${dayW}" height="${totalH}" fill="#f0f0f0" opacity="0.6"/>`;
+    }
+  });
+
+  // ── Month header row (18px) ──────────────────────────────────────────────
+  const MCOL={'APRIL':'#1565A9','MAY':'#217346','JUNE':'#BF5700','JULY':'#7B3F00',
+               'AUGUST':'#5C2D91','SEPTEMBER':'#005B70','OCTOBER':'#7D4000',
+               'NOVEMBER':'#2B4B6E','DECEMBER':'#8B0000','JANUARY':'#1F3864','FEBRUARY':'#374151','MARCH':'#065F46'};
+  const MNAMES=['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+  let curMonth=-1,mStart=0,mName='';
+  const flushMonth=(endI)=>{
+    if(curMonth<0)return;
+    const col=MCOL[mName]||'#1F3864';
+    const mx=leftW+mStart*dayW,mw=(endI-mStart)*dayW;
+    svg+=`<rect x="${mx}" y="0" width="${mw}" height="18" fill="${col}"/>`;
+    svg+=`<text x="${mx+4}" y="13" font-size="9" font-weight="700" fill="white" letter-spacing="0.5">${mName}</text>`;
+    svg+=`<line x1="${mx}" y1="0" x2="${mx}" y2="18" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>`;
+  };
+  dates.forEach((d,i)=>{
+    const mn=d.getMonth();
+    if(mn!==curMonth){flushMonth(i);curMonth=mn;mStart=i;mName=MNAMES[mn]}
+  });
+  flushMonth(nDays);
+
+  // ── Day header row (14px at y=18) ────────────────────────────────────────
+  dates.forEach((d,i)=>{
+    const wd=d.getDay();const isWknd=wd===0||wd===6;const isToday=dateStrs[i]===TODAY;
+    const bg=isToday?'#FFD700':isWknd?'#b0b4be':'#2a4a80';
+    svg+=`<rect x="${leftW+i*dayW}" y="18" width="${dayW}" height="14" fill="${bg}"/>`;
+    svg+=`<text x="${leftW+i*dayW+dayW/2}" y="29" font-size="8" fill="${isToday?'#333':'white'}" text-anchor="middle">${d.getDate()}</text>`;
+  });
+
+  // ── Left panel header ────────────────────────────────────────────────────
+  svg+=`<rect x="0" y="0" width="${leftW}" height="${hdrH}" fill="#1F3864"/>`;
+  svg+=`<text x="8" y="22" font-size="10" fill="rgba(255,255,255,0.6)">Task / Project</text>`;
+
+  // ── Rows ─────────────────────────────────────────────────────────────────
+  let y=hdrH;
+  rows.forEach((row,ri)=>{
+    const h=row.type==='proj'?projH:rowH;
+    if(row.type==='proj'){
+      // Project row — full navy background
+      svg+=`<rect x="0" y="${y}" width="${totalW}" height="${h}" fill="#2F4F8F"/>`;
+      const label=`${row.proj.job_num}  ${row.proj.client}`.slice(0,52);
+      svg+=`<text x="8" y="${y+h/2+4}" font-size="10" font-weight="700" fill="white">${escSvg(label)}</text>`;
+      // Project span bar
+      const sp=projSpan(projTasks(row.proj.id));
+      if(sp.s&&sp.e){
+        const sx=Math.max(0,dateStrs.indexOf(sp.s));
+        const ex=Math.min(nDays-1,dateStrs.indexOf(sp.e));
+        if(sx>=0&&ex>=sx){
+          svg+=`<rect x="${leftW+sx*dayW}" y="${y+h/2-3}" width="${(ex-sx+1)*dayW}" height="6" fill="rgba(255,255,255,0.25)" rx="2"/>`;
+        }
+      }
+    }else{
+      // Task row — alternating background
+      const bg=ri%2===0?'#EFF3FA':'#F8FAFC';
+      svg+=`<rect x="0" y="${y}" width="${leftW}" height="${h}" fill="${bg}"/>`;
+      svg+=`<rect x="${leftW}" y="${y}" width="${totalW-leftW}" height="${h}" fill="${bg}"/>`;
+      // Separator lines
+      svg+=`<line x1="0" y1="${y+h}" x2="${totalW}" y2="${y+h}" stroke="#e2e6ed" stroke-width="1"/>`;
+      svg+=`<line x1="${leftW}" y1="${y}" x2="${leftW}" y2="${y+h}" stroke="#c0cce0" stroke-width="2"/>`;
+      // Task label
+      const descr=(row.task.descr||'').slice(0,38);
+      svg+=`<text x="22" y="${y+h/2+4}" font-size="9" fill="#1a2b4a">${escSvg(descr)}</text>`;
+      // Crew colour dot
+      const crew=cm[row.task.crew];
+      if(crew)svg+=`<circle cx="13" cy="${y+h/2}" r="4" fill="${crew.color}"/>`;
+      // Segment bars
+      const color=crew?crew.color:'#aaa';
+      (row.task.segs||[]).forEach(seg=>{
+        if(!seg.s||!seg.e)return;
+        if(seg.e<from||seg.s>to)return;
+        const clampS=seg.s<from?from:seg.s;
+        const clampE=seg.e>to?to:seg.e;
+        const si=dateStrs.indexOf(clampS);
+        const ei=dateStrs.indexOf(clampE);
+        if(si<0||ei<0||ei<si)return;
+        // Skip weekends/holidays for visual accuracy
+        let rxs=null,rxe=null;
+        for(let i=si;i<=ei;i++){
+          const wd=dates[i].getDay();
+          const skip=!row.task.wknd&&(wd===0||wd===6||holDates.includes(dateStrs[i]));
+          if(!skip){if(rxs===null)rxs=i;rxe=i;}
+          else{if(rxs!==null){svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="${h-6}" fill="${color}" rx="3"/>`;rxs=rxe=null;}}
+        }
+        if(rxs!==null)svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="${h-6}" fill="${color}" rx="3"/>`;
+      });
+    }
+    y+=h;
+  });
+
+  // ── Today marker ─────────────────────────────────────────────────────────
+  const todayIdx=dateStrs.indexOf(TODAY);
+  if(todayIdx>=0){
+    svg+=`<line x1="${leftW+todayIdx*dayW+dayW/2}" y1="0" x2="${leftW+todayIdx*dayW+dayW/2}" y2="${totalH}" stroke="rgba(255,210,0,0.7)" stroke-width="2"/>`;
+  }
+
+  // ── Border ───────────────────────────────────────────────────────────────
+  svg+=`<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="none" stroke="#d0d7e3" stroke-width="1"/>`;
+  svg+='</svg>';
+  return svg;
+}
+
+function escSvg(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 // ── TAB 3: CSV Export ─────────────────────────────────────────────────────
 function buildCsvTab(m,ms){
@@ -1765,6 +2049,8 @@ function buildGantt(){
       const desc=el('span');desc.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#1a2b4a';desc.textContent=row.task.descr;lc.appendChild(desc);
       if(crew){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+crew.color+';color:'+crew.tc+';margin:0 4px';cb.textContent=crew.name;lc.appendChild(cb)}
       if(wd>0){const wds=el('span');wds.style.cssText='color:#555;font-size:11px;flex-shrink:0;min-width:26px;text-align:right';wds.textContent=wd+'d';lc.appendChild(wds)}
+      // Phase 10 CP2: task value badge
+      if(row.task.task_value){const tvb=el('span');tvb.className='task-val-badge';tvb.textContent=centsToBadge(row.task.task_value);tvb.title='Task value: '+centsToDisplay(row.task.task_value);lc.appendChild(tvb)}
       lc.appendChild(iBtn('✎',()=>{S.modal={type:'task',t:{...row.task,segs:row.task.segs.map(s=>({'s':s.s,'e':s.e})) }};openModal()},'#999'));
     }
     g.appendChild(lc);
@@ -2303,7 +2589,19 @@ function buildProjModal(m){
       db.textContent='×';db.onclick=()=>{tasks.splice(ti,1);rTL()};row.appendChild(db);tl.appendChild(row);
     });
   }
-  rTL();tsec.appendChild(tl);m.appendChild(tsec);
+  rTL();tsec.appendChild(tl);
+  // Phase 10 CP4: reconciliation line — task values total vs contract value
+  const reconDiv=el('div');reconDiv.id='recon-line-'+p.id;
+  function updateRecon(){
+    const taskTotal=tasks.reduce((s,t)=>s+(t.task_value||0),0);
+    if(taskTotal===0&&!p.job_value){reconDiv.textContent='';reconDiv.className='';return}
+    const contract=p.job_value||0;
+    const diff=contract>0?Math.abs(taskTotal-contract)/contract:0;
+    const warn=contract>0&&diff>0.05;
+    reconDiv.className='recon-line '+(warn?'recon-warn':'recon-ok');
+    reconDiv.textContent='Task values total: '+(taskTotal>0?centsToDisplay(taskTotal):'$0')+'  |  Contract: '+(contract>0?centsToDisplay(contract):'not set')+(warn?'  ⚠ Differs by '+Math.round(diff*100)+'%':'  ✓');
+  }
+  updateRecon();tsec.appendChild(reconDiv);m.appendChild(tsec);
   const delBtn=!S.modal.isNew?
     (()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Project';
       b.onclick=async()=>{if(confirm('Delete "'+p.client+'"? This removes all tasks.')){
@@ -2426,6 +2724,19 @@ function buildTaskModal(m){
     else{wdDiv.className='';wdDiv.textContent=''}
   }
   renderSegs();
+
+  // Phase 10: Financial section — Task Value
+  const finSec=el('div');finSec.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #e4e8f0';
+  const finHdr=el('div');finHdr.style.cssText='font-size:10px;font-weight:800;color:#1F3864;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px';finHdr.textContent='💰 Financial';finSec.appendChild(finHdr);
+  const tvRow=el('div');tvRow.style.cssText='display:flex;align-items:center;gap:8px';
+  const tvLbl=el('label');tvLbl.className='lbl';tvLbl.style.marginTop='0';tvLbl.textContent='Task Value (CAD $)';tvRow.appendChild(tvLbl);
+  const tvInp=el('input');tvInp.className='inp';tvInp.type='text';tvInp.placeholder='e.g. 8500 (optional)';
+  tvInp.value=t.task_value?((t.task_value/100).toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0})):'';
+  tvInp.style.cssText='flex:1;max-width:180px';
+  tvInp.oninput=e=>{t.task_value=dollarsToCents(e.target.value)};
+  tvRow.appendChild(tvInp);
+  const tvHint=el('span');tvHint.style.cssText='font-size:11px;color:#888';tvHint.textContent='Used for per-day revenue projection';tvRow.appendChild(tvHint);
+  finSec.appendChild(tvRow);m.appendChild(finSec);
 
   const delBtn=(()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Task';
     b.onclick=async()=>{if(confirm('Delete this task?')){await deleteTask(t.id);S.tasks=S.tasks.filter(x=>x.id!==t.id);closeModal();render()}};return b})();
