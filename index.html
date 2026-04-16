@@ -1513,7 +1513,7 @@ body{font-family:Arial,sans-serif;font-size:11px;padding:14px;background:#fff}
 .header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #1F3864}
 .header h2{font-size:15px;color:#1F3864;font-weight:800}
 .header p{font-size:10px;color:#666}
-.gantt-scroll{overflow-x:auto;margin-bottom:16px;border:1px solid #e4e8f0;border-radius:4px}
+.gantt-scroll{overflow-x:auto;overflow-y:visible;margin-bottom:16px;border:1px solid #e4e8f0;border-radius:4px}
 table{width:100%;border-collapse:collapse;font-size:10px;margin-top:10px}
 th{background:#1F3864;color:#fff;padding:4px 7px;text-align:left;white-space:nowrap}
 td{padding:3px 7px;border-bottom:1px solid #f0f2f5;vertical-align:top}
@@ -1521,8 +1521,9 @@ tr:nth-child(even) td{background:#f8fafc}
 .footer{margin-top:12px;font-size:9px;color:#aaa;border-top:1px solid #e4e8f0;padding-top:6px}
 @media print{
   body{padding:6px}
-  .gantt-scroll{overflow-x:visible}
-  @page{size:landscape;margin:10mm}
+  .gantt-scroll{overflow:visible!important;max-height:none!important}
+  .gantt-scroll svg{display:block;width:100%;height:auto}
+  @page{size:landscape;margin:8mm}
 }
 </style></head><body>
 <div class="header">
@@ -1573,7 +1574,8 @@ function buildGanttSVG(from,to,crewFilter){
     });
   });
 
-  const totalH=hdrH+rows.length*(rowH)+4;
+  // Calculate actual total height — project rows are taller than task rows
+  const totalH=hdrH+rows.reduce((s,r)=>s+(r.type==='proj'?projH:rowH),0)+4;
   let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" style="font-family:Arial,sans-serif">`;
 
   // ── Background: weekend columns ──────────────────────────────────────────
@@ -2079,7 +2081,7 @@ function buildGantt(){
           gc.appendChild(bd);
         });
         const ov=el('div');ov.className='bar-hit';
-        ov.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;border-left:2px solid '+color+'cc;border-right:2px solid '+color+'cc';
+        ov.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px';
         ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e;
         ov.addEventListener('mousedown',e=>{
           e.preventDefault();e.stopPropagation();
@@ -2678,7 +2680,7 @@ function buildTaskModal(m){
   function renderSegs(){
     listDiv.innerHTML='';
     t.segs.forEach((seg,si)=>{
-      const row=el('div');row.style.cssText='display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;padding:7px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e4e8f0';
+      const row=el('div');row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;padding:7px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e4e8f0';
       // Start
       const sw2=el('div');sw2.style.flex='1';sw2.appendChild(lbl2('Start'));
       const startInp=el('input');startInp.type='date';startInp.className='inp';
