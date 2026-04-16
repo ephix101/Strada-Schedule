@@ -1441,6 +1441,8 @@ function buildGanttPdfTab(m,ms){
     ms.ganttTo=lastDay.toISOString().slice(0,10);
   }
   if(!ms.ganttCrews)ms.ganttCrews=[...S.crews.map(c=>c.name)];
+  // Default: values hidden — this export is intended for field staff
+  if(ms.ganttShowValues===undefined)ms.ganttShowValues=false;
 
   const ctrl=el('div');ctrl.className='exp-ctrl';
   const fromLbl=el('label');fromLbl.textContent='From';ctrl.appendChild(fromLbl);
@@ -1455,7 +1457,7 @@ function buildGanttPdfTab(m,ms){
   m.appendChild(ctrl);
 
   // Crew checkboxes
-  const crewRow=el('div');crewRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px;padding:8px 10px;background:#f8f9fb;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:10px';
+  const crewRow=el('div');crewRow.style.cssText='display:flex;flex-wrap:wrap;gap:8px;padding:8px 10px;background:#f8f9fb;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:8px';
   const crewHdr=el('span');crewHdr.style.cssText='font-size:11px;font-weight:700;color:#555;width:100%';crewHdr.textContent='Crews to include:';crewRow.appendChild(crewHdr);
   S.crews.forEach(crew=>{
     const lbl=el('label');lbl.style.cssText='display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer';
@@ -1466,6 +1468,21 @@ function buildGanttPdfTab(m,ms){
   });
   m.appendChild(crewRow);
 
+  // Options row — values toggle
+  const optRow=el('div');optRow.style.cssText='display:flex;align-items:center;gap:16px;padding:8px 10px;background:#f8f9fb;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:10px';
+  const optHdr=el('span');optHdr.style.cssText='font-size:11px;font-weight:700;color:#555;flex-shrink:0';optHdr.textContent='Export options:';optRow.appendChild(optHdr);
+
+  // Include values checkbox
+  const valLbl=el('label');valLbl.style.cssText='display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer';
+  const valCb=el('input');valCb.type='checkbox';valCb.checked=ms.ganttShowValues;
+  valCb.onchange=e=>{ms.ganttShowValues=e.target.checked};
+  valLbl.appendChild(valCb);
+  valLbl.appendChild(document.createTextNode('Include dollar values'));
+  const valNote=el('span');valNote.style.cssText='font-size:10px;color:#9ca3af;margin-left:2px';valNote.textContent='(off by default — field staff copy)';
+  valLbl.appendChild(valNote);
+  optRow.appendChild(valLbl);
+  m.appendChild(optRow);
+
   const hint=el('div');hint.style.cssText='font-size:11px;color:#6b7280;padding:0 2px';
   hint.textContent='Opens a print-ready window with the Gantt chart and task list. Use browser Print → Save as PDF.';
   m.appendChild(hint);
@@ -1475,6 +1492,7 @@ function printGanttPdf(ms){
   const from=ms.ganttFrom,to=ms.ganttTo;
   if(!from||!to){toast('Select a date range first.','error');return}
   const crewFilter=ms.ganttCrews||S.crews.map(c=>c.name);
+  const showValues=ms.ganttShowValues===true; // false by default
   const holDates=S.holidays.map(h=>h.date);
   const cm=crewMap();
   buildProjTaskCache();
@@ -1484,6 +1502,7 @@ function printGanttPdf(ms){
   // Build task table rows
   const projs=applyFilters().projects.filter(p=>!p.archived);
   let tableRows='';
+  const colSpan=showValues?7:6;
   projs.forEach(p=>{
     const tasks=projTasks(p.id).filter(t=>!crewFilter.length||crewFilter.includes(t.crew));
     tasks.forEach(task=>{
@@ -1492,7 +1511,6 @@ function printGanttPdf(ms){
       const crew=cm[task.crew];
       const wd=workDays(overlapping,holDates,task.wknd);
       const dates=overlapping.map(sg=>fmtDate(sg.s)+(sg.s!==sg.e?'–'+fmtDate(sg.e):'')).join(', ');
-      const tv=task.task_value?centsToDisplay(task.task_value):'—';
       tableRows+=`<tr>
         <td>${p.job_num}</td>
         <td>${p.client}</td>
@@ -1500,13 +1518,16 @@ function printGanttPdf(ms){
         <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${crew?crew.color:'#aaa'};margin-right:4px;vertical-align:middle"></span>${task.crew||'—'}</td>
         <td>${dates}</td>
         <td>${wd>0?wd+'d':'—'}</td>
-        <td>${tv}</td>
+        ${showValues?`<td>${task.task_value?centsToDisplay(task.task_value):'—'}</td>`:''}
       </tr>`;
     });
   });
 
+  const valueHeader=showValues?'<th>Value</th>':'';
+  const exportLabel=showValues?'Schedule + Values Export':'Field Schedule Export';
+
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Strada — Schedule Export ${fmtDateLong(from)} – ${fmtDateLong(to)}</title>
+<title>Strada — ${exportLabel} ${fmtDateLong(from)} – ${fmtDateLong(to)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:11px;padding:14px;background:#fff}
@@ -1527,13 +1548,13 @@ tr:nth-child(even) td{background:#f8fafc}
 }
 </style></head><body>
 <div class="header">
-  <div><h2>🏗 Strada — Schedule Export</h2><p>${fmtDateLong(from)} – ${fmtDateLong(to)}${crewFilter.length<S.crews.length?' · Filtered crews':''}</p></div>
+  <div><h2>🏗 Strada — ${exportLabel}</h2><p>${fmtDateLong(from)} – ${fmtDateLong(to)}${crewFilter.length<S.crews.length?' · Filtered crews':''}</p></div>
   <p>Printed ${new Date().toLocaleString('en-CA',{dateStyle:'medium',timeStyle:'short'})}</p>
 </div>
 <div class="gantt-scroll">${svgStr}</div>
 <table>
-  <thead><tr><th>Job #</th><th>Client</th><th>Task</th><th>Crew</th><th>Dates</th><th>Days</th><th>Value</th></tr></thead>
-  <tbody>${tableRows||'<tr><td colspan="7" style="text-align:center;color:#aaa;padding:12px">No tasks scheduled in this date range for the selected crews.</td></tr>'}</tbody>
+  <thead><tr><th>Job #</th><th>Client</th><th>Task</th><th>Crew</th><th>Dates</th><th>Days</th>${valueHeader}</tr></thead>
+  <tbody>${tableRows||`<tr><td colspan="${colSpan}" style="text-align:center;color:#aaa;padding:12px">No tasks scheduled in this date range for the selected crews.</td></tr>`}</tbody>
 </table>
 <div class="footer">Strada Construction Group Inc. · Exported ${new Date().toLocaleString('en-CA')}</div>
 </body></html>`;
