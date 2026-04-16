@@ -551,7 +551,6 @@ function setupAuthListener(){
 }
 
 // enterApp is guarded by _appBusy so concurrent auth events never run it twice.
-// Two simultaneous calls would cancel each other's loading timeouts, causing a stuck spinner.
 let _appBusy=false;
 async function enterApp(user){
   if(_appBusy){console.log('[Strada] enterApp already running — skipping duplicate call');return}
@@ -562,25 +561,25 @@ async function enterApp(user){
     loadFilters();
     showApp();
     setLoading(true);renderSafe();
-    // Phase 9 FIX: retry once after 2s before showing an error toast.
-    // Supabase free tier wakes slowly — first request often times out but
-    // the second succeeds. This prevents a false alarm on normal startup.
-    let loadErr=null;
+
+    // Attempt initial load. Do NOT show any error toast here regardless of outcome.
+    // startRealtime() runs unconditionally below and will recover via scheduleReload()
+    // if Supabase was still waking up. Toasting here always produces false alarms.
     try{await loadAll();}
-    catch(e){
-      console.warn('[Strada] loadAll failed on first attempt, retrying in 2s…',e);
-      loadErr=e;
-    }
-    if(loadErr){
-      await new Promise(r=>setTimeout(r,2000));
-      try{await loadAll();loadErr=null;}
-      catch(e2){
-        console.error('[Strada] loadAll failed on retry:',e2);
-        toast('Could not reach database. Check your connection.','warn');
-      }
-    }
+    catch(e){console.warn('[Strada] Initial loadAll failed (will recover via realtime):',e.message);}
+
     setLoading(false);renderSafe();
     if(!realtimeCh)startRealtime();
+
+    // Late-check: if S.projects is still empty 18 seconds after startup, the
+    // database is genuinely unreachable — not just slow to wake.
+    setTimeout(()=>{
+      if(S.projects.length===0&&!S.loading){
+        console.warn('[Strada] No data after 18s — database may be unreachable');
+        toast('Schedule is empty. Check your connection or visit supabase.com to wake the project.','warn');
+      }
+    },18000);
+
   }finally{
     _appBusy=false;
   }
@@ -684,9 +683,8 @@ function debouncedRender(){
   clearTimeout(_filterDebounce);
   _filterDebounce=setTimeout(()=>render(),300);
 }
-// Prevents loadAll/saveApiKey from hanging forever if Supabase is paused/slow.
-// Supabase free-tier projects pause after ~7 days of inactivity.
-const QUERY_TIMEOUT_MS=12000;
+// Query timeout — 20s gives Supabase free-tier projects time to wake from sleep.
+const QUERY_TIMEOUT_MS=20000;
 function withTimeout(promise,ms,msg){
   return Promise.race([
     promise,
@@ -721,7 +719,7 @@ async function loadAll(){
 let _reloadTimer=null;
 function scheduleReload(){
   clearTimeout(_reloadTimer);
-  _reloadTimer=setTimeout(()=>loadAll().then(renderSafe).catch(e=>console.error('[Strada] realtime reload failed:',e)),400);
+  _reloadTimer=setTimeout(()=>loadAll().then(renderSafe).catch(e=>console.warn('[Strada] realtime reload failed (will retry on next event):',e.message)),400);
 }
 
 // Granular realtime handler — updates only the changed row.
