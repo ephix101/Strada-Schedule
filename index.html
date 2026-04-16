@@ -198,7 +198,14 @@ input,select,textarea{font-family:inherit;font-size:12px}
   .modal-bg,.toolbar,.filter-bar{display:none!important}
   .print-only{display:block!important}
 }
-/* Phase 8: Gantt grid lines, undo, value-per-day */
+/* Phase 9: Archive */
+.btn-archive{padding:7px 14px;background:#fff;color:#d97706;border:1px solid #d97706;border-radius:6px;font-size:12px;cursor:pointer}
+.btn-archive:hover{background:#fffbeb}
+.proj-row-archived .lc{opacity:.45;background:#3a3a4a!important}
+.proj-row-archived .gc{opacity:.45}
+.board-card-archived{opacity:.5;border-style:dashed}
+.archive-badge{font-size:9px;font-weight:700;padding:1px 5px;border-radius:9px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;white-space:nowrap;flex-shrink:0;margin-right:4px}
+</style>
 .task-row .gc{border-bottom:1px solid #e2e6ed}
 .task-row .lc{background:#EFF3FA!important;border-right:3px solid #c0cce0!important;border-bottom:1px solid #e2e6ed!important}
 .task-even .lc,.task-even .gc{background:#EFF3FA}
@@ -366,7 +373,7 @@ const S={
   projects:[],tasks:[],crews:[],holidays:[],
   loading:false,syncing:false,
   // Phase 2: filter & sort state (persisted to localStorage per user)
-  filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default'},
+  filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false},
   presets:[] // [{id,name,filter}]
 };
 
@@ -555,8 +562,23 @@ async function enterApp(user){
     loadFilters();
     showApp();
     setLoading(true);renderSafe();
+    // Phase 9 FIX: retry once after 2s before showing an error toast.
+    // Supabase free tier wakes slowly — first request often times out but
+    // the second succeeds. This prevents a false alarm on normal startup.
+    let loadErr=null;
     try{await loadAll();}
-    catch(e){console.error('[Strada] loadAll failed:',e);toast('Failed to load data — check connection.','error');}
+    catch(e){
+      console.warn('[Strada] loadAll failed on first attempt, retrying in 2s…',e);
+      loadErr=e;
+    }
+    if(loadErr){
+      await new Promise(r=>setTimeout(r,2000));
+      try{await loadAll();loadErr=null;}
+      catch(e2){
+        console.error('[Strada] loadAll failed on retry:',e2);
+        toast('Could not reach database. Check your connection.','warn');
+      }
+    }
     setLoading(false);renderSafe();
     if(!realtimeCh)startRealtime();
   }finally{
@@ -843,7 +865,9 @@ function getCalHeader(totalW,holI){
 }
 function toast(msg,type){
   const tc=document.getElementById('toasts');const t=el('div');t.className='toast';t.textContent=msg;
-  if(type==='error')t.style.background='#7f1d1d';tc.appendChild(t);
+  if(type==='error')t.style.background='#7f1d1d';
+  if(type==='warn')t.style.background='#92400e';
+  tc.appendChild(t);
   requestAnimationFrame(()=>t.classList.add('show'));
   setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300)},3500);
 }
@@ -908,12 +932,14 @@ function countActiveFilters(){
   return n;
 }
 function clearFilters(){
-  S.filter={crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default'};
+  S.filter={crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false};
   saveFilters();
 }
 function applyFilters(){
   let projects=[...S.projects];
   const f=S.filter;
+  // 0. Archive filter — hide archived unless showArchived is ON
+  if(!f.showArchived)projects=projects.filter(p=>!p.archived);
   // 1. Hide complete projects
   if(f.hideComplete)projects=projects.filter(p=>p.status!=='Complete');
   // 2. Crew filter — keep project if at least one task matches
@@ -1010,6 +1036,12 @@ function buildFilterBar(){
   const hcCb=document.createElement('input');hcCb.type='checkbox';hcCb.checked=S.filter.hideComplete;
   hcCb.onchange=e=>{S.filter.hideComplete=e.target.checked;saveFilters();render()};
   hcLbl.appendChild(hcCb);hcLbl.appendChild(document.createTextNode('Hide Complete'));bar.appendChild(hcLbl);
+
+  // Phase 9: Show Archived toggle
+  const arcLbl=document.createElement('label');arcLbl.className='fb-chk-lbl';
+  const arcCb=document.createElement('input');arcCb.type='checkbox';arcCb.checked=S.filter.showArchived||false;
+  arcCb.onchange=e=>{S.filter.showArchived=e.target.checked;saveFilters();render()};
+  arcLbl.appendChild(arcCb);arcLbl.appendChild(document.createTextNode('📁 Show Archived'));bar.appendChild(arcLbl);
 
   bar.appendChild(mkSep());
 
@@ -1482,11 +1514,23 @@ Return ONLY a valid JSON object — no markdown, no explanation, nothing else:
 Rules: job_num=project/job number if shown, else ""; client=customer/company name; location=project address or site name; tasks=each scope item or line item as one entry; quantity=qty+unit if shown (e.g. "304 m²", "50mm HL3F") else "".`;
 
 async function callClaude(apiKey,content){
-  const resp=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-allow-browser':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,system:CLAUDE_SYSTEM,messages:[{role:'user',content}]})
-  });
+  // Phase 9 FIX: 30-second timeout + friendly CORS error message
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),30000);
+  let resp;
+  try{
+    resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      signal:controller.signal,
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-allow-browser':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,system:CLAUDE_SYSTEM,messages:[{role:'user',content}]})
+    });
+  }catch(fetchErr){
+    clearTimeout(timer);
+    if(fetchErr.name==='AbortError')throw new Error('Request timed out after 30 seconds. Check your internet connection and try again.');
+    // "Failed to fetch" / NetworkError — almost always a browser extension blocking the request
+    throw new Error('Browser blocked the request. Try disabling extensions (uBlock Origin, Privacy Badger, AdBlock) or use the text paste field below instead — it works without an internet connection to the AI.');
+  }finally{clearTimeout(timer)}
   if(!resp.ok){
     let msg='Claude API error '+resp.status;
     try{const e=await resp.json();msg=e.error?.message||msg}catch{}
@@ -1684,7 +1728,9 @@ function buildGantt(){
 
   flatRows.forEach((row,ri)=>{
     const isP=row.type==='proj';const h=isP?PH:RH;
-    const g=el('div');g.className='g-row '+(isP?'proj-row':'task-row task-'+(ri%2===0?'even':'odd'));g.style.height=h+'px';
+    const g=el('div');
+    const arcClass=isP&&row.proj.archived?' proj-row-archived':'';
+    g.className='g-row '+(isP?'proj-row'+arcClass:'task-row task-'+(ri%2===0?'even':'odd'));g.style.height=h+'px';
     const lc=el('div');lc.className='lc';lc.style.cssText='width:'+LW+'px;height:'+h+'px';
     if(isP){
       lc.appendChild(iBtn(row.proj.collapsed?'▶':'▼',()=>{
@@ -1694,7 +1740,9 @@ function buildGantt(){
       },'rgba(255,255,255,.7)'));
       const info=el('div');info.style.cssText='flex:1;overflow:hidden;min-width:0;margin:0 6px';
       const top=el('div');top.style.cssText='display:flex;align-items:center;gap:5px;overflow:hidden';
-      const jn=el('span');jn.style.cssText='color:rgba(255,255,255,.6);font-size:11px;font-weight:700;flex-shrink:0';jn.textContent=row.proj.job_num;top.appendChild(jn);
+      const jn=el('span');jn.style.cssText='color:rgba(255,255,255,.6);font-size:11px;font-weight:700;flex-shrink:0';
+      if(row.proj.archived){const ab=el('span');ab.className='archive-badge';ab.textContent='📁';top.appendChild(ab)}
+      jn.textContent=row.proj.job_num;top.appendChild(jn);
       const cl=el('span');cl.style.cssText='color:#fff;font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';cl.textContent=row.proj.client;top.appendChild(cl);
       info.appendChild(top);
       const bl=el('div');bl.style.cssText='color:rgba(255,255,255,.5);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';bl.textContent=row.proj.loc;info.appendChild(bl);
@@ -1782,11 +1830,16 @@ function buildBoard(){
 }
 function buildBoardCols(cols,cnt){
   const cm=crewMap();const q=(S.boardSearch||'').toLowerCase();
-  const filtered=q?S.projects.filter(p=>(p.job_num+p.client+p.loc).toLowerCase().includes(q)):S.projects;
-  cnt.textContent=filtered.length+' of '+S.projects.length+' projects';
+  // Phase 9: exclude archived from main board unless showArchived
+  const active=S.projects.filter(p=>!p.archived);
+  const archived=S.projects.filter(p=>p.archived);
+  const pool=q
+    ?active.filter(p=>(p.job_num+p.client+p.loc+(p.notes||'')).toLowerCase().includes(q))
+    :active;
+  cnt.textContent=pool.length+' of '+active.length+' active projects'+(archived.length>0?' · '+archived.length+' archived':'');
   cols.innerHTML='';
   const grouped={};ST_OPTS.forEach(s=>{grouped[s]=[]});
-  filtered.forEach(p=>{(grouped[p.status]||(grouped['Not started'])).push(p)});
+  pool.forEach(p=>{(grouped[p.status]||(grouped['Not started'])).push(p)});
   ST_OPTS.forEach(st=>{
     const c=ST_CLR[st];const col=el('div');col.className='board-col';
     const hdr=el('div');hdr.className='board-col-hdr';hdr.style.cssText='background:'+c+'18;border:1px solid '+c+'33';
@@ -1800,25 +1853,42 @@ function buildBoardCols(cols,cnt){
     if(grouped[st].length===0&&!q){
       const emp=el('div');emp.style.cssText='color:#bbb;font-size:12px;text-align:center;padding:20px 8px';emp.textContent='No projects';col.appendChild(emp);
     }
-    grouped[st].forEach(p=>{
-      const card=el('div');card.className='board-card';
-      card.onclick=()=>{S.modal={type:'proj',isNew:false,p:{...p}};openModal()};
-      const top=el('div');top.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin-bottom:3px';
-      const jn=el('span');jn.style.cssText='font-weight:700;font-size:11px;color:#1F3864';jn.textContent=p.job_num;top.appendChild(jn);
-      top.appendChild(statusBadge(p.status));card.appendChild(top);
-      const cl=el('div');cl.style.cssText='font-weight:700;font-size:12px;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px';cl.textContent=p.client;card.appendChild(cl);
-      const lo=el('div');lo.style.cssText='font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px';lo.textContent=p.loc;card.appendChild(lo);
-      const crd=el('div');crd.style.cssText='display:flex;flex-wrap:wrap;gap:3px';
-      [...new Set(projTasks(p.id).map(t=>t.crew).filter(Boolean))].forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
-      card.appendChild(crd);
-      const bl2=el('div');bl2.style.cssText='font-size:11px;color:#888;margin-top:4px;display:flex;justify-content:space-between;align-items:center';
-      const tcount=el('span');tcount.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');bl2.appendChild(tcount);
-      if(p.job_value){const vl=el('span');vl.style.cssText='font-weight:700;color:#155724;font-size:11px';vl.textContent=centsToDisplay(p.job_value);bl2.appendChild(vl)}
-      card.appendChild(bl2);
+    grouped[st].forEach(p=>{col.appendChild(buildBoardCard(p,cm))});
+    cols.appendChild(col);
+  });
+  // Phase 9: Archive column — shown when showArchived is ON
+  if(S.filter.showArchived&&archived.length>0){
+    const arcFiltered=q?archived.filter(p=>(p.job_num+p.client+p.loc).toLowerCase().includes(q)):archived;
+    const col=el('div');col.className='board-col';
+    const hdr=el('div');hdr.className='board-col-hdr';hdr.style.cssText='background:#fef3c720;border:1px dashed #d97706';
+    const dot=el('div');dot.style.cssText='width:10px;height:10px;border-radius:50%;background:#d97706;flex-shrink:0';hdr.appendChild(dot);
+    const sl=el('span');sl.style.cssText='font-weight:700;font-size:12px;color:#d97706';sl.textContent='📁 Archive';hdr.appendChild(sl);
+    const cn=el('span');cn.style.cssText='margin-left:auto;background:#d97706;color:#fff;border-radius:10px;font-size:11px;padding:0 6px;font-weight:700';cn.textContent=arcFiltered.length;hdr.appendChild(cn);
+    col.appendChild(hdr);
+    arcFiltered.forEach(p=>{
+      const card=buildBoardCard(p,cm);
+      card.className+=' board-card-archived';
       col.appendChild(card);
     });
     cols.appendChild(col);
-  });
+  }
+}
+function buildBoardCard(p,cm){
+  const card=el('div');card.className='board-card';
+  card.onclick=()=>{S.modal={type:'proj',isNew:false,p:{...p}};openModal()};
+  const top=el('div');top.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin-bottom:3px';
+  const jn=el('span');jn.style.cssText='font-weight:700;font-size:11px;color:#1F3864';jn.textContent=p.job_num;top.appendChild(jn);
+  top.appendChild(statusBadge(p.status));card.appendChild(top);
+  const cl=el('div');cl.style.cssText='font-weight:700;font-size:12px;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px';cl.textContent=p.client;card.appendChild(cl);
+  const lo=el('div');lo.style.cssText='font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px';lo.textContent=p.loc;card.appendChild(lo);
+  const crd=el('div');crd.style.cssText='display:flex;flex-wrap:wrap;gap:3px';
+  [...new Set(projTasks(p.id).map(t=>t.crew).filter(Boolean))].forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
+  card.appendChild(crd);
+  const bl2=el('div');bl2.style.cssText='font-size:11px;color:#888;margin-top:4px;display:flex;justify-content:space-between;align-items:center';
+  const tcount=el('span');tcount.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');bl2.appendChild(tcount);
+  if(p.job_value){const vl=el('span');vl.style.cssText='font-weight:700;color:#155724;font-size:11px';vl.textContent=centsToDisplay(p.job_value);bl2.appendChild(vl)}
+  card.appendChild(bl2);
+  return card;
 }
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
@@ -2017,10 +2087,13 @@ function buildImportInput(m,ms){
     ms.file=f;fl.textContent='📎 '+f.name;dt.textContent='File selected — click Analyze to continue';
   });
   m.appendChild(fi);m.appendChild(zone);
-  const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or paste text directly';m.appendChild(orDiv);
+  const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or paste document text directly (works without browser extensions)';m.appendChild(orDiv);
+  const pasteWrap=el('div');pasteWrap.style.cssText='background:#f0f7ff;border:1px solid #bcd;border-radius:8px;padding:10px 12px;margin-bottom:4px';
+  const pasteLbl=el('div');pasteLbl.style.cssText='font-size:11px;font-weight:700;color:#1F3864;margin-bottom:6px';pasteLbl.textContent='📋 Paste document text here — reliable fallback if file upload is blocked';
   const ta=el('textarea');ta.className='import-textarea';
   ta.placeholder='Paste the quote text, scope of work, or price schedule here…';
-  ta.value=ms.pasteText||'';ta.oninput=e=>{ms.pasteText=e.target.value};m.appendChild(ta);
+  ta.value=ms.pasteText||'';ta.oninput=e=>{ms.pasteText=e.target.value};
+  pasteWrap.appendChild(pasteLbl);pasteWrap.appendChild(ta);m.appendChild(pasteWrap);
   const note=el('p');note.style.cssText='font-size:11px;color:#aaa;margin-top:8px;line-height:1.5';
   note.textContent='Requires an Anthropic API key (Settings → Data). Analysis takes ~5–15 seconds per document.';m.appendChild(note);
   const footer=el('div');footer.className='modal-footer';
@@ -2132,9 +2205,15 @@ function inp2(val,fn,type,opts){
   else{if(type)i.type=type;i.value=val||'';if(type==='date'){i.min='2026-01-01';i.max='2026-12-31'}}
   if(fn){i.onchange=fn;i.oninput=fn}return i;
 }
-function mkFooter(m,leftBtn,onSave){
+function mkFooter(m,leftContent,onSave){
   const footer=el('div');footer.className='modal-footer';
-  const lb=el('div');if(leftBtn)lb.appendChild(leftBtn);footer.appendChild(lb);
+  const lb=el('div');
+  if(leftContent){
+    // Accept either a single element or a pre-built div
+    if(leftContent.tagName==='DIV')lb.appendChild(leftContent);
+    else lb.appendChild(leftContent);
+  }
+  footer.appendChild(lb);
   const rb=el('div');rb.style.cssText='display:flex;gap:8px';
   // FIX CP1: Cancel always calls closeModal directly
   const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';
@@ -2232,7 +2311,34 @@ function buildProjModal(m){
       b.onclick=async()=>{if(confirm('Delete "'+p.client+'"? This removes all tasks.')){
         await deleteProject(p.id);S.projects=S.projects.filter(x=>x.id!==p.id);S.tasks=S.tasks.filter(x=>x.project_id!==p.id);closeModal();render();
       }};return b})():null;
-  mkFooter(m,delBtn,async()=>{
+  // Phase 9: Archive / Restore button
+  const arcBtn=!S.modal.isNew?(()=>{
+    const b=el('button');
+    if(p.archived){
+      b.className='btn-sec';b.textContent='📁 Restore from Archive';
+      b.onclick=async()=>{
+        p.archived=false;
+        S.projects=S.projects.map(x=>x.id===p.id?{...x,archived:false}:x);
+        closeModal();render();await upsertProject({...p,archived:false});
+        toast('✓ Project restored to active schedule','ok');
+      };
+    }else{
+      b.className='btn-archive';b.textContent='📁 Archive Project';
+      b.onclick=async()=>{
+        if(!confirm('Move "'+p.client+'" to the archive? It will be hidden from the active schedule.'))return;
+        p.archived=true;
+        S.projects=S.projects.map(x=>x.id===p.id?{...x,archived:true}:x);
+        closeModal();render();await upsertProject({...p,archived:true});
+        toast('✓ Project archived','ok');
+      };
+    }
+    return b;
+  })():null;
+  // Put archive btn in left slot, delete btn next to it
+  const leftDiv=el('div');leftDiv.style.cssText='display:flex;gap:6px';
+  if(arcBtn)leftDiv.appendChild(arcBtn);
+  if(delBtn)leftDiv.appendChild(delBtn);
+  mkFooter(m,leftDiv,async()=>{
     closeModal();render();
     await upsertProject(p);
     for(const t of tasks)await upsertTask(t);
