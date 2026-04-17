@@ -648,21 +648,37 @@ async function doUpdatePass(){
 }
 
 // ── DATA LAYER ────────────────────────────────────────────────────────────────
-// Phase 8: reads/writes segments JSONB column (unlimited array of {s,e} objects).
-// Old seg1_s/seg1_e columns have been dropped by the Phase 8 migration.
+// Phase 11: reads crews[] per segment. Backward-compat: if seg has no crews,
+// falls back to the task-level crew field (pre-Phase-11 data).
 function dbTaskToApp(t){
+  const taskCrew=t.crew||'';
   const segs=Array.isArray(t.segments)&&t.segments.length>0
-    ?t.segments.map(sg=>({s:sg.s||null,e:sg.e||null}))
-    :[{s:null,e:null}];
-  return{id:t.id,project_id:t.project_id,descr:t.descr||'',crew:t.crew||'',
+    ?t.segments.map(sg=>({
+        s:sg.s||null,
+        e:sg.e||null,
+        // crews[] on segment; fall back to task-level crew for old data
+        crews:Array.isArray(sg.crews)&&sg.crews.length>0
+          ?sg.crews
+          :(taskCrew?[taskCrew]:[])
+      }))
+    :[{s:null,e:null,crews:taskCrew?[taskCrew]:[]}];
+  // crew on the task object = first crew of first segment (convenience for legacy code)
+  const primaryCrew=(segs[0]?.crews[0])||taskCrew;
+  return{id:t.id,project_id:t.project_id,descr:t.descr||'',crew:primaryCrew,
     status:t.status,wknd:t.wknd,sort_order:t.sort_order,
     task_value:t.task_value||null,segs};
 }
 function appTaskToDB(t){
-  return{id:t.id,project_id:t.project_id,descr:t.descr,crew:t.crew||null,
+  // Derive primary crew from first segment's first crew (keeps tasks.crew in sync)
+  const primaryCrew=(t.segs&&t.segs[0]&&t.segs[0].crews&&t.segs[0].crews[0])||t.crew||null;
+  return{id:t.id,project_id:t.project_id,descr:t.descr,crew:primaryCrew,
     status:t.status,wknd:t.wknd,sort_order:t.sort_order||0,
     task_value:t.task_value||null,
-    segments:(t.segs||[]).filter(sg=>sg.s||sg.e).map(sg=>({s:sg.s||null,e:sg.e||null}))};
+    segments:(t.segs||[]).filter(sg=>sg.s||sg.e).map(sg=>({
+      s:sg.s||null,
+      e:sg.e||null,
+      crews:Array.isArray(sg.crews)?sg.crews.filter(Boolean):[]
+    }))};
 }
 
 // ── PHASE 8: Undo/redo history for drag operations ────────────────────────────
@@ -957,8 +973,12 @@ function applyFilters(){
   if(!f.showArchived)projects=projects.filter(p=>!p.archived);
   // 1. Hide complete projects
   if(f.hideComplete)projects=projects.filter(p=>p.status!=='Complete');
-  // 2. Crew filter — keep project if at least one task matches
-  if(f.crews.length>0)projects=projects.filter(p=>projTasks(p.id).some(t=>f.crews.includes(t.crew)));
+  // 2. Crew filter — keep project if any task has any segment with a matching crew
+  if(f.crews.length>0)projects=projects.filter(p=>
+    projTasks(p.id).some(t=>
+      t.segs.some(sg=>(sg.crews&&sg.crews.length>0?sg.crews:[t.crew]).some(c=>f.crews.includes(c)))
+    )
+  );
   // 3. Date range — keep project if at least one task overlaps range
   if(f.dateFrom||f.dateTo)projects=projects.filter(p=>projTasks(p.id).some(t=>taskOverlapsRange(t,f.dateFrom,f.dateTo)));
   // 4. Sort
@@ -986,7 +1006,9 @@ function applyFilters(){
   const visibleTasks={};
   projects.forEach(p=>{
     let tasks=projTasks(p.id);
-    if(f.crews.length>0)tasks=tasks.filter(t=>f.crews.includes(t.crew));
+    if(f.crews.length>0)tasks=tasks.filter(t=>
+      t.segs.some(sg=>(sg.crews&&sg.crews.length>0?sg.crews:[t.crew]).some(c=>f.crews.includes(c)))
+    );
     if(f.dateFrom||f.dateTo)tasks=tasks.filter(t=>taskOverlapsRange(t,f.dateFrom,f.dateTo));
     visibleTasks[p.id]=tasks;
   });
@@ -1215,14 +1237,22 @@ function buildFieldScheduleTab(m,ms){
 
     projs.forEach(proj=>{
       projTasks(proj.id).forEach(task=>{
-        if(!task.crew||!crewTasks[task.crew])return;
         // Check if any segment overlaps [from,to]
         const overlapping=(task.segs||[]).filter(seg=>{
           if(!seg.s||!seg.e)return false;
           return seg.e>=from&&seg.s<=to;
         });
         if(overlapping.length===0)return;
-        crewTasks[task.crew].push({proj,task,segs:overlapping});
+        // Collect all unique crews across overlapping segments
+        const taskCrews=[...new Set(overlapping.flatMap(sg=>
+          sg.crews&&sg.crews.length?sg.crews:(task.crew?[task.crew]:[])
+        ))];
+        // Add task to each crew's section (so joint tasks appear under both)
+        taskCrews.forEach(cn2=>{
+          if(crewTasks[cn2])crewTasks[cn2].push({proj,task,segs:overlapping});
+        });
+        // If task has no crew at all, put it under an 'Unassigned' bucket
+        if(taskCrews.length===0&&crewTasks[''])crewTasks[''].push({proj,task,segs:overlapping});
       });
     });
 
@@ -1273,9 +1303,12 @@ function printFieldSchedule(ms){
   const crewTasks={};crewNames.forEach(cn2=>{crewTasks[cn2]=[]});
   projs.forEach(proj=>{
     projTasks(proj.id).forEach(task=>{
-      if(!task.crew||!crewTasks[task.crew])return;
       const overlapping=(task.segs||[]).filter(seg=>seg.s&&seg.e&&seg.e>=from&&seg.s<=to);
-      if(overlapping.length)crewTasks[task.crew].push({proj,task,segs:overlapping});
+      if(!overlapping.length)return;
+      const taskCrews=[...new Set(overlapping.flatMap(sg=>
+        sg.crews&&sg.crews.length?sg.crews:(task.crew?[task.crew]:[])
+      ))];
+      taskCrews.forEach(cn2=>{if(crewTasks[cn2])crewTasks[cn2].push({proj,task,segs:overlapping})});
     });
   });
 
@@ -1345,19 +1378,19 @@ function buildStatusReportTab(m,ms){
     const tr=el('tr');
     const tasks=projTasks(p.id);
     const sp2=projSpan(tasks);
-    const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join(', ')||'—';
+    const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
     const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
     const taskValTotal=tasks.reduce((s,t)=>s+(t.task_value||0),0);
     const c=ST_CLR[p.status]||'#666';
     const cells=[
       p.job_num,p.client,p.loc,
       null, // status — special
-      p.job_value?centsToDisplay(p.job_value):'—',
-      taskValTotal>0?centsToDisplay(taskValTotal):'—',
-      p.po_num||'—',p.estimate_num||'—',p.invoice_num||'—',
-      p.locates_req?'✓':'—',p.soils_req?'✓':'—',
-      crews,fmtDate(sp2.s)||'—',fmtDate(sp2.e)||'—',
-      totalWd>0?totalWd+'d':'—'
+      p.job_value?centsToDisplay(p.job_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      taskValTotal>0?centsToDisplay(taskValTotal):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      p.po_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',p.estimate_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',p.invoice_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      p.locates_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',p.soils_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      crews,fmtDate(sp2.s)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',fmtDate(sp2.e)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      totalWd>0?totalWd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'
     ];
     cells.forEach((val,ci)=>{
       const td=el('td');
@@ -1387,19 +1420,19 @@ function printStatusReport(){
   projs.forEach(p=>{
     const tasks=projTasks(p.id);
     const sp2=projSpan(tasks);
-    const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join(', ')||'—';
+    const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
     const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
     const taskValTotal=tasks.reduce((s,t)=>s+(t.task_value||0),0);
     const c=ST_CLR[p.status]||'#666';
     rows+=`<tr>
       <td>${p.job_num}</td><td>${p.client}</td><td style="max-width:140px">${p.loc}</td>
       <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${c};margin-right:3px;vertical-align:middle"></span>${p.status}</td>
-      <td>${p.job_value?centsToDisplay(p.job_value):'—'}</td>
-      <td${taskValTotal>0&&p.job_value&&Math.abs(taskValTotal-p.job_value)/p.job_value>0.05?' style="color:#92400e;font-weight:700"':''}>${taskValTotal>0?centsToDisplay(taskValTotal):'—'}</td>
-      <td>${p.po_num||'—'}</td><td>${p.estimate_num||'—'}</td><td>${p.invoice_num||'—'}</td>
-      <td>${p.locates_req?'✓':'—'}</td><td>${p.soils_req?'✓':'—'}</td>
-      <td>${crews}</td><td>${fmtDate(sp2.s)||'—'}</td><td>${fmtDate(sp2.e)||'—'}</td>
-      <td>${totalWd>0?totalWd+'d':'—'}</td>
+      <td>${p.job_value?centsToDisplay(p.job_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td${taskValTotal>0&&p.job_value&&Math.abs(taskValTotal-p.job_value)/p.job_value>0.05?' style="color:#92400e;font-weight:700"':''}>${taskValTotal>0?centsToDisplay(taskValTotal):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${p.po_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${p.estimate_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${p.invoice_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${p.locates_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${p.soils_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${crews}</td><td>${fmtDate(sp2.s)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${fmtDate(sp2.e)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${totalWd>0?totalWd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
     </tr>`;
   });
 
@@ -1504,21 +1537,26 @@ function printGanttPdf(ms){
   let tableRows='';
   const colSpan=showValues?7:6;
   projs.forEach(p=>{
-    const tasks=projTasks(p.id).filter(t=>!crewFilter.length||crewFilter.includes(t.crew));
+    const tasks=projTasks(p.id).filter(t=>{
+      if(!crewFilter.length)return true;
+      return t.segs.some(sg=>(sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[])).some(c=>crewFilter.includes(c)));
+    });
     tasks.forEach(task=>{
       const overlapping=(task.segs||[]).filter(seg=>seg.s&&seg.e&&seg.e>=from&&seg.s<=to);
       if(!overlapping.length)return;
-      const crew=cm[task.crew];
       const wd=workDays(overlapping,holDates,task.wknd);
       const dates=overlapping.map(sg=>fmtDate(sg.s)+(sg.s!==sg.e?'–'+fmtDate(sg.e):'')).join(', ');
+      const segCrewNames=[...new Set(overlapping.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(task.crew?[task.crew]:[])))];
+      const primaryColor=cm[segCrewNames[0]]?.color||'#aaa';
+      const crewDisplay=segCrewNames.join(' + ')||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
       tableRows+=`<tr>
         <td>${p.job_num}</td>
         <td>${p.client}</td>
         <td>${task.descr||''}</td>
-        <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${crew?crew.color:'#aaa'};margin-right:4px;vertical-align:middle"></span>${task.crew||'—'}</td>
+        <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${primaryColor};margin-right:4px;vertical-align:middle"></span>${crewDisplay}</td>
         <td>${dates}</td>
-        <td>${wd>0?wd+'d':'—'}</td>
-        ${showValues?`<td>${task.task_value?centsToDisplay(task.task_value):'—'}</td>`:''}
+        <td>${wd>0?wd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+        ${showValues?`<td>${task.task_value?centsToDisplay(task.task_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>`:''}
       </tr>`;
     });
   });
@@ -1658,38 +1696,45 @@ function buildGanttSVG(from,to,crewFilter){
         }
       }
     }else{
-      // Task row — alternating background
+      // Task row
       const bg=ri%2===0?'#EFF3FA':'#F8FAFC';
       svg+=`<rect x="0" y="${y}" width="${leftW}" height="${h}" fill="${bg}"/>`;
       svg+=`<rect x="${leftW}" y="${y}" width="${totalW-leftW}" height="${h}" fill="${bg}"/>`;
-      // Separator lines
       svg+=`<line x1="0" y1="${y+h}" x2="${totalW}" y2="${y+h}" stroke="#e2e6ed" stroke-width="1"/>`;
       svg+=`<line x1="${leftW}" y1="${y}" x2="${leftW}" y2="${y+h}" stroke="#c0cce0" stroke-width="2"/>`;
-      // Task label
       const descr=(row.task.descr||'').slice(0,38);
       svg+=`<text x="22" y="${y+h/2+4}" font-size="9" fill="#1a2b4a">${escSvg(descr)}</text>`;
-      // Crew colour dot
-      const crew=cm[row.task.crew];
-      if(crew)svg+=`<circle cx="13" cy="${y+h/2}" r="4" fill="${crew.color}"/>`;
-      // Segment bars
-      const color=crew?crew.color:'#aaa';
+      // Crew dot (primary crew of first segment)
+      const firstSegCrews=(row.task.segs[0]?.crews&&row.task.segs[0].crews.length>0)?row.task.segs[0].crews:(row.task.crew?[row.task.crew]:[]);
+      const firstCrew=cm[firstSegCrews[0]];
+      if(firstCrew)svg+=`<circle cx="13" cy="${y+h/2}" r="4" fill="${firstCrew.color}"/>`;
+      // Segment bars — per-segment crew colors
       (row.task.segs||[]).forEach(seg=>{
         if(!seg.s||!seg.e)return;
         if(seg.e<from||seg.s>to)return;
+        const segCrews=seg.crews&&seg.crews.length>0?seg.crews:(row.task.crew?[row.task.crew]:[]);
+        const primCrew=cm[segCrews[0]];const color=primCrew?primCrew.color:'#aaa';
+        const secCrew=segCrews[1]?cm[segCrews[1]]:null;
         const clampS=seg.s<from?from:seg.s;
         const clampE=seg.e>to?to:seg.e;
         const si=dateStrs.indexOf(clampS);
         const ei=dateStrs.indexOf(clampE);
         if(si<0||ei<0||ei<si)return;
-        // Skip weekends/holidays for visual accuracy
         let rxs=null,rxe=null;
         for(let i=si;i<=ei;i++){
           const wd=dates[i].getDay();
           const skip=!row.task.wknd&&(wd===0||wd===6||holDates.includes(dateStrs[i]));
           if(!skip){if(rxs===null)rxs=i;rxe=i;}
-          else{if(rxs!==null){svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="${h-6}" fill="${color}" rx="3"/>`;rxs=rxe=null;}}
+          else{if(rxs!==null){
+            svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="${h-6}" fill="${color}" rx="3"/>`;
+            if(secCrew)svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="3" fill="${secCrew.color}" rx="1"/>`;
+            rxs=rxe=null;
+          }}
         }
-        if(rxs!==null)svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="${h-6}" fill="${color}" rx="3"/>`;
+        if(rxs!==null){
+          svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="${h-6}" fill="${color}" rx="3"/>`;
+          if(secCrew)svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="3" fill="${secCrew.color}" rx="1"/>`;
+        }
       });
     }
     y+=h;
@@ -1756,7 +1801,7 @@ function csvRowValues(p,holDates){
   const tasks=projTasks(p.id);
   const sp2=projSpan(tasks);
   const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
-  const crews=[...new Set(tasks.map(t=>t.crew).filter(Boolean))].join('; ')||'';
+  const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join('; ')||'';
   const taskDescs=tasks.map(t=>t.descr).filter(Boolean).join('; ');
   return[
     p.job_num,p.client,p.loc,p.status,
@@ -2060,21 +2105,23 @@ function buildGantt(){
       if(row.proj.soils_req){const sb3=el('span');sb3.className='req-flag on';sb3.title='Soils report required';sb3.textContent='⚗SOI';lc.appendChild(sb3)}
       const btns=el('div');btns.style.cssText='display:flex;gap:3px;flex-shrink:0;margin-left:4px';
       btns.appendChild(iBtn('+',()=>{
-        const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null}]};
+        const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null,crews:[]}]};
         S.modal={type:'task',t};openModal();
       },'rgba(255,255,255,.7)'));
       btns.appendChild(iBtn('✎',()=>{S.modal={type:'proj',isNew:false,p:{...row.proj}};openModal()},'rgba(255,255,255,.7)'));
       lc.appendChild(btns);
     } else {
-      const crew=cm[row.task.crew];const wd=workDays(row.task.segs,holDates,row.task.wknd);
+      const wd=workDays(row.task.segs,holDates,row.task.wknd);
       lc.style.paddingLeft='22px';
       const arr=el('span');arr.style.cssText='color:#bbb;font-size:11px;flex-shrink:0;margin-right:4px';arr.textContent='↳';lc.appendChild(arr);
       const desc=el('span');desc.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#1a2b4a';desc.textContent=row.task.descr;lc.appendChild(desc);
-      if(crew){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+crew.color+';color:'+crew.tc+';margin:0 4px';cb.textContent=crew.name;lc.appendChild(cb)}
+      // Show all unique crews across all segments
+      const allSegCrews=[...new Set(row.task.segs.flatMap(sg=>sg.crews&&sg.crews.length>0?sg.crews:(row.task.crew?[row.task.crew]:[])))];;
+      allSegCrews.forEach(cn=>{const cr=cm[cn];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc+';margin:0 2px';cb.textContent=cr.name;lc.appendChild(cb)}});
       if(wd>0){const wds=el('span');wds.style.cssText='color:#555;font-size:11px;flex-shrink:0;min-width:26px;text-align:right';wds.textContent=wd+'d';lc.appendChild(wds)}
       // Phase 10 CP2: task value badge
       if(row.task.task_value){const tvb=el('span');tvb.className='task-val-badge';tvb.textContent=centsToBadge(row.task.task_value);tvb.title='Task value: '+centsToDisplay(row.task.task_value);lc.appendChild(tvb)}
-      lc.appendChild(iBtn('✎',()=>{S.modal={type:'task',t:{...row.task,segs:row.task.segs.map(s=>({'s':s.s,'e':s.e})) }};openModal()},'#999'));
+      lc.appendChild(iBtn('✎',()=>{S.modal={type:'task',t:{...row.task,segs:row.task.segs.map(s=>({s:s.s,e:s.e,crews:s.crews?[...s.crews]:[]})) }};openModal()},'#999'));
     }
     g.appendChild(lc);
     const gc=el('div');gc.className='gc'+(isP?'':' gc-grid');gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
@@ -2084,9 +2131,14 @@ function buildGantt(){
       const sp=projSpan(projTasks(row.proj.id));
       if(sp.s&&sp.e){const sb2=el('div');sb2.className='proj-span';sb2.style.cssText='left:'+dayOff(sp.s)*DW+'px;width:'+(dayOff(sp.e)-dayOff(sp.s)+1)*DW+'px;top:50%;transform:translateY(-50%);height:6px';gc.appendChild(sb2)}
     } else {
-      const crew=cm[row.task.crew];const color=crew?crew.color:'#aaa';
       row.task.segs.forEach((seg,si)=>{
         if(!seg.s||!seg.e)return;
+        // Resolve crews for this segment (with backward-compat fallback)
+        const segCrews=seg.crews&&seg.crews.length>0?seg.crews:(row.task.crew?[row.task.crew]:[]);
+        const primaryCrew=cm[segCrews[0]];
+        const color=primaryCrew?primaryCrew.color:'#aaa';
+        const color2=segCrews[1]?cm[segCrews[1]]?.color:null; // secondary crew color
+        const color3=segCrews[2]?cm[segCrews[2]]?.color:null; // tertiary crew color
         const sIdx=dayOff(seg.s),eIdx=dayOff(seg.e);
         if(sIdx<0||eIdx<0||sIdx>NDAYS-1||eIdx>NDAYS-1||sIdx>eIdx)return;
         const bT=3,bH=h-6;const ranges=[];let rs=null,re=null;
@@ -2096,14 +2148,28 @@ function buildGantt(){
         }
         if(rs!==null)ranges.push([rs,re]);
         ranges.forEach(([a,b],ri2)=>{
+          const isFirst=ri2===0&&a===sIdx,isLast=ri2===ranges.length-1&&b===eIdx;
+          const br=(isFirst?'3px':'0')+' '+(isLast?'3px':'0')+' '+(isLast?'3px':'0')+' '+(isFirst?'3px':'0');
+          // Primary bar
           const bd=el('div');bd.className='bar-seg';
-          const br=(ri2===0&&a===sIdx?'3px':'0')+' '+(ri2===ranges.length-1&&b===eIdx?'3px':'0')+' '+(ri2===ranges.length-1&&b===eIdx?'3px':'0')+' '+(ri2===0&&a===sIdx?'3px':'0');
           bd.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;background:'+color+';border-radius:'+br+';opacity:'+(si===0?1:.75);
           gc.appendChild(bd);
+          // Secondary crew: 3px stripe at top of bar
+          if(color2){
+            const s2=el('div');s2.className='bar-seg';
+            s2.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+bT+'px;height:3px;background:'+color2+';border-radius:'+(isFirst?'3px':'0')+' '+(isLast?'3px':'0')+' 0 0;z-index:2;opacity:'+(si===0?1:.75);
+            gc.appendChild(s2);
+          }
+          // Tertiary crew: 3px stripe at bottom of bar
+          if(color3){
+            const s3=el('div');s3.className='bar-seg';
+            s3.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+(bT+bH-3)+'px;height:3px;background:'+color3+';border-radius:0 0 '+(isLast?'3px':'0')+' '+(isFirst?'3px':'0')+';z-index:2;opacity:'+(si===0?1:.75);
+            gc.appendChild(s3);
+          }
         });
         const ov=el('div');ov.className='bar-hit';
         ov.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px';
-        ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e;
+        ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e+(segCrews.length?'\n'+segCrews.join(' + '):'');
         ov.addEventListener('mousedown',e=>{
           e.preventDefault();e.stopPropagation();
           const rect=ov.getBoundingClientRect();const lx=e.clientX-rect.left,rw=rect.width;
@@ -2189,7 +2255,7 @@ function buildBoardCard(p,cm){
   const cl=el('div');cl.style.cssText='font-weight:700;font-size:12px;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px';cl.textContent=p.client;card.appendChild(cl);
   const lo=el('div');lo.style.cssText='font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px';lo.textContent=p.loc;card.appendChild(lo);
   const crd=el('div');crd.style.cssText='display:flex;flex-wrap:wrap;gap:3px';
-  [...new Set(projTasks(p.id).map(t=>t.crew).filter(Boolean))].forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
+  [...new Set(projTasks(p.id).flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
   card.appendChild(crd);
   const bl2=el('div');bl2.style.cssText='font-size:11px;color:#888;margin-top:4px;display:flex;justify-content:space-between;align-items:center';
   const tcount=el('span');tcount.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');bl2.appendChild(tcount);
@@ -2485,7 +2551,7 @@ function buildImportPreview(m,ms){
         id:t.id,project_id:pid,
         descr:t.description+(t.quantity?' — '+t.quantity:''),
         crew:'',status:proj.status,wknd:false,sort_order:i,
-        segs:[{s:null,e:null}]
+        segs:[{s:null,e:null,crews:[]}]
       }));
       for(const task of tasks)await upsertTask(task);
       await loadAll();closeModal();render();
@@ -2600,7 +2666,7 @@ function buildProjModal(m){
   const thdr2=el('div');thdr2.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
   const tcnt=el('span');tcnt.style.cssText='font-weight:700;font-size:13px;color:#1F3864';thdr2.appendChild(tcnt);
   const addt=el('button');addt.className='btn-sm';addt.style.fontWeight='700';addt.textContent='+ Task';
-  addt.onclick=()=>{tasks.push({id:uid(),project_id:p.id,descr:'',crew:'',status:p.status,wknd:false,sort_order:tasks.length,segs:[{s:null,e:null}]});rTL()};
+  addt.onclick=()=>{tasks.push({id:uid(),project_id:p.id,descr:'',crew:'',status:p.status,wknd:false,sort_order:tasks.length,segs:[{s:null,e:null,crews:[]}]});rTL()};
   thdr2.appendChild(addt);tsec.appendChild(thdr2);
   const tl=el('div');tl.className='task-list';
   function rTL(){
@@ -2669,13 +2735,12 @@ function buildTaskModal(m){
   const t=S.modal.t;
   const holDates=S.holidays.map(h=>h.date);
   mhdr(m,'Edit Task');
-  // Ensure segs is a proper mutable array (not read-only proxy)
-  if(!Array.isArray(t.segs)||t.segs.length===0)t.segs=[{s:null,e:null}];
-  else t.segs=t.segs.map(sg=>({s:sg.s||null,e:sg.e||null}));
+  // Ensure segs is a proper mutable array with crews preserved
+  if(!Array.isArray(t.segs)||t.segs.length===0)t.segs=[{s:null,e:null,crews:[]}];
+  else t.segs=t.segs.map(sg=>({s:sg.s||null,e:sg.e||null,crews:Array.isArray(sg.crews)?[...sg.crews]:[]}));
 
   const g=el('div');g.className='fg';
   const dw=el('div');dw.className='fg-full';dw.appendChild(lbl2('Description'));dw.appendChild(inp2(t.descr,e=>{t.descr=e.target.value}));g.appendChild(dw);
-  const crw=el('div');crw.appendChild(lbl2('Crew'));crw.appendChild(inp2(t.crew,e=>{t.crew=e.target.value},'select',[['','— Unassigned —'],...S.crews.map(c=>[c.name,c.name])]));g.appendChild(crw);
   const stw=el('div');stw.appendChild(lbl2('Status'));stw.appendChild(inp2(t.status,e=>{t.status=e.target.value},'select',ST_OPTS.map(s=>[s,s])));g.appendChild(stw);
   const ww=el('div');ww.className='fg-full';ww.style.marginTop='8px';
   const wl=el('label');wl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444';
@@ -2689,7 +2754,7 @@ function buildTaskModal(m){
   const segHdr=el('div');segHdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
   const segTitle=el('span');segTitle.style.cssText='font-weight:700;font-size:12px;color:#1F3864';segTitle.textContent='Scheduled Dates';segHdr.appendChild(segTitle);
   const addBtn=el('button');addBtn.className='btn-sm';addBtn.style.fontWeight='700';addBtn.textContent='+ Add Date';
-  addBtn.onclick=()=>{t.segs.push({s:null,e:null});renderSegs()};
+  addBtn.onclick=()=>{t.segs.push({s:null,e:null,crews:[]});renderSegs()};
   segHdr.appendChild(addBtn);segsDiv.appendChild(segHdr);
 
   const listDiv=el('div'); // rows rendered here
@@ -2701,14 +2766,16 @@ function buildTaskModal(m){
   function renderSegs(){
     listDiv.innerHTML='';
     t.segs.forEach((seg,si)=>{
-      const row=el('div');row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;padding:7px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e4e8f0';
+      const row=el('div');row.style.cssText='margin-bottom:8px;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e4e8f0';
+      // ── Date row ──
+      const dateRow=el('div');dateRow.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:8px';
       // Start
       const sw2=el('div');sw2.style.flex='1';sw2.appendChild(lbl2('Start'));
       const startInp=el('input');startInp.type='date';startInp.className='inp';
       startInp.min='2026-01-01';startInp.max='2026-12-31';
       startInp.value=seg.s||'';
       startInp.onchange=e=>{t.segs[si].s=e.target.value||null;validate();renderWd()};
-      sw2.appendChild(startInp);row.appendChild(sw2);
+      sw2.appendChild(startInp);dateRow.appendChild(sw2);
       // End
       const ew=el('div');ew.style.flex='1';ew.appendChild(lbl2('End'));
       const endInp=el('input');endInp.type='date';endInp.className='inp';
@@ -2717,20 +2784,59 @@ function buildTaskModal(m){
       endInp.onchange=e=>{t.segs[si].e=e.target.value||null;validate();renderWd()};
       ew.appendChild(endInp);
       const errDiv=el('div');errDiv.className='field-err';ew.appendChild(errDiv);
-      row.appendChild(ew);
+      dateRow.appendChild(ew);
       // Days auto-calc
-      const dn=el('div');dn.style.cssText='min-width:38px;text-align:center;padding-bottom:2px';
+      const dn=el('div');dn.style.cssText='min-width:38px;text-align:center;padding-top:18px';
       const dlbl=el('div');dlbl.style.cssText='font-size:10px;color:#888';dlbl.textContent='Days';dn.appendChild(dlbl);
       const dval=el('div');dval.style.cssText='font-size:15px;font-weight:700;color:#1F3864;line-height:1.2';
-      dval.textContent=(seg.s&&seg.e&&seg.e>=seg.s)?workDays([seg],holDates,t.wknd):'—';
-      dn.appendChild(dval);row.appendChild(dn);
-      // Remove button (always shown — user can remove all and add fresh)
-      const xb=el('button');xb.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;border-radius:4px;flex-shrink:0';
+      dval.textContent=(seg.s&&seg.e&&seg.e>=seg.s)?workDays([seg],holDates,t.wknd):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
+      dn.appendChild(dval);dateRow.appendChild(dn);
+      // Remove button
+      const xb=el('button');xb.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;border-radius:4px;flex-shrink:0;margin-top:18px';
       xb.textContent='×';xb.title='Remove this date';
-      xb.onclick=()=>{t.segs.splice(si,1);if(t.segs.length===0)t.segs.push({s:null,e:null});renderSegs()};
-      row.appendChild(xb);
+      xb.onclick=()=>{t.segs.splice(si,1);if(t.segs.length===0)t.segs.push({s:null,e:null,crews:[]});renderSegs()};
+      dateRow.appendChild(xb);
+      row.appendChild(dateRow);
+
+      // ── Crew picker row ──
+      const crewSec=el('div');crewSec.style.cssText='border-top:1px solid #e8ecf2;padding-top:7px';
+      const crewLblRow=el('div');crewLblRow.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:5px';
+      const crewLbl=el('span');crewLbl.style.cssText='font-size:10px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px';crewLbl.textContent='Crew';crewLblRow.appendChild(crewLbl);
+      if(seg.crews&&seg.crews.length>1){
+        const hint=el('span');hint.style.cssText='font-size:10px;color:#888';hint.textContent='1st = bar colour · 2nd = stripe';crewLblRow.appendChild(hint);
+      }
+      crewSec.appendChild(crewLblRow);
+      const crewChips=el('div');crewChips.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
+      S.crews.forEach(crew=>{
+        const idx=(seg.crews||[]).indexOf(crew.name);
+        const isSelected=idx>=0;
+        const chip=el('button');
+        chip.style.cssText='padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;transition:all .12s;position:relative;'
+          +(isSelected
+            ?'background:'+crew.color+';color:'+crew.tc+';border:2px solid '+crew.color+';opacity:1'
+            :'background:#f0f2f5;color:#888;border:2px solid #e4e8f0;opacity:.7');
+        chip.textContent=crew.name;
+        // Show order badge for selected crews
+        if(isSelected&&(seg.crews||[]).length>1){
+          const badge=el('span');badge.style.cssText='position:absolute;top:-5px;right:-4px;background:#fff;color:'+crew.color+';border:1.5px solid '+crew.color+';border-radius:8px;font-size:8px;font-weight:800;padding:0 3px;line-height:13px;min-width:13px;text-align:center';
+          badge.textContent=idx+1;chip.appendChild(badge);
+        }
+        chip.onclick=()=>{
+          const current=t.segs[si].crews||[];
+          const pos=current.indexOf(crew.name);
+          if(pos>=0){t.segs[si].crews=current.filter(c=>c!==crew.name)}
+          else{t.segs[si].crews=[...current,crew.name]}
+          // Update task.crew to reflect first crew of first segment
+          if(si===0)t.crew=(t.segs[0].crews[0])||'';
+          renderSegs();
+        };
+        crewChips.appendChild(chip);
+      });
+      crewSec.appendChild(crewChips);
+      row.appendChild(crewSec);
       listDiv.appendChild(row);
-      // Inline validation
+
+      // Inline date validation
       function validate(){
         const s=t.segs[si]?.s,e2=t.segs[si]?.e;
         if(s&&e2&&e2<s){endInp.classList.add('inp-err');errDiv.textContent='End must be on or after start.'}
