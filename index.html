@@ -1388,9 +1388,9 @@ function buildStatusReportTab(m,ms){
       null, // status — special
       p.job_value?centsToDisplay(p.job_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
       taskValTotal>0?centsToDisplay(taskValTotal):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
-      p.po_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',p.estimate_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',p.invoice_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      p.po_num||'—',p.estimate_num||'—',p.invoice_num||'—',
       p.locates_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',p.soils_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
-      crews,fmtDate(sp2.s)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',fmtDate(sp2.e)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      crews,fmtDate(sp2.s)||'—',fmtDate(sp2.e)||'—',
       totalWd>0?totalWd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'
     ];
     cells.forEach((val,ci)=>{
@@ -1430,9 +1430,9 @@ function printStatusReport(){
       <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${c};margin-right:3px;vertical-align:middle"></span>${p.status}</td>
       <td>${p.job_value?centsToDisplay(p.job_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
       <td${taskValTotal>0&&p.job_value&&Math.abs(taskValTotal-p.job_value)/p.job_value>0.05?' style="color:#92400e;font-weight:700"':''}>${taskValTotal>0?centsToDisplay(taskValTotal):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
-      <td>${p.po_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${p.estimate_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${p.invoice_num||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${p.po_num||'—'}</td><td>${p.estimate_num||'—'}</td><td>${p.invoice_num||'—'}</td>
       <td>${p.locates_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${p.soils_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
-      <td>${crews}</td><td>${fmtDate(sp2.s)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${fmtDate(sp2.e)||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${crews}</td><td>${fmtDate(sp2.s)||'—'}</td><td>${fmtDate(sp2.e)||'—'}</td>
       <td>${totalWd>0?totalWd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
     </tr>`;
   });
@@ -1549,7 +1549,7 @@ function printGanttPdf(ms){
       const dates=overlapping.map(sg=>fmtDate(sg.s)+(sg.s!==sg.e?'–'+fmtDate(sg.e):'')).join(', ');
       const segCrewNames=[...new Set(overlapping.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(task.crew?[task.crew]:[])))];
       const primaryColor=cm[segCrewNames[0]]?.color||'#aaa';
-      const crewDisplay=segCrewNames.join(' + ')||[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
+      const crewDisplay=segCrewNames.join(' + ')||'—';
       tableRows+=`<tr>
         <td>${p.job_num}</td>
         <td>${p.client}</td>
@@ -2885,7 +2885,7 @@ function buildTaskModal(m){
       const dn=el('div');dn.style.cssText='min-width:38px;text-align:center;padding-top:18px';
       const dlbl=el('div');dlbl.style.cssText='font-size:10px;color:#888';dlbl.textContent='Days';dn.appendChild(dlbl);
       const dval=el('div');dval.style.cssText='font-size:15px;font-weight:700;color:#1F3864;line-height:1.2';
-      dval.textContent=(seg.s&&seg.e&&seg.e>=seg.s)?workDays([seg],holDates,t.wknd):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
+      dval.textContent=(seg.s&&seg.e&&seg.e>=seg.s)?workDays([seg],holDates,t.wknd):'—';
       dn.appendChild(dval);dateRow.appendChild(dn);
       // Remove button
       const xb=el('button');xb.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;border-radius:4px;flex-shrink:0;margin-top:18px';
