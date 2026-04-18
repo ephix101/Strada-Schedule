@@ -77,7 +77,7 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .bar-seg{position:absolute;pointer-events:none}
 .bar-hit{position:absolute;cursor:grab;z-index:5;background:transparent;box-sizing:border-box}
 .bar-hit:active{cursor:grabbing}
-.today-line{position:absolute;top:0;width:2px;pointer-events:none;background:rgba(255,210,0,.5)}
+.today-col{position:absolute;top:0;width:24px;pointer-events:none;background:rgba(255,210,0,0.15);border-left:2px solid rgba(255,210,0,0.7);border-right:1px solid rgba(255,210,0,0.3);}
 .proj-span{position:absolute;pointer-events:none;border-radius:3px;background:rgba(255,255,255,.18)}
 /* Board */
 .board-wrap{flex:1;overflow:auto;padding:16px;background:#f0f2f5}
@@ -283,7 +283,10 @@ input,select,textarea{font-family:inherit;font-size:12px}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
-const GS=new Date(2026,3,1),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
+// GS at noon matches s2d() which returns T12:00:00. Using midnight for GS caused
+// dayOff('2026-04-01') = Math.round(0.5) = 1 instead of 0, shifting every bar
+// one column right and causing Fridays to land in Saturday's skip zone.
+const GS=new Date(2026,3,1,12,0,0),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
 const MONTH_CFG=[
   {l:'APRIL',c:'#1565A9',n:30},{l:'MAY',c:'#217346',n:31},{l:'JUNE',c:'#BF5700',n:30},
   {l:'JULY',c:'#7B3F00',n:31},{l:'AUGUST',c:'#5C2D91',n:31},{l:'SEPTEMBER',c:'#005B70',n:30},
@@ -434,6 +437,8 @@ function setLoading(val){
 // renderSafe() wraps render() so a thrown error never crashes the app
 // silently. On error it logs to console and shows a recoverable message.
 function renderSafe(){
+  // If the loading spinner is still showing but data has arrived, clear it
+  if(S.loading&&S.projects.length>0){setLoading(false);}
   try{render()}catch(e){
     console.error('[Strada] render() threw:',e);
     const main=document.getElementById('main');
@@ -578,18 +583,22 @@ async function enterApp(user){
     setLoading(true);renderSafe();
 
     // Attempt initial load. Do NOT show any error toast here regardless of outcome.
-    // startRealtime() runs unconditionally below and will recover via scheduleReload()
-    // if Supabase was still waking up. Toasting here always produces false alarms.
-    try{await loadAll();}
-    catch(e){console.warn('[Strada] Initial loadAll failed (will recover via realtime):',e.message);}
-
-    setLoading(false);renderSafe();
+    // If loadAll() fails (Supabase waking up), keep the loading spinner — do NOT
+    // render the empty state. startRealtime() will recover via scheduleReload()
+    // and call setLoading(false) once data arrives.
+    try{
+      await loadAll();
+      setLoading(false);renderSafe(); // only clear loading if data actually arrived
+    }catch(e){
+      console.warn('[Strada] Initial loadAll failed — keeping spinner, waiting for realtime:',e.message);
+      // Do not call setLoading(false) here. scheduleReload() will do it.
+    }
     if(!realtimeCh)startRealtime();
 
-    // Late-check: if S.projects is still empty 18 seconds after startup, the
-    // database is genuinely unreachable — not just slow to wake.
+    // Late-check: if still loading or no data after 18s, something is genuinely wrong.
     setTimeout(()=>{
-      if(S.projects.length===0&&!S.loading){
+      if(S.projects.length===0){
+        if(S.loading){setLoading(false);renderSafe();}
         console.warn('[Strada] No data after 18s — database may be unreachable');
         toast('Schedule is empty. Check your connection or visit supabase.com to wake the project.','warn');
       }
@@ -752,7 +761,11 @@ async function loadAll(){
 let _reloadTimer=null;
 function scheduleReload(){
   clearTimeout(_reloadTimer);
-  _reloadTimer=setTimeout(()=>loadAll().then(renderSafe).catch(e=>console.warn('[Strada] realtime reload failed (will retry on next event):',e.message)),400);
+  _reloadTimer=setTimeout(()=>loadAll().then(()=>{
+    // Clear loading spinner if it's still showing (startup recovery path)
+    if(S.loading){setLoading(false);}
+    renderSafe();
+  }).catch(e=>console.warn('[Strada] realtime reload failed (will retry on next event):',e.message)),400);
 }
 
 // Granular realtime handler — updates only the changed row.
@@ -830,7 +843,7 @@ async function seedData(){
 const d2s=d=>d?d.toISOString().slice(0,10):null;
 const s2d=s=>s?new Date(s+'T12:00:00'):null;
 const dayOff=s=>{if(!s)return-1;return Math.round((s2d(s)-GS)/86400000)};
-const offToS=i=>{const d=new Date(GS);d.setDate(d.getDate()+i);return d2s(d)};
+const offToS=i=>{const d=new Date(GS);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10)};
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 
 function workDays(segs,holDates,wknd){
@@ -2170,7 +2183,7 @@ function buildGantt(){
     const gc=el('div');gc.className='gc'+((!isP||S.ganttGrid)?' gc-grid':'');gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
     if(bgGrad)gc.style.backgroundImage=bgGrad;
     if(TODAYIDX>=0&&TODAYIDX<NDAYS){
-      const tl=el('div');tl.className='today-line';
+      const tl=el('div');tl.className='today-col';
       tl.style.cssText='left:'+TODAYIDX*DW+'px;height:'+h+'px';
       tl.title='Today: '+TODAY;
       gc.appendChild(tl);
