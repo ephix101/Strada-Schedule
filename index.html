@@ -1386,12 +1386,12 @@ function buildStatusReportTab(m,ms){
     const cells=[
       p.job_num,p.client,p.loc,
       null, // status — special
-      p.job_value?centsToDisplay(p.job_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
-      taskValTotal>0?centsToDisplay(taskValTotal):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      p.job_value?centsToDisplay(p.job_value):'—',
+      taskValTotal>0?centsToDisplay(taskValTotal):'—',
       p.po_num||'—',p.estimate_num||'—',p.invoice_num||'—',
-      p.locates_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',p.soils_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—',
+      p.locates_req?'✓':'—',p.soils_req?'✓':'—',
       crews,fmtDate(sp2.s)||'—',fmtDate(sp2.e)||'—',
-      totalWd>0?totalWd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'
+      totalWd>0?totalWd+'d':'—'
     ];
     cells.forEach((val,ci)=>{
       const td=el('td');
@@ -1428,12 +1428,12 @@ function printStatusReport(){
     rows+=`<tr>
       <td>${p.job_num}</td><td>${p.client}</td><td style="max-width:140px">${p.loc}</td>
       <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${c};margin-right:3px;vertical-align:middle"></span>${p.status}</td>
-      <td>${p.job_value?centsToDisplay(p.job_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
-      <td${taskValTotal>0&&p.job_value&&Math.abs(taskValTotal-p.job_value)/p.job_value>0.05?' style="color:#92400e;font-weight:700"':''}>${taskValTotal>0?centsToDisplay(taskValTotal):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${p.job_value?centsToDisplay(p.job_value):'—'}</td>
+      <td${taskValTotal>0&&p.job_value&&Math.abs(taskValTotal-p.job_value)/p.job_value>0.05?' style="color:#92400e;font-weight:700"':''}>${taskValTotal>0?centsToDisplay(taskValTotal):'—'}</td>
       <td>${p.po_num||'—'}</td><td>${p.estimate_num||'—'}</td><td>${p.invoice_num||'—'}</td>
-      <td>${p.locates_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td><td>${p.soils_req?'✓':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${p.locates_req?'✓':'—'}</td><td>${p.soils_req?'✓':'—'}</td>
       <td>${crews}</td><td>${fmtDate(sp2.s)||'—'}</td><td>${fmtDate(sp2.e)||'—'}</td>
-      <td>${totalWd>0?totalWd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
+      <td>${totalWd>0?totalWd+'d':'—'}</td>
     </tr>`;
   });
 
@@ -1556,8 +1556,8 @@ function printGanttPdf(ms){
         <td>${task.descr||''}</td>
         <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${primaryColor};margin-right:4px;vertical-align:middle"></span>${crewDisplay}</td>
         <td>${dates}</td>
-        <td>${wd>0?wd+'d':[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>
-        ${showValues?`<td>${task.task_value?centsToDisplay(task.task_value):[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—'}</td>`:''}
+        <td>${wd>0?wd+'d':'—'}</td>
+        ${showValues?`<td>${task.task_value?centsToDisplay(task.task_value):'—'}</td>`:''}
       </tr>`;
     });
   });
