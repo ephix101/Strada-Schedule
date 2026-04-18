@@ -374,7 +374,7 @@ function mkSeeds(){
 // ── SUPABASE & STATE ───────────────────────────────────────────────────────────
 let sb=null,realtimeCh=null,currentUser=null;
 const S={
-  view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',
+  view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',ganttGrid:false,
   projects:[],tasks:[],crews:[],holidays:[],
   loading:false,syncing:false,
   // Phase 2: filter & sort state (persisted to localStorage per user)
@@ -701,7 +701,7 @@ function redoApply(){
 function _applyDragHistory(taskId,si,s,e2){
   S.tasks=S.tasks.map(t=>{
     if(t.id!==taskId)return t;
-    const segs=t.segs.map((sg,i)=>i===si?{s,e:e2}:sg);
+    const segs=t.segs.map((sg,i)=>i===si?{...sg,s,e:e2}:sg);
     return{...t,segs};
   });
   _projTaskCache=null;
@@ -1006,6 +1006,7 @@ function applyFilters(){
   const visibleTasks={};
   projects.forEach(p=>{
     let tasks=projTasks(p.id);
+    if(f.hideComplete)tasks=tasks.filter(t=>t.status!=='Complete');
     if(f.crews.length>0)tasks=tasks.filter(t=>
       t.segs.some(sg=>(sg.crews&&sg.crews.length>0?sg.crews:[t.crew]).some(c=>f.crews.includes(c)))
     );
@@ -1919,20 +1920,48 @@ async function runAnalysis(file,pasteText){
 let drag=null;
 window.addEventListener('mousemove',e=>{
   if(!drag)return;
-  const delta=Math.round((e.clientX-drag.startX)/DW);if(delta===drag.lastDelta)return;drag.lastDelta=delta;
-  const si=dayOff(drag.origS),ei=dayOff(drag.origE);let ns=drag.origS,ne=drag.origE;
-  if(drag.type==='move'){ns=offToS(clamp(si+delta,0,NDAYS-1));ne=offToS(clamp(ei+delta,0,NDAYS-1))}
-  else if(drag.type==='left')ns=offToS(clamp(si+delta,0,ei));
-  else ne=offToS(clamp(ei+delta,si,NDAYS-1));
-  S.tasks=S.tasks.map(t=>t.id!==drag.taskId?t:{...t,segs:t.segs.map((sg,i)=>i!==drag.si?sg:{s:ns,e:ne})});
-  refreshGanttRows();
+  const delta=Math.round((e.clientX-drag.startX)/DW);
+  if(delta===drag.lastDelta)return;
+  drag.lastDelta=delta;
+
+  const origSI=dayOff(drag.origS),origEI=dayOff(drag.origE);
+  let ns=drag.origS,ne=drag.origE;
+  if(drag.type==='move'){
+    ns=offToS(clamp(origSI+delta,0,NDAYS-1));
+    ne=offToS(clamp(origEI+delta,0,NDAYS-1));
+  }else if(drag.type==='left'){
+    ns=offToS(clamp(origSI+delta,0,origEI));
+  }else{
+    ne=offToS(clamp(origEI+delta,origSI,NDAYS-1));
+  }
+  drag.curS=ns;drag.curE=ne;
+
+  const newSI=dayOff(ns),newEI=dayOff(ne);
+  const pxShift=(newSI-origSI)*DW;
+
+  // 1. Move the hit overlay (the drag handle) — instant, no layout
+  const hit=document.querySelector('[data-hit-task="'+drag.taskId+'"][data-hit-si="'+drag.si+'"]');
+  if(hit){
+    hit.style.left=newSI*DW+'px';
+    hit.style.width=(newEI-newSI+1)*DW+'px';
+  }
+  // 2. Shift all bar-seg divs for this task+segment by the pixel delta
+  document.querySelectorAll('[data-bar-task="'+drag.taskId+'"][data-bar-si="'+drag.si+'"]').forEach(bar=>{
+    const origLeft=parseInt(bar.dataset.origLeft,10);
+    bar.style.left=(origLeft+pxShift)+'px';
+  });
+
+  // 3. Keep S.tasks in sync for save on mouseup
+  S.tasks=S.tasks.map(t=>t.id!==drag.taskId?t:
+    {...t,segs:t.segs.map((sg,i)=>i!==drag.si?sg:{...sg,s:ns,e:ne})});
+  _projTaskCache=null;
 });
 window.addEventListener('mouseup',()=>{
-  if(!drag)return;document.body.style.cursor='';
+  if(!drag)return;
+  document.body.style.cursor='';
   const task=S.tasks.find(t=>t.id===drag.taskId);
   if(task){
     const seg=task.segs[drag.si];
-    // Only push undo if position actually changed
     if(seg&&(seg.s!==drag.origS||seg.e!==drag.origE)){
       undoPush({taskId:drag.taskId,si:drag.si,prevS:drag.origS,prevE:drag.origE,newS:seg.s,newE:seg.e});
       refreshToolbar();
@@ -1941,6 +1970,8 @@ window.addEventListener('mouseup',()=>{
     upsertTask(task);
   }
   drag=null;
+  // Single clean rebuild after drop to ensure bars are pixel-perfect
+  refreshGanttRows();
 });
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
@@ -2121,12 +2152,29 @@ function buildGantt(){
       if(wd>0){const wds=el('span');wds.style.cssText='color:#555;font-size:11px;flex-shrink:0;min-width:26px;text-align:right';wds.textContent=wd+'d';lc.appendChild(wds)}
       // Phase 10 CP2: task value badge
       if(row.task.task_value){const tvb=el('span');tvb.className='task-val-badge';tvb.textContent=centsToBadge(row.task.task_value);tvb.title='Task value: '+centsToDisplay(row.task.task_value);lc.appendChild(tvb)}
-      lc.appendChild(iBtn('✎',()=>{S.modal={type:'task',t:{...row.task,segs:row.task.segs.map(s=>({s:s.s,e:s.e,crews:s.crews?[...s.crews]:[]})) }};openModal()},'#999'));
+      lc.appendChild(iBtn('✎',()=>{
+        try{
+          const safeSegs=(row.task.segs||[{s:null,e:null,crews:[]}]).map(s=>({
+            s:s.s||null, e:s.e||null,
+            crews:Array.isArray(s.crews)?[...s.crews]:(row.task.crew?[row.task.crew]:[])
+          }));
+          S.modal={type:'task',t:{...row.task,segs:safeSegs}};
+          openModal();
+        }catch(err){
+          console.error('[Strada] Task modal open failed:',err);
+          toast('⚠ Could not open task editor: '+err.message,'error');
+        }
+      },'#999'));
     }
     g.appendChild(lc);
-    const gc=el('div');gc.className='gc'+(isP?'':' gc-grid');gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
+    const gc=el('div');gc.className='gc'+((!isP||S.ganttGrid)?' gc-grid':'');gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
     if(bgGrad)gc.style.backgroundImage=bgGrad;
-    if(TODAYIDX>=0&&TODAYIDX<NDAYS){const tl=el('div');tl.className='today-line';tl.style.cssText='left:'+(TODAYIDX*DW+DW/2)+'px;height:'+h+'px';gc.appendChild(tl)}
+    if(TODAYIDX>=0&&TODAYIDX<NDAYS){
+      const tl=el('div');tl.className='today-line';
+      tl.style.cssText='left:'+TODAYIDX*DW+'px;height:'+h+'px';
+      tl.title='Today: '+TODAY;
+      gc.appendChild(tl);
+    }
     if(isP){
       const sp=projSpan(projTasks(row.proj.id));
       if(sp.s&&sp.e){const sb2=el('div');sb2.className='proj-span';sb2.style.cssText='left:'+dayOff(sp.s)*DW+'px;width:'+(dayOff(sp.e)-dayOff(sp.s)+1)*DW+'px;top:50%;transform:translateY(-50%);height:6px';gc.appendChild(sb2)}
@@ -2147,27 +2195,37 @@ function buildGantt(){
           if(!skip){if(rs===null)rs=i;re=i}else{if(rs!==null){ranges.push([rs,re]);rs=re=null}}
         }
         if(rs!==null)ranges.push([rs,re]);
+        // Ghost bar: faint full-range bar for visual continuity through weekends
+        if(!row.task.wknd&&sIdx>=0&&eIdx>=0&&sIdx<=NDAYS-1&&eIdx<=NDAYS-1){
+          const ghost=el('div');ghost.className='bar-seg';
+          ghost.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;background:'+color+';border-radius:3px;opacity:'+(si===0?.18:.12);
+          gc.appendChild(ghost);
+        }
         ranges.forEach(([a,b],ri2)=>{
           const isFirst=ri2===0&&a===sIdx,isLast=ri2===ranges.length-1&&b===eIdx;
           const br=(isFirst?'3px':'0')+' '+(isLast?'3px':'0')+' '+(isLast?'3px':'0')+' '+(isFirst?'3px':'0');
           // Primary bar
           const bd=el('div');bd.className='bar-seg';
+          bd.dataset.barTask=row.task.id;bd.dataset.barSi=si;bd.dataset.origLeft=a*DW;
           bd.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+bT+'px;height:'+bH+'px;background:'+color+';border-radius:'+br+';opacity:'+(si===0?1:.75);
           gc.appendChild(bd);
           // Secondary crew: 3px stripe at top of bar
           if(color2){
             const s2=el('div');s2.className='bar-seg';
+            s2.dataset.barTask=row.task.id;s2.dataset.barSi=si;s2.dataset.origLeft=a*DW;
             s2.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+bT+'px;height:3px;background:'+color2+';border-radius:'+(isFirst?'3px':'0')+' '+(isLast?'3px':'0')+' 0 0;z-index:2;opacity:'+(si===0?1:.75);
             gc.appendChild(s2);
           }
           // Tertiary crew: 3px stripe at bottom of bar
           if(color3){
             const s3=el('div');s3.className='bar-seg';
+            s3.dataset.barTask=row.task.id;s3.dataset.barSi=si;s3.dataset.origLeft=a*DW;
             s3.style.cssText='left:'+a*DW+'px;width:'+(b-a+1)*DW+'px;top:'+(bT+bH-3)+'px;height:3px;background:'+color3+';border-radius:0 0 '+(isLast?'3px':'0')+' '+(isFirst?'3px':'0')+';z-index:2;opacity:'+(si===0?1:.75);
             gc.appendChild(s3);
           }
         });
         const ov=el('div');ov.className='bar-hit';
+        ov.dataset.hitTask=row.task.id;ov.dataset.hitSi=si;
         ov.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px';
         ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e+(segCrews.length?'\n'+segCrews.join(' + '):'');
         ov.addEventListener('mousedown',e=>{
@@ -2268,7 +2326,7 @@ function buildBoardCard(p,cm){
 function buildSettings(){
   const wrap=el('div');wrap.className='settings-wrap';
   const stabs=el('div');stabs.className='settings-tabs';
-  [['crews','👷 Crews'],['holidays','📅 Holidays'],['team','👤 Team'],['data','💾 Data']].forEach(([t,l])=>{
+  [['crews','👷 Crews'],['holidays','📅 Holidays'],['team','👤 Team'],['data','💾 Data'],['display','🖥 Display']].forEach(([t,l])=>{
     const b=el('button');b.className='settings-tab';
     b.style.cssText='background:'+(S.settingsTab===t?'#1F3864':'#fff')+';color:'+(S.settingsTab===t?'#fff':'#333');
     b.textContent=l;b.onclick=()=>{S.settingsTab=t;render()};stabs.appendChild(b);
@@ -2277,9 +2335,41 @@ function buildSettings(){
   if(S.settingsTab==='crews')wrap.appendChild(buildCrewsPanel());
   else if(S.settingsTab==='holidays')wrap.appendChild(buildHolsPanel());
   else if(S.settingsTab==='team')wrap.appendChild(buildTeamPanel());
+  else if(S.settingsTab==='display')wrap.appendChild(buildDisplayPanel());
   else wrap.appendChild(buildDataPanel());
   return wrap;
 }
+function buildDisplayPanel(){
+  const d=el('div');
+  const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700;margin-bottom:16px';h.textContent='Display Options';d.appendChild(h);
+
+  function toggleCard(title,desc,checked,onChange){
+    const card=el('div');card.style.cssText='background:#fff;border-radius:8px;padding:14px 16px;margin-bottom:10px;border:1px solid #e4e8f0;display:flex;align-items:flex-start;gap:12px;cursor:pointer';
+    const lbl=el('label');lbl.style.cssText='display:flex;align-items:flex-start;gap:12px;cursor:pointer;width:100%';
+    const cb=el('input');cb.type='checkbox';cb.checked=checked;cb.style.cssText='margin-top:2px;flex-shrink:0;width:15px;height:15px;cursor:pointer';
+    cb.onchange=onChange;
+    const txt=el('div');
+    const ttl=el('div');ttl.style.cssText='font-weight:700;font-size:13px;color:#1a2b4a;margin-bottom:3px';ttl.textContent=title;
+    const dsc=el('div');dsc.style.cssText='font-size:12px;color:#6b7280;line-height:1.5';dsc.textContent=desc;
+    txt.appendChild(ttl);txt.appendChild(dsc);
+    lbl.appendChild(cb);lbl.appendChild(txt);card.appendChild(lbl);
+    card.onclick=e=>{if(e.target!==cb){cb.checked=!cb.checked;cb.onchange({target:cb})}};
+    return card;
+  }
+
+  d.appendChild(toggleCard(
+    '📐 Day grid lines on project rows',
+    'Extends the vertical day separators into project header rows, giving the Gantt a full spreadsheet-style grid. Task rows always show grid lines.',
+    S.ganttGrid,
+    e=>{S.ganttGrid=e.target.checked;render();}
+  ));
+
+  const note=el('div');note.className='info-card';note.style.marginTop='8px';
+  note.innerHTML='<strong>Grid lines</strong> — task rows always show subtle day separators. Enabling this option adds the same lines to project rows for a denser grid appearance.';
+  d.appendChild(note);
+  return d;
+}
+
 function buildCrewsPanel(){
   const d=el('div');const hdr=el('div');hdr.className='panel-hdr';
   const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700';h.textContent='Crew Members';hdr.appendChild(h);
@@ -2735,9 +2825,15 @@ function buildTaskModal(m){
   const t=S.modal.t;
   const holDates=S.holidays.map(h=>h.date);
   mhdr(m,'Edit Task');
-  // Ensure segs is a proper mutable array with crews preserved
-  if(!Array.isArray(t.segs)||t.segs.length===0)t.segs=[{s:null,e:null,crews:[]}];
-  else t.segs=t.segs.map(sg=>({s:sg.s||null,e:sg.e||null,crews:Array.isArray(sg.crews)?[...sg.crews]:[]}));
+  // Ensure segs is a valid mutable array with crews on every segment
+  if(!Array.isArray(t.segs)||t.segs.length===0){
+    t.segs=[{s:null,e:null,crews:[]}];
+  }else{
+    t.segs=t.segs.map(sg=>({
+      s:sg.s||null, e:sg.e||null,
+      crews:Array.isArray(sg.crews)?[...sg.crews]:(t.crew?[t.crew]:[])
+    }));
+  }
 
   const g=el('div');g.className='fg';
   const dw=el('div');dw.className='fg-full';dw.appendChild(lbl2('Description'));dw.appendChild(inp2(t.descr,e=>{t.descr=e.target.value}));g.appendChild(dw);
