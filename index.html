@@ -2622,7 +2622,7 @@ function buildGantt(){
         const ov=el('div');ov.className='bar-hit';
         ov.dataset.hitTask=row.task.id;ov.dataset.hitSi=si;
         ov.style.cssText='left:'+sIdx*DW+'px;width:'+(eIdx-sIdx+1)*DW+'px;top:'+bT+'px;height:'+bH+'px';
-        ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e+(segCrews.length?'\n'+segCrews.join(' + '):'');
+        ov.title=row.task.descr+'\n'+seg.s+' → '+seg.e+(crewsForSeg.length?'\n'+crewsForSeg.join(' + '):'');
         ov.addEventListener('mousedown',e=>{
           e.preventDefault();e.stopPropagation();
           const rect=ov.getBoundingClientRect();const lx=e.clientX-rect.left,rw=rect.width;
