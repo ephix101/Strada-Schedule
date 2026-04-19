@@ -377,7 +377,9 @@ function mkSeeds(){
 // ── SUPABASE & STATE ───────────────────────────────────────────────────────────
 let sb=null,realtimeCh=null,currentUser=null;
 const S={
-  view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',ganttGrid:false,
+  view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',
+  // ganttGrid loaded from config — persisted so it survives page reload
+  ganttGrid:(()=>{try{return JSON.parse(localStorage.getItem(CFG_KEY)||'{}').ganttGrid||false}catch{return false}})(),
   projects:[],tasks:[],crews:[],holidays:[],
   loading:false,syncing:false,
   // Phase 2: filter & sort state (persisted to localStorage per user)
@@ -1544,7 +1546,7 @@ function printGanttPdf(ms){
   const cm=crewMap();
   buildProjTaskCache();
 
-  const svgStr=buildGanttSVG(from,to,crewFilter);
+  const svgStr=buildGanttSVG(from,to,crewFilter,S.ganttGrid);
 
   // Build task table rows
   const projs=applyFilters().projects.filter(p=>!p.archived);
@@ -1618,8 +1620,8 @@ tr:nth-child(even) td{background:#f8fafc}
 }
 
 // buildGanttSVG: renders a print-quality SVG Gantt for the given date range and crew filter.
-function buildGanttSVG(from,to,crewFilter){
-  const dayW=18,leftW=300,rowH=22,projH=28,hdrH=32; // header = month(18)+day(14)
+function buildGanttSVG(from,to,crewFilter,showGrid=false){
+  const dayW=18,leftW=340,daysColW=30,rowH=22,projH=34,hdrH=32;
   const holDates=S.holidays.map(h=>h.date);
   const cm=crewMap();
   buildProjTaskCache();
@@ -1696,10 +1698,16 @@ function buildGanttSVG(from,to,crewFilter){
   rows.forEach((row,ri)=>{
     const h=row.type==='proj'?projH:rowH;
     if(row.type==='proj'){
-      // Project row — full navy background
+      // Project row — full navy background, two lines of info
       svg+=`<rect x="0" y="${y}" width="${totalW}" height="${h}" fill="#2F4F8F"/>`;
-      const label=`${row.proj.job_num}  ${row.proj.client}`.slice(0,52);
-      svg+=`<text x="8" y="${y+h/2+4}" font-size="10" font-weight="700" fill="white">${escSvg(label)}</text>`;
+      // Line 1: job# + client
+      const line1=`${row.proj.job_num}  ${row.proj.client}`.slice(0,55);
+      svg+=`<text x="8" y="${y+11}" font-size="10" font-weight="700" fill="white">${escSvg(line1)}</text>`;
+      // Line 2: address + estimate# + locates flag
+      const locFlag=row.proj.locates_req?'📍LOC':'';
+      const estPart=row.proj.estimate_num?'Est#'+row.proj.estimate_num:'';
+      const line2=[row.proj.loc,estPart,locFlag].filter(Boolean).join('  ·  ').slice(0,60);
+      if(line2)svg+=`<text x="8" y="${y+23}" font-size="8" fill="rgba(255,255,255,0.75)">${escSvg(line2)}</text>`;
       // Project span bar
       const sp=projSpan(projTasks(row.proj.id));
       if(sp.s&&sp.e){
@@ -1716,7 +1724,15 @@ function buildGanttSVG(from,to,crewFilter){
       svg+=`<rect x="${leftW}" y="${y}" width="${totalW-leftW}" height="${h}" fill="${bg}"/>`;
       svg+=`<line x1="0" y1="${y+h}" x2="${totalW}" y2="${y+h}" stroke="#e2e6ed" stroke-width="1"/>`;
       svg+=`<line x1="${leftW}" y1="${y}" x2="${leftW}" y2="${y+h}" stroke="#c0cce0" stroke-width="2"/>`;
-      const descr=(row.task.descr||'').slice(0,38);
+      // Days badge area (right side of left panel)
+      const taskWd=workDays(row.task.segs,holDates,row.task.wknd);
+      if(taskWd>0){
+        svg+=`<rect x="${leftW-daysColW}" y="${y+2}" width="${daysColW-2}" height="${h-4}" fill="#e0e7ff" rx="3"/>`;
+        svg+=`<text x="${leftW-daysColW/2-1}" y="${y+h/2+4}" font-size="8" font-weight="700" fill="#3730a3" text-anchor="middle">${taskWd}d</text>`;
+      }
+      // Separator line between task text and days column
+      svg+=`<line x1="${leftW-daysColW}" y1="${y}" x2="${leftW-daysColW}" y2="${y+h}" stroke="#d0d7e3" stroke-width="0.5"/>`;
+      const descr=(row.task.descr||'').slice(0,34);
       svg+=`<text x="22" y="${y+h/2+4}" font-size="9" fill="#1a2b4a">${escSvg(descr)}</text>`;
       // Crew dot (primary crew of first segment)
       const firstSegCrews=(row.task.segs[0]?.crews&&row.task.segs[0].crews.length>0)?row.task.segs[0].crews:(row.task.crew?[row.task.crew]:[]);
@@ -1754,10 +1770,21 @@ function buildGanttSVG(from,to,crewFilter){
     y+=h;
   });
 
-  // ── Today marker ─────────────────────────────────────────────────────────
+  // ── Grid lines (drawn on top of rows, under today marker) ────────────────
+  if(showGrid){
+    // Vertical day separators across full chart height
+    for(let i=1;i<nDays;i++){
+      const x=leftW+i*dayW;
+      svg+=`<line x1="${x}" y1="${hdrH}" x2="${x}" y2="${totalH}" stroke="rgba(0,0,0,0.06)" stroke-width="1"/>`;
+    }
+  }
+
+  // ── Today marker — full column highlight ─────────────────────────────────
   const todayIdx=dateStrs.indexOf(TODAY);
   if(todayIdx>=0){
-    svg+=`<line x1="${leftW+todayIdx*dayW+dayW/2}" y1="0" x2="${leftW+todayIdx*dayW+dayW/2}" y2="${totalH}" stroke="rgba(255,210,0,0.7)" stroke-width="2"/>`;
+    const tx=leftW+todayIdx*dayW;
+    svg+=`<rect x="${tx}" y="${hdrH}" width="${dayW}" height="${totalH-hdrH}" fill="rgba(255,210,0,0.12)"/>`;
+    svg+=`<line x1="${tx}" y1="0" x2="${tx}" y2="${totalH}" stroke="rgba(255,180,0,0.8)" stroke-width="2"/>`;
   }
 
   // ── Border ───────────────────────────────────────────────────────────────
@@ -2033,7 +2060,7 @@ function buildToolbar(){
   const sp=el('div');sp.className='spacer';t.appendChild(sp);
   const addBtn=el('button');addBtn.className='btn-primary';addBtn.style.fontSize='12px';addBtn.textContent='+ Project';
   addBtn.onclick=()=>{
-    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:false,soils_req:false}};
+    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:false,soils_req:false,notes:null,locate_req_num:null}};
     openModal();
   };t.appendChild(addBtn);
   const impBtn=el('button');impBtn.className='import-btn';impBtn.textContent='📄 Import';
@@ -2374,7 +2401,7 @@ function buildDisplayPanel(){
     '📐 Day grid lines on project rows',
     'Extends the vertical day separators into project header rows, giving the Gantt a full spreadsheet-style grid. Task rows always show grid lines.',
     S.ganttGrid,
-    e=>{S.ganttGrid=e.target.checked;render();}
+    e=>{S.ganttGrid=e.target.checked;saveCfg({ganttGrid:S.ganttGrid});render();}
   ));
 
   const note=el('div');note.className='info-card';note.style.marginTop='8px';
@@ -2721,6 +2748,14 @@ function buildProjModal(m){
   const cliw=el('div');cliw.className='fg-full';cliw.appendChild(lbl2('Client'));cliw.appendChild(inp2(p.client,e=>{p.client=e.target.value}));g1.appendChild(cliw);
   // Location
   const locw=el('div');locw.className='fg-full';locw.appendChild(lbl2('Location / Project Name'));locw.appendChild(inp2(p.loc,e=>{p.loc=e.target.value}));g1.appendChild(locw);
+  // Notes / Comments
+  const notesw=el('div');notesw.className='fg-full';notesw.appendChild(lbl2('Notes / Comments'));
+  const notesInp=el('textarea');notesInp.className='inp';notesInp.rows=2;
+  notesInp.style.cssText='width:100%;resize:vertical;min-height:44px';
+  notesInp.placeholder='Internal notes, site conditions, access instructions…';
+  notesInp.value=p.notes||'';
+  notesInp.oninput=e=>{p.notes=e.target.value||null};
+  notesw.appendChild(notesInp);g1.appendChild(notesw);
   m.appendChild(g1);
 
   // ── Section 2: Requirements ────────────────────────────────────────────────
@@ -2730,12 +2765,16 @@ function buildProjModal(m){
   const locLbl=el('label');locLbl.className='toggle-lbl';
   const locCb=el('input');locCb.type='checkbox';locCb.checked=!!p.locates_req;
   locLbl.appendChild(locCb);locLbl.appendChild(document.createTextNode('Locates Required'));locRow.appendChild(locLbl);sec2.appendChild(locRow);
-  // Locate expiry — shown only when locates_req is on
-  const locExpRow=el('div');locExpRow.style.cssText='padding-left:26px;'+(p.locates_req?'':'display:none');
-  locExpRow.appendChild(lbl2('Locate Expiry Date'));
+  // Locate expiry + request number — shown only when locates_req is on
+  const locExpRow=el('div');locExpRow.style.cssText='padding-left:26px;display:flex;gap:10px;flex-wrap:wrap;'+(p.locates_req?'':'display:none!important');
+  const locExpGrp=el('div');locExpGrp.style.flex='1';locExpGrp.appendChild(lbl2('Locate Expiry Date'));
   const locExpInp=inp2(p.loc_exp||'',e=>{p.loc_exp=e.target.value||null},'date');
-  locExpRow.appendChild(locExpInp);sec2.appendChild(locExpRow);
-  locCb.onchange=e=>{p.locates_req=e.target.checked;locExpRow.style.display=e.target.checked?'block':'none'};
+  locExpGrp.appendChild(locExpInp);locExpRow.appendChild(locExpGrp);
+  const locReqGrp=el('div');locReqGrp.style.flex='1';locReqGrp.appendChild(lbl2('Request # / Ticket'));
+  locReqGrp.appendChild(inp2(p.locate_req_num||'',e=>{p.locate_req_num=e.target.value||null}));
+  locExpRow.appendChild(locReqGrp);
+  sec2.appendChild(locExpRow);
+  locCb.onchange=e=>{p.locates_req=e.target.checked;locExpRow.style.display=e.target.checked?'flex':'none'};
   // Soils toggle
   const soilRow=el('div');soilRow.className='toggle-row';soilRow.style.marginTop='2px';
   const soilLbl=el('label');soilLbl.className='toggle-lbl';
@@ -2776,9 +2815,37 @@ function buildProjModal(m){
     tl.innerHTML='';tcnt.textContent='Tasks ('+tasks.length+')';
     tasks.forEach((t,ti)=>{
       const row=el('div');row.className='task-edit-row';
+      row.draggable=true;
+      row.dataset.idx=ti;
+      row.style.cursor='default';
+      // Drag handle
+      const handle=el('span');handle.textContent='⠿';
+      handle.style.cssText='color:#bbb;font-size:14px;cursor:grab;padding:0 6px 0 2px;flex-shrink:0;user-select:none';
+      handle.title='Drag to reorder';
+      row.appendChild(handle);
       const di=inp2(t.descr,e=>{tasks[ti].descr=e.target.value});di.placeholder='Task description';di.style.flex='1';row.appendChild(di);
       const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:15px;padding:0 4px';
-      db.textContent='×';db.onclick=()=>{tasks.splice(ti,1);rTL()};row.appendChild(db);tl.appendChild(row);
+      db.textContent='×';db.onclick=()=>{tasks.splice(ti,1);rTL()};row.appendChild(db);
+      // HTML5 drag-and-drop for reorder
+      row.addEventListener('dragstart',e=>{
+        e.dataTransfer.effectAllowed='move';
+        e.dataTransfer.setData('text/plain',ti);
+        row.style.opacity='0.4';
+      });
+      row.addEventListener('dragend',()=>{row.style.opacity='1'});
+      row.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move';row.style.background='#e8f0fe'});
+      row.addEventListener('dragleave',()=>{row.style.background=''});
+      row.addEventListener('drop',e=>{
+        e.preventDefault();row.style.background='';
+        const fromIdx=parseInt(e.dataTransfer.getData('text/plain'),10);
+        const toIdx=ti;
+        if(fromIdx===toIdx)return;
+        const moved=tasks.splice(fromIdx,1)[0];
+        tasks.splice(toIdx,0,moved);
+        tasks.forEach((t2,i)=>{t2.sort_order=i});
+        rTL();
+      });
+      tl.appendChild(row);
     });
   }
   rTL();tsec.appendChild(tl);
