@@ -958,13 +958,24 @@ function getLocateBadge(proj){
   if(anyOrdered)return{text:'🟡 PENDING',color:'#854d0e',bg:'#fef9c3',border:'#ca8a04'};
   return{text:'🔵 ORDER',color:'#1d4ed8',bg:'#dbeafe',border:'#3b82f6'};
 }
+
+// ── segCrews: resolve the crew list for a single segment ────────────────────
+// Phase 11+ stores crews per-segment in seg.crews[].
+// Older tasks use the task-level crew string. This helper centralises the
+// backward-compat fallback so it never needs to be repeated inline.
+// Returns an array of crew name strings (may be empty, never null).
+function segCrews(seg,task){
+  if(seg&&Array.isArray(seg.crews)&&seg.crews.length>0)return seg.crews;
+  if(task&&task.crew)return[task.crew];
+  return[];
+}
 function getHolIdxs(){return ALL_DATES.reduce((a,d,i)=>{if(S.holidays.some(h=>h.date===d2s(d)))a.push(i);return a},[])}
 function crewMap(){const m={};S.crews.forEach(c=>{m[c.name]=c});return m}
 // projTasks() is defined above with memoisation cache
 
 const el=tag=>document.createElement(tag);
 function statusBadge(st){const c=ST_CLR[st]||'#6c757d',s=el('span');s.className='status-badge';s.style.cssText='background:'+c+'22;color:'+c+';border:1px solid '+c+'44';s.textContent=st;return s}
-function iBtn(ico,fn,col){const b=el('button');b.className='icon-btn';b.style.color=col||'#555';b.innerHTML=ico;b.onclick=fn;return b}
+function iBtn(ico,fn,col,label){const b=el('button');b.className='icon-btn';b.style.color=col||'#555';b.innerHTML=ico;b.onclick=fn;if(label)b.setAttribute('aria-label',label);return b}
 
 // ── PERFORMANCE: projTasks memoisation ───────────────────────────────────────
 // projTasks() was O(N_tasks) per call; called ~50+ times per render = O(N²).
@@ -1090,7 +1101,7 @@ function applyFilters(){
   // 2. Crew filter — keep project if any task has any segment with a matching crew
   if(f.crews.length>0)projects=projects.filter(p=>
     projTasks(p.id).some(t=>
-      t.segs.some(sg=>(sg.crews&&sg.crews.length>0?sg.crews:[t.crew]).some(c=>f.crews.includes(c)))
+      t.segs.some(sg=>segCrews(sg,t).some(c=>f.crews.includes(c)))
     )
   );
   // 3. Date range — keep project if at least one task overlaps range
@@ -1122,7 +1133,7 @@ function applyFilters(){
     let tasks=projTasks(p.id);
     if(f.hideComplete)tasks=tasks.filter(t=>t.status!=='Complete');
     if(f.crews.length>0)tasks=tasks.filter(t=>
-      t.segs.some(sg=>(sg.crews&&sg.crews.length>0?sg.crews:[t.crew]).some(c=>f.crews.includes(c)))
+      t.segs.some(sg=>segCrews(sg,t).some(c=>f.crews.includes(c)))
     );
     if(f.dateFrom||f.dateTo)tasks=tasks.filter(t=>taskOverlapsRange(t,f.dateFrom,f.dateTo));
     visibleTasks[p.id]=tasks;
@@ -1366,9 +1377,7 @@ function buildFieldScheduleTab(m,ms){
         });
         if(overlapping.length===0)return;
         // Collect all unique crews across overlapping segments
-        const taskCrews=[...new Set(overlapping.flatMap(sg=>
-          sg.crews&&sg.crews.length?sg.crews:(task.crew?[task.crew]:[])
-        ))];
+        const taskCrews=[...new Set(overlapping.flatMap(sg=>segCrews(sg,task)))];
         // Add task to each crew's section (so joint tasks appear under both)
         taskCrews.forEach(cn2=>{
           if(crewTasks[cn2])crewTasks[cn2].push({proj,task,segs:overlapping});
@@ -1435,9 +1444,7 @@ function printFieldSchedule(ms){
     projTasks(proj.id).forEach(task=>{
       const overlapping=(task.segs||[]).filter(seg=>seg.s&&seg.e&&seg.e>=from&&seg.s<=to);
       if(!overlapping.length)return;
-      const taskCrews=[...new Set(overlapping.flatMap(sg=>
-        sg.crews&&sg.crews.length?sg.crews:(task.crew?[task.crew]:[])
-      ))];
+      const taskCrews=[...new Set(overlapping.flatMap(sg=>segCrews(sg,task)))];
       taskCrews.forEach(cn2=>{if(crewTasks[cn2])crewTasks[cn2].push({proj,task,segs:overlapping})});
     });
   });
@@ -1508,7 +1515,7 @@ function buildStatusReportTab(m,ms){
     const tr=el('tr');
     const tasks=projTasks(p.id);
     const sp2=projSpan(tasks);
-    const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
+    const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>segCrews(sg,t))))].filter(Boolean).join(', ')||'—';
     const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
     const taskValTotal=tasks.reduce((s,t)=>s+(t.task_value||0),0);
     const c=ST_CLR[p.status]||'#666';
@@ -1551,7 +1558,7 @@ function printStatusReport(){
   projs.forEach(p=>{
     const tasks=projTasks(p.id);
     const sp2=projSpan(tasks);
-    const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join(', ')||'—';
+    const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>segCrews(sg,t))))].filter(Boolean).join(', ')||'—';
     const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
     const taskValTotal=tasks.reduce((s,t)=>s+(t.task_value||0),0);
     const c=ST_CLR[p.status]||'#666';
@@ -1670,14 +1677,14 @@ function printGanttPdf(ms){
   projs.forEach(p=>{
     const tasks=projTasks(p.id).filter(t=>{
       if(!crewFilter.length)return true;
-      return t.segs.some(sg=>(sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[])).some(c=>crewFilter.includes(c)));
+      return t.segs.some(sg=>segCrews(sg,t).some(c=>crewFilter.includes(c)));
     });
     tasks.forEach(task=>{
       const overlapping=(task.segs||[]).filter(seg=>seg.s&&seg.e&&seg.e>=from&&seg.s<=to);
       if(!overlapping.length)return;
       const wd=workDays(overlapping,holDates,task.wknd);
       const dates=overlapping.map(sg=>fmtDate(sg.s)+(sg.s!==sg.e?'–'+fmtDate(sg.e):'')).join(', ');
-      const segCrewNames=[...new Set(overlapping.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(task.crew?[task.crew]:[])))];
+      const segCrewNames=[...new Set(overlapping.flatMap(sg=>segCrews(sg,task)))];
       const primaryColor=cm[segCrewNames[0]]?.color||'#aaa';
       const crewDisplay=segCrewNames.join(' + ')||'—';
       tableRows+=`<tr>
@@ -1858,9 +1865,9 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
       (row.task.segs||[]).forEach(seg=>{
         if(!seg.s||!seg.e)return;
         if(seg.e<from||seg.s>to)return;
-        const segCrews=seg.crews&&seg.crews.length>0?seg.crews:(row.task.crew?[row.task.crew]:[]);
-        const primCrew=cm[segCrews[0]];const color=primCrew?primCrew.color:'#aaa';
-        const secCrew=segCrews[1]?cm[segCrews[1]]:null;
+        const crewsForSeg=segCrews(seg,row.task);
+        const primCrew=cm[crewsForSeg[0]];const color=primCrew?primCrew.color:'#aaa';
+        const secCrew=crewsForSeg[1]?cm[crewsForSeg[1]]:null;
         const clampS=seg.s<from?from:seg.s;
         const clampE=seg.e>to?to:seg.e;
         const si=dateStrs.indexOf(clampS);
@@ -1975,7 +1982,7 @@ function csvRowValues(p,holDates){
   const tasks=projTasks(p.id);
   const sp2=projSpan(tasks);
   const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
-  const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join('; ')||'';
+  const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>segCrews(sg,t))))].filter(Boolean).join('; ')||'';
   const taskDescs=tasks.map(t=>t.descr).filter(Boolean).join('; ');
   const subtaskCount=tasks.reduce((n,t)=>n+taskSubtasks(t.id).length,0);
   // Locate status string
@@ -2364,7 +2371,7 @@ function buildGantt(){
         const up={...row.proj,collapsed:!row.proj.collapsed};
         S.projects=S.projects.map(p=>p.id===row.proj.id?up:p);
         upsertProject(up);render();
-      },'rgba(255,255,255,.7)'));
+      },'rgba(255,255,255,.7)',(row.proj.collapsed?'Expand ':'Collapse ')+row.proj.client));
       const info=el('div');info.style.cssText='flex:1;overflow:hidden;min-width:0;margin:0 6px';
       const top=el('div');top.style.cssText='display:flex;align-items:center;gap:5px;overflow:hidden';
       const jn=el('span');jn.style.cssText='color:rgba(255,255,255,.6);font-size:11px;font-weight:700;flex-shrink:0';
@@ -2386,8 +2393,8 @@ function buildGantt(){
       btns.appendChild(iBtn('+',()=>{
         const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null,crews:[]}]};
         S.modal={type:'task',t};openModal();
-      },'rgba(255,255,255,.7)'));
-      btns.appendChild(iBtn('✎',()=>{S.modal={type:'proj',isNew:false,p:{...row.proj}};openModal()},'rgba(255,255,255,.7)'));
+      },'rgba(255,255,255,.7)','Add task to '+row.proj.client));
+      btns.appendChild(iBtn('✎',()=>{S.modal={type:'proj',isNew:false,p:{...row.proj}};openModal()},'rgba(255,255,255,.7)','Edit project: '+row.proj.client));
       lc.appendChild(btns);
     } else {
       const wd=workDays(row.task.segs,holDates,row.task.wknd);
@@ -2395,7 +2402,7 @@ function buildGantt(){
       const arr=el('span');arr.style.cssText='color:#bbb;font-size:11px;flex-shrink:0;margin-right:4px';arr.textContent='↳';lc.appendChild(arr);
       const desc=el('span');desc.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#1a2b4a';desc.textContent=row.task.descr;lc.appendChild(desc);
       // Show all unique crews across all segments
-      const allSegCrews=[...new Set(row.task.segs.flatMap(sg=>sg.crews&&sg.crews.length>0?sg.crews:(row.task.crew?[row.task.crew]:[])))];;
+      const allSegCrews=[...new Set(row.task.segs.flatMap(sg=>segCrews(sg,row.task)))];
       allSegCrews.forEach(cn=>{const cr=cm[cn];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc+';margin:0 2px';cb.textContent=cr.name;lc.appendChild(cb)}});
       if(wd>0){const wds=el('span');wds.style.cssText='color:#555;font-size:11px;flex-shrink:0;min-width:26px;text-align:right';wds.textContent=wd+'d';lc.appendChild(wds)}
       // Phase 10 CP2: task value badge
@@ -2427,7 +2434,7 @@ function buildGantt(){
           console.error('[Strada] Task modal open failed:',err);
           toast('⚠ Could not open task editor: '+err.message,'error');
         }
-      },'#999'));
+      },'#999','Edit task: '+row.task.descr.slice(0,40)));
     }
     g.appendChild(lc);
     const gc=el('div');gc.className='gc'+((!isP||S.ganttGrid)?' gc-grid':'');gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
@@ -2445,11 +2452,11 @@ function buildGantt(){
       row.task.segs.forEach((seg,si)=>{
         if(!seg.s||!seg.e)return;
         // Resolve crews for this segment (with backward-compat fallback)
-        const segCrews=seg.crews&&seg.crews.length>0?seg.crews:(row.task.crew?[row.task.crew]:[]);
-        const primaryCrew=cm[segCrews[0]];
+        const crewsForSeg=segCrews(seg,row.task);
+        const primaryCrew=cm[crewsForSeg[0]];
         const color=primaryCrew?primaryCrew.color:'#aaa';
-        const color2=segCrews[1]?cm[segCrews[1]]?.color:null; // secondary crew color
-        const color3=segCrews[2]?cm[segCrews[2]]?.color:null; // tertiary crew color
+        const color2=crewsForSeg[1]?cm[crewsForSeg[1]]?.color:null; // secondary crew color
+        const color3=crewsForSeg[2]?cm[crewsForSeg[2]]?.color:null; // tertiary crew color
         const sIdx=dayOff(seg.s),eIdx=dayOff(seg.e);
         if(sIdx<0||eIdx<0||sIdx>NDAYS-1||eIdx>NDAYS-1||sIdx>eIdx)return;
         const bT=3,bH=h-6;const ranges=[];let rs=null,re=null;
@@ -2576,7 +2583,7 @@ function buildBoardCard(p,cm){
   const cl=el('div');cl.style.cssText='font-weight:700;font-size:12px;color:#222;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px';cl.textContent=p.client;card.appendChild(cl);
   const lo=el('div');lo.style.cssText='font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px';lo.textContent=p.loc;card.appendChild(lo);
   const crd=el('div');crd.style.cssText='display:flex;flex-wrap:wrap;gap:3px';
-  [...new Set(projTasks(p.id).flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
+  [...new Set(projTasks(p.id).flatMap(t=>t.segs.flatMap(sg=>segCrews(sg,t))))].filter(Boolean).forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
   card.appendChild(crd);
   const bl2=el('div');bl2.style.cssText='font-size:11px;color:#888;margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px';
   const tcount=el('span');tcount.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');bl2.appendChild(tcount);
@@ -3095,12 +3102,22 @@ function buildProjModal(m){
   // Expiry warning
   const expWarn=el('div');expWarn.className='fg-full';s3grid.appendChild(expWarn);
   function refreshExpWarn(){
-    if(!p.loc_exp){expWarn.innerHTML='';return}
+    expWarn.innerHTML=''; // safe — only clears the container, no user data involved
+    if(!p.loc_exp)return;
     const exp=new Date(p.loc_exp+'T12:00:00');
     const daysLeft=Math.round((exp-new Date(TODAY+'T12:00:00'))/86400000);
-    if(daysLeft<0){expWarn.innerHTML='<span class="loc-warning" style="background:#fee2e2;color:#dc2626;border:1px solid #dc2626">🔴 Expired '+Math.abs(daysLeft)+' day'+(Math.abs(daysLeft)===1?'':'s')+' ago — remark required before work can proceed</span>'}
-    else if(daysLeft<=3){expWarn.innerHTML='<span class="loc-warning" style="background:#fed7aa;color:#ea580c;border:1px solid #f97316">🟠 Expiring in '+daysLeft+' day'+(daysLeft===1?'':'s')+' — arrange remark soon</span>'}
-    else{expWarn.innerHTML='<span class="loc-warning" style="background:#dcfce7;color:#166534;border:1px solid #16a34a">🟢 Active — '+daysLeft+' days remaining</span>'}
+    const cfg=daysLeft<0
+      ?{text:'🔴 Expired '+Math.abs(daysLeft)+' day'+(Math.abs(daysLeft)===1?'':'s')+' ago — remark required before work can proceed',
+        bg:'#fee2e2',col:'#dc2626',bdr:'#dc2626'}
+      :daysLeft<=3
+      ?{text:'🟠 Expiring in '+daysLeft+' day'+(daysLeft===1?'':'s')+' — arrange remark soon',
+        bg:'#fed7aa',col:'#ea580c',bdr:'#f97316'}
+      :{text:'🟢 Active — '+daysLeft+' days remaining',
+        bg:'#dcfce7',col:'#166534',bdr:'#16a34a'};
+    const sp=el('span');sp.className='loc-warning';
+    sp.style.cssText='background:'+cfg.bg+';color:'+cfg.col+';border:1px solid '+cfg.bdr;
+    sp.textContent=cfg.text; // textContent — never innerHTML — nothing user-supplied flows in
+    expWarn.appendChild(sp);
   }
   refreshExpWarn();
   stage3.appendChild(s3grid);
