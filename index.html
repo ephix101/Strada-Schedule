@@ -172,6 +172,18 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .invoice-prompt{font-size:11px;color:#fd7e14;margin-top:3px;min-height:16px;line-height:1.4}
 .req-flag{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:3px}
 .req-flag.on{background:#fff3cd;color:#856404;border:1px solid #ffc107}
+/* Phase 12A: locate workflow */
+.loc-stage-toggle{display:flex;gap:6px;margin:6px 0 2px}
+.loc-stage-btn{flex:1;padding:5px 8px;border:1.5px solid #d1d5db;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;background:#f9fafb;color:#6b7280;transition:all .15s;text-align:center}
+.loc-stage-btn.active-no{border-color:#6b7280;background:#f3f4f6;color:#374151}
+.loc-stage-btn.active-yes{border-color:#1d4ed8;background:#dbeafe;color:#1d4ed8}
+.loc-stage-btn.active-unknown{border-color:#d97706;background:#fef3c7;color:#92400e}
+.loc-stage2,.loc-stage3{margin-top:8px;padding:10px 12px;border-radius:8px;border:1px solid #e4e8f0;background:#f8fafc}
+.loc-stage2-hdr,.loc-stage3-hdr{font-size:10px;font-weight:800;color:#1F3864;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.loc-ordered-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.loc-ordered-chk{display:flex;align-items:center;gap:6px;min-width:200px;cursor:pointer;font-size:12px;font-weight:600;color:#374151}
+.loc-ticket-inp{flex:1;min-width:140px}
+.loc-warning{font-size:11px;font-weight:700;padding:4px 8px;border-radius:5px;margin-top:6px;display:inline-block}
 /* ── Export modal ─────────────────────────────────────────────────────────── */
 .modal-wide{width:820px;max-width:97vw}
 .exp-tabs{display:flex;gap:2px;margin-bottom:14px;background:#f0f2f5;border-radius:7px;padding:3px}
@@ -859,6 +871,32 @@ function workDays(segs,holDates,wknd){
   return n;
 }
 function projSpan(tasks){let s=null,e=null;tasks.forEach(t=>(t.segs||[]).forEach(sg=>{if(sg.s&&(!s||sg.s<s))s=sg.s;if(sg.e&&(!e||sg.e>e))e=sg.e}));return{s,e}}
+
+// ── Phase 12A: Locate badge helper ────────────────────────────────────────────
+function getLocateBadge(proj){
+  const req=proj.locates_req;
+  // No badge when not required (handles both boolean false and string "no")
+  if(!req||req==='no'||req===false)return null;
+  if(req==='unknown')return{text:'❓ LOC?',color:'#92400e',bg:'#fef3c7',border:'#f59e0b'};
+  // req is "yes" or boolean true — check stages
+  const pubOrd=proj.locate_public_ordered;
+  const privOrd=proj.locate_private_ordered;
+  const pubDone=proj.locate_public_complete;
+  const privDone=proj.locate_private_complete;
+  const anyOrdered=pubOrd||privOrd;
+  const anyDone=pubDone||privDone;
+  // Check expiry (only relevant once something is ordered)
+  if(anyOrdered&&proj.loc_exp){
+    const exp=new Date(proj.loc_exp+'T12:00:00');
+    const today=new Date(TODAY+'T12:00:00');
+    const daysLeft=Math.round((exp-today)/86400000);
+    if(daysLeft<0)return{text:'🔴 EXPIRED',color:'#dc2626',bg:'#fee2e2',border:'#dc2626'};
+    if(daysLeft<=3)return{text:'🟠 EXPIRING',color:'#ea580c',bg:'#fed7aa',border:'#f97316'};
+  }
+  if(anyOrdered&&anyDone)return{text:'🟢 ACTIVE',color:'#166534',bg:'#dcfce7',border:'#16a34a'};
+  if(anyOrdered)return{text:'🟡 PENDING',color:'#854d0e',bg:'#fef9c3',border:'#ca8a04'};
+  return{text:'🔵 ORDER',color:'#1d4ed8',bg:'#dbeafe',border:'#3b82f6'};
+}
 function getHolIdxs(){return ALL_DATES.reduce((a,d,i)=>{if(S.holidays.some(h=>h.date===d2s(d)))a.push(i);return a},[])}
 function crewMap(){const m={};S.crews.forEach(c=>{m[c.name]=c});return m}
 // projTasks() is defined above with memoisation cache
@@ -1711,7 +1749,8 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
       const line1=`${row.proj.job_num}  ${row.proj.client}`.slice(0,55);
       svg+=`<text x="8" y="${y+11}" font-size="10" font-weight="700" fill="white">${escSvg(line1)}</text>`;
       // Line 2: address + estimate# + locates flag
-      const locFlag=row.proj.locates_req?'📍LOC':'';
+      const locBadgeSvg=getLocateBadge(row.proj);
+      const locFlag=locBadgeSvg?locBadgeSvg.text:'';
       const estPart=row.proj.estimate_num?'Est#'+row.proj.estimate_num:'';
       const line2=[row.proj.loc,estPart,locFlag].filter(Boolean).join('  ·  ').slice(0,60);
       if(line2)svg+=`<text x="8" y="${y+23}" font-size="8" fill="rgba(255,255,255,0.75)">${escSvg(line2)}</text>`;
@@ -2132,7 +2171,7 @@ function buildToolbar(){
   const sp=el('div');sp.className='spacer';t.appendChild(sp);
   const addBtn=el('button');addBtn.className='btn-primary';addBtn.style.fontSize='12px';addBtn.textContent='+ Project';
   addBtn.onclick=()=>{
-    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:false,soils_req:false,notes:null,locate_req_num:null}};
+    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:'no',soils_req:false,notes:null,locate_req_num:null,locate_public_ordered:false,locate_private_ordered:false,locate_public_complete:false,locate_private_complete:false,locate_public_req:null,locate_private_req:null}};
     openModal();
   };t.appendChild(addBtn);
   const impBtn=el('button');impBtn.className='import-btn';impBtn.textContent='📄 Import';
@@ -2244,8 +2283,10 @@ function buildGantt(){
       // Phase 8 CP10: value/day badge
       const vpd=projValuePerDay(row.proj);
       if(vpd){const vdb=el('span');vdb.className='val-day-badge';vdb.textContent=fmtValPerDay(vpd);vdb.title='Estimated revenue per working day';lc.appendChild(vdb)}
-      if(row.proj.locates_req){const lb2=el('span');lb2.className='req-flag on';lb2.title='Locates required';lb2.textContent='📍LOC';lc.appendChild(lb2)}
       if(row.proj.soils_req){const sb3=el('span');sb3.className='req-flag on';sb3.title='Soils report required';sb3.textContent='⚗SOI';lc.appendChild(sb3)}
+      // Phase 12A: state-aware locate badge
+      const locBadge=getLocateBadge(row.proj);
+      if(locBadge){const lb2=el('span');lb2.style.cssText='display:inline-flex;align-items:center;font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:3px;background:'+locBadge.bg+';color:'+locBadge.color+';border:1px solid '+locBadge.border;lb2.textContent=locBadge.text;lc.appendChild(lb2)}
       const btns=el('div');btns.style.cssText='display:flex;gap:3px;flex-shrink:0;margin-left:4px';
       btns.appendChild(iBtn('+',()=>{
         const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null,crews:[]}]};
@@ -2837,23 +2878,105 @@ function buildProjModal(m){
 
   // ── Section 2: Requirements ────────────────────────────────────────────────
   const sec2=mkSecHdr(m,'🔧 Requirements');
-  // Locates toggle
-  const locRow=el('div');locRow.className='toggle-row';
-  const locLbl=el('label');locLbl.className='toggle-lbl';
-  const locCb=el('input');locCb.type='checkbox';locCb.checked=!!p.locates_req;
-  locLbl.appendChild(locCb);locLbl.appendChild(document.createTextNode('Locates Required'));locRow.appendChild(locLbl);sec2.appendChild(locRow);
-  // Locate expiry + request number — shown only when locates_req is on
-  const locExpRow=el('div');locExpRow.style.cssText='padding-left:26px;display:flex;gap:10px;flex-wrap:wrap;'+(p.locates_req?'':'display:none!important');
-  const locExpGrp=el('div');locExpGrp.style.flex='1';locExpGrp.appendChild(lbl2('Locate Expiry Date'));
-  const locExpInp=inp2(p.loc_exp||'',e=>{p.loc_exp=e.target.value||null},'date');
-  locExpGrp.appendChild(locExpInp);locExpRow.appendChild(locExpGrp);
-  const locReqGrp=el('div');locReqGrp.style.flex='1';locReqGrp.appendChild(lbl2('Request # / Ticket'));
-  locReqGrp.appendChild(inp2(p.locate_req_num||'',e=>{p.locate_req_num=e.target.value||null}));
-  locExpRow.appendChild(locReqGrp);
-  sec2.appendChild(locExpRow);
-  locCb.onchange=e=>{p.locates_req=e.target.checked;locExpRow.style.display=e.target.checked?'flex':'none'};
+
+  // ── STAGE 1: Does this project require locates? ──────────────────────────
+  const locHdr=el('div');locHdr.style.cssText='font-size:11px;font-weight:700;color:#374151;margin-bottom:4px';locHdr.textContent='Utility Locates';sec2.appendChild(locHdr);
+
+  // Normalise legacy boolean → string
+  if(p.locates_req===true)p.locates_req='yes';
+  else if(p.locates_req===false||!p.locates_req)p.locates_req='no';
+
+  const locToggle=el('div');locToggle.className='loc-stage-toggle';
+  function mkLocBtn(val,label){
+    const b=el('button');b.type='button';b.className='loc-stage-btn';b.dataset.val=val;b.textContent=label;
+    b.onclick=()=>{p.locates_req=val;refreshLocUI()};
+    return b;
+  }
+  const btnNo=mkLocBtn('no','✕  No');
+  const btnYes=mkLocBtn('yes','✓  Yes');
+  const btnUnk=mkLocBtn('unknown','?  Unknown');
+  locToggle.appendChild(btnNo);locToggle.appendChild(btnYes);locToggle.appendChild(btnUnk);
+  sec2.appendChild(locToggle);
+
+  // ── STAGE 2: Have locates been ordered? (shown when locates_req="yes") ───
+  const stage2=el('div');stage2.className='loc-stage2';
+  const s2hdr=el('div');s2hdr.className='loc-stage2-hdr';s2hdr.textContent='Stage 2 — Have locates been ordered?';stage2.appendChild(s2hdr);
+
+  // Public locates row
+  const pubRow=el('div');pubRow.className='loc-ordered-row';
+  const pubChkLbl=el('label');pubChkLbl.className='loc-ordered-chk';
+  const pubChk=el('input');pubChk.type='checkbox';pubChk.checked=!!p.locate_public_ordered;
+  pubChk.onchange=e=>{p.locate_public_ordered=e.target.checked;refreshLocUI()};
+  pubChkLbl.appendChild(pubChk);pubChkLbl.appendChild(document.createTextNode('Public (Ontario One Call)'));
+  const pubTicket=el('input');pubTicket.className='inp loc-ticket-inp';pubTicket.type='text';
+  pubTicket.placeholder='Ticket / request #';pubTicket.value=p.locate_public_req||'';
+  pubTicket.oninput=e=>{p.locate_public_req=e.target.value||null};
+  pubRow.appendChild(pubChkLbl);pubRow.appendChild(pubTicket);stage2.appendChild(pubRow);
+
+  // Private locates row
+  const privRow=el('div');privRow.className='loc-ordered-row';
+  const privChkLbl=el('label');privChkLbl.className='loc-ordered-chk';
+  const privChk=el('input');privChk.type='checkbox';privChk.checked=!!p.locate_private_ordered;
+  privChk.onchange=e=>{p.locate_private_ordered=e.target.checked;refreshLocUI()};
+  privChkLbl.appendChild(privChk);privChkLbl.appendChild(document.createTextNode('Private (utility locator)'));
+  const privTicket=el('input');privTicket.className='inp loc-ticket-inp';privTicket.type='text';
+  privTicket.placeholder='Ticket / request #';privTicket.value=p.locate_private_req||'';
+  privTicket.oninput=e=>{p.locate_private_req=e.target.value||null};
+  privRow.appendChild(privChkLbl);privRow.appendChild(privTicket);stage2.appendChild(privRow);
+  sec2.appendChild(stage2);
+
+  // ── STAGE 3: Are locates complete and active? (shown when any ordered) ───
+  const stage3=el('div');stage3.className='loc-stage3';
+  const s3hdr=el('div');s3hdr.className='loc-stage3-hdr';s3hdr.textContent='Stage 3 — Are locates complete and active?';stage3.appendChild(s3hdr);
+
+  const s3grid=el('div');s3grid.className='fg';
+  // Public complete
+  const pubDoneRow=el('div');pubDoneRow.className='fg-full';
+  const pubDoneLbl=el('label');pubDoneLbl.className='toggle-lbl';
+  const pubDoneCb=el('input');pubDoneCb.type='checkbox';pubDoneCb.checked=!!p.locate_public_complete;
+  pubDoneCb.onchange=e=>{p.locate_public_complete=e.target.checked};
+  pubDoneLbl.appendChild(pubDoneCb);pubDoneLbl.appendChild(document.createTextNode('Public locates complete & active'));
+  pubDoneRow.appendChild(pubDoneLbl);s3grid.appendChild(pubDoneRow);
+  // Private complete
+  const privDoneRow=el('div');privDoneRow.className='fg-full';
+  const privDoneLbl=el('label');privDoneLbl.className='toggle-lbl';
+  const privDoneCb=el('input');privDoneCb.type='checkbox';privDoneCb.checked=!!p.locate_private_complete;
+  privDoneCb.onchange=e=>{p.locate_private_complete=e.target.checked};
+  privDoneLbl.appendChild(privDoneCb);privDoneLbl.appendChild(document.createTextNode('Private locates complete & active'));
+  privDoneRow.appendChild(privDoneLbl);s3grid.appendChild(privDoneRow);
+  // Expiry date
+  const expW=el('div');expW.appendChild(lbl2('Expiry Date'));
+  const expInp=inp2(p.loc_exp||'',e=>{p.loc_exp=e.target.value||null;refreshExpWarn()},'date');
+  expW.appendChild(expInp);s3grid.appendChild(expW);
+  // Expiry warning
+  const expWarn=el('div');expWarn.className='fg-full';s3grid.appendChild(expWarn);
+  function refreshExpWarn(){
+    if(!p.loc_exp){expWarn.innerHTML='';return}
+    const exp=new Date(p.loc_exp+'T12:00:00');
+    const daysLeft=Math.round((exp-new Date(TODAY+'T12:00:00'))/86400000);
+    if(daysLeft<0){expWarn.innerHTML='<span class="loc-warning" style="background:#fee2e2;color:#dc2626;border:1px solid #dc2626">🔴 Expired '+Math.abs(daysLeft)+' day'+(Math.abs(daysLeft)===1?'':'s')+' ago — remark required before work can proceed</span>'}
+    else if(daysLeft<=3){expWarn.innerHTML='<span class="loc-warning" style="background:#fed7aa;color:#ea580c;border:1px solid #f97316">🟠 Expiring in '+daysLeft+' day'+(daysLeft===1?'':'s')+' — arrange remark soon</span>'}
+    else{expWarn.innerHTML='<span class="loc-warning" style="background:#dcfce7;color:#166534;border:1px solid #16a34a">🟢 Active — '+daysLeft+' days remaining</span>'}
+  }
+  refreshExpWarn();
+  stage3.appendChild(s3grid);
+  sec2.appendChild(stage3);
+
+  // ── refresh visibility of stages based on current state ──────────────────
+  function refreshLocUI(){
+    const req=p.locates_req;
+    [btnNo,btnYes,btnUnk].forEach(b=>{
+      b.className='loc-stage-btn';
+      if(b.dataset.val===req)b.className+=' active-'+req;
+    });
+    stage2.style.display=req==='yes'?'block':'none';
+    const anyOrdered=p.locate_public_ordered||p.locate_private_ordered;
+    stage3.style.display=(req==='yes'&&anyOrdered)?'block':'none';
+  }
+  refreshLocUI();
+
   // Soils toggle
-  const soilRow=el('div');soilRow.className='toggle-row';soilRow.style.marginTop='2px';
+  const soilRow=el('div');soilRow.className='toggle-row';soilRow.style.marginTop='8px';
   const soilLbl=el('label');soilLbl.className='toggle-lbl';
   const soilCb=el('input');soilCb.type='checkbox';soilCb.checked=!!p.soils_req;
   soilCb.onchange=e=>{p.soils_req=e.target.checked};
