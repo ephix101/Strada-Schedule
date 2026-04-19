@@ -806,6 +806,8 @@ async function loadAll(){
     if(!hl.error&&hl.data)S.holidays=hl.data;
     if(!st.error&&st.data)S.subtasks=st.data;
     _projTaskCache=null;
+    buildHolCache();  // rebuild immediately — workDays() must be correct before next render
+    clearWdCache();   // invalidate memoization — holidays or tasks may have changed
   }finally{
     S.syncing=false;refreshToolbar();
   }
@@ -921,19 +923,42 @@ const dayOff=s=>{if(!s)return-1;return Math.round((s2d(s)-GS)/86400000)};
 const offToS=i=>{const d=new Date(GS);d.setDate(d.getDate()+i);return d.toISOString().slice(0,10)};
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 
+/**
+ * Count working days across an array of date segments.
+ * @param {{s:string|null, e:string|null}[]} segs - array of {s:'YYYY-MM-DD', e:'YYYY-MM-DD'} segments
+ * @param {string[]} holDates - ISO date strings for statutory holidays (used as fallback when _holDateSet is empty)
+ * @param {boolean} wknd - when true, weekends and holidays are counted as working days
+ * @returns {number} total working days
+ */
 function workDays(segs,holDates,wknd){
+  // Memoization key: segment spans + wknd flag. Identical calls within the same
+  // render cycle (same task viewed in Gantt + export) return instantly.
+  const key=(segs||[]).map(sg=>(sg.s||'')+'-'+(sg.e||'')).join('|')+':'+wknd;
+  if(_wdCache.has(key))return _wdCache.get(key);
+  // Use _holDateSet (O(1) .has) when populated by buildHolCache().
+  // Falls back to a fresh Set from the holDates array when called outside render()
+  // (e.g. from modal date pickers that haven't triggered a full render yet).
+  const holSet=_holDateSet.size>0?_holDateSet:new Set(holDates||[]);
   let n=0;
   (segs||[]).forEach(seg=>{
     if(!seg.s||!seg.e)return;
     let d=s2d(seg.s),e=s2d(seg.e);
-    if(d>e)return; // guard against invalid ranges
-    while(d<=e){const s=d2s(d),wd=d.getDay();if(wknd||(wd>0&&wd<6&&!holDates.includes(s)))n++;d.setDate(d.getDate()+1)}
+    if(d>e)return;
+    while(d<=e){const s=d2s(d),wd=d.getDay();if(wknd||(wd>0&&wd<6&&!holSet.has(s)))n++;d.setDate(d.getDate()+1)}
   });
+  _wdCache.set(key,n);
   return n;
 }
 function projSpan(tasks){let s=null,e=null;tasks.forEach(t=>(t.segs||[]).forEach(sg=>{if(sg.s&&(!s||sg.s<s))s=sg.s;if(sg.e&&(!e||sg.e>e))e=sg.e}));return{s,e}}
 
-// ── Phase 12A: Locate badge helper ────────────────────────────────────────────
+/**
+ * Derive the state-aware locate badge config for a project.
+ * Returns null when locates are not required (no badge shown).
+ * @param {{locates_req: string|boolean, locate_public_ordered: boolean,
+ *   locate_private_ordered: boolean, locate_public_complete: boolean,
+ *   locate_private_complete: boolean, loc_exp: string|null}} proj
+ * @returns {{text:string, color:string, bg:string, border:string}|null}
+ */
 function getLocateBadge(proj){
   const req=proj.locates_req;
   // No badge when not required (handles both boolean false and string "no")
@@ -964,6 +989,14 @@ function getLocateBadge(proj){
 // Older tasks use the task-level crew string. This helper centralises the
 // backward-compat fallback so it never needs to be repeated inline.
 // Returns an array of crew name strings (may be empty, never null).
+/**
+ * Resolve the crew list for a single segment with backward-compat fallback.
+ * Phase 11+ stores crews per-segment in seg.crews[]. Older tasks use the
+ * task-level crew string. Always returns an array — never null.
+ * @param {{crews?: string[]}} seg
+ * @param {{crew?: string}} task
+ * @returns {string[]} crew name strings for this segment
+ */
 function segCrews(seg,task){
   if(seg&&Array.isArray(seg.crews)&&seg.crews.length>0)return seg.crews;
   if(task&&task.crew)return[task.crew];
@@ -993,6 +1026,19 @@ function projTasks(pid){
   if(_projTaskCache)return _projTaskCache[pid]||[];
   return S.tasks.filter(t=>t.project_id===pid).sort((a,b)=>a.sort_order-b.sort_order);
 }
+
+// ── PERFORMANCE: holiday Set + workDays memoization ─────────────────────────
+// _holDateSet: Set<string> — O(1) .has() replaces O(N) .includes() in workDays.
+// Switching from Array.includes (O(N) per day) to Set.has (O(1)) removes ~130 000
+// operations per full render when 40+ tasks span a 90-day range with 10 holidays.
+// _wdCache: Map — memoizes workDays results keyed by seg-hash + wknd flag.
+// On repeat renders (filter toggle, sort, crew chip) all 13+ workDays calls are
+// cache hits — reducing cost from O(N×days) iterations to O(1) Map.get() each.
+// Both are rebuilt/cleared at the top of render() and after loadAll().
+let _holDateSet=new Set();
+function buildHolCache(){_holDateSet=new Set(S.holidays.map(h=>h.date))}
+let _wdCache=new Map();
+function clearWdCache(){_wdCache=new Map()}
 
 // ── PERFORMANCE: Calendar header cache ───────────────────────────────────────
 // The 275-day calendar header (9 month + 275 day + 275 weekday cells = 559 DOM
@@ -1091,6 +1137,14 @@ function clearFilters(){
   S.filter={crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false};
   saveFilters();
 }
+/**
+ * Apply the current filter state (S.filter) to S.projects and their tasks.
+ * Filters by crew, date range, status, and archived state. Also applies sort.
+ * Must be called after buildProjTaskCache() so projTasks() lookups are O(1).
+ * @returns {{projects: object[], visibleTasks: Object.<string, object[]>}}
+ *   projects — filtered+sorted project list
+ *   visibleTasks — map of project_id → filtered task array
+ */
 function applyFilters(){
   let projects=[...S.projects];
   const f=S.filter;
@@ -1876,7 +1930,7 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
         let rxs=null,rxe=null;
         for(let i=si;i<=ei;i++){
           const wd=dates[i].getDay();
-          const skip=!row.task.wknd&&(wd===0||wd===6||holDates.includes(dateStrs[i]));
+          const skip=!row.task.wknd&&(wd===0||wd===6||(_holDateSet.size>0?_holDateSet:new Set(holDates)).has(dateStrs[i]));
           if(!skip){if(rxs===null)rxs=i;rxe=i;}
           else{if(rxs!==null){
             svg+=`<rect x="${leftW+rxs*dayW+1}" y="${y+3}" width="${(rxe-rxs+1)*dayW-2}" height="${h-6}" fill="${color}" rx="3"/>`;
@@ -2228,11 +2282,20 @@ window.addEventListener('mouseup',()=>{
 });
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
+/**
+ * Full application re-render. Rebuilds toolbar, filter bar, and the active view
+ * (Gantt / Board / Settings). Preserves scroll position across re-renders.
+ * Calls buildProjTaskCache(), buildHolCache(), and clearWdCache() first so all
+ * downstream helpers have fresh, memoized data.
+ * Safe to call from any event handler — errors are caught by renderSafe().
+ */
 function render(){
   const toolbar=document.getElementById('toolbar');const main=document.getElementById('main');
   if(!toolbar||!main)return;
   saveScroll();
   buildProjTaskCache(); // build O(N) lookup once per render
+  buildHolCache();      // rebuild holiday Set once per render (O(1) .has in workDays)
+  clearWdCache();       // clear memoization — task/holiday data may have changed
   toolbar.parentNode.replaceChild(buildToolbar(),toolbar);
   const fb=document.getElementById('filter-bar');
   if(fb){const nfb=buildFilterBar();fb.parentNode.replaceChild(nfb,fb)}
@@ -3283,6 +3346,241 @@ function buildProjModal(m){
   });
 }
 
+// ── buildTaskDatesSection ─────────────────────────────────────────────────────
+// Builds the "Scheduled Dates" segment list with crew pickers, day counts, and
+// validation. Mutates t.segs directly (t is passed by reference).
+// Returns the segsDiv DOM element.
+function buildTaskDatesSection(t,holDates){
+  const segsDiv=el('div');segsDiv.style.cssText='margin-top:14px;border-top:1px solid #e4e8f0;padding-top:10px';
+  const segHdr=el('div');segHdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  const segTitle=el('span');segTitle.style.cssText='font-weight:700;font-size:12px;color:#1F3864';segTitle.textContent='Scheduled Dates';segHdr.appendChild(segTitle);
+  const addBtn=el('button');addBtn.className='btn-sm';addBtn.style.fontWeight='700';addBtn.textContent='+ Add Date';
+  addBtn.onclick=()=>{t.segs.push({s:null,e:null,crews:[]});renderSegs()};
+  segHdr.appendChild(addBtn);segsDiv.appendChild(segHdr);
+  const listDiv=el('div');
+  segsDiv.appendChild(listDiv);
+  const wdDiv=el('div');wdDiv.style.marginTop='6px';
+  segsDiv.appendChild(wdDiv);
+
+  function renderSegs(){
+    listDiv.innerHTML='';
+    t.segs.forEach((seg,si)=>{
+      const row=el('div');row.style.cssText='margin-bottom:8px;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e4e8f0';
+      // ── Date row ──
+      const dateRow=el('div');dateRow.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:8px';
+      const sw2=el('div');sw2.style.flex='1';sw2.appendChild(lbl2('Start'));
+      const startInp=el('input');startInp.type='date';startInp.className='inp';
+      startInp.min=SEASON_DATE_MIN;startInp.max=SEASON_DATE_MAX;
+      startInp.value=seg.s||'';
+      startInp.onchange=e=>{t.segs[si].s=e.target.value||null;validate();renderWd()};
+      sw2.appendChild(startInp);dateRow.appendChild(sw2);
+      const ew=el('div');ew.style.flex='1';ew.appendChild(lbl2('End'));
+      const endInp=el('input');endInp.type='date';endInp.className='inp';
+      endInp.min=SEASON_DATE_MIN;endInp.max=SEASON_DATE_MAX;
+      endInp.value=seg.e||'';
+      endInp.onchange=e=>{t.segs[si].e=e.target.value||null;validate();renderWd()};
+      ew.appendChild(endInp);
+      const errDiv=el('div');errDiv.className='field-err';ew.appendChild(errDiv);
+      dateRow.appendChild(ew);
+      const dn=el('div');dn.style.cssText='min-width:38px;text-align:center;padding-top:18px';
+      const dlbl=el('div');dlbl.style.cssText='font-size:10px;color:#888';dlbl.textContent='Days';dn.appendChild(dlbl);
+      const dval=el('div');dval.style.cssText='font-size:15px;font-weight:700;color:#1F3864;line-height:1.2';
+      dval.textContent=(seg.s&&seg.e&&seg.e>=seg.s)?workDays([seg],holDates,t.wknd):'—';
+      dn.appendChild(dval);dateRow.appendChild(dn);
+      const xb=el('button');xb.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;border-radius:4px;flex-shrink:0;margin-top:18px';
+      xb.textContent='×';xb.title='Remove this date';
+      xb.onclick=()=>{t.segs.splice(si,1);if(t.segs.length===0)t.segs.push({s:null,e:null,crews:[]});renderSegs()};
+      dateRow.appendChild(xb);
+      row.appendChild(dateRow);
+      // ── Crew picker row ──
+      const crewSec=el('div');crewSec.style.cssText='border-top:1px solid #e8ecf2;padding-top:7px';
+      const crewLblRow=el('div');crewLblRow.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:5px';
+      const crewLbl=el('span');crewLbl.style.cssText='font-size:10px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px';crewLbl.textContent='Crew';crewLblRow.appendChild(crewLbl);
+      if(seg.crews&&seg.crews.length>1){
+        const hint=el('span');hint.style.cssText='font-size:10px;color:#888';hint.textContent='1st = bar colour · 2nd = stripe';crewLblRow.appendChild(hint);
+      }
+      crewSec.appendChild(crewLblRow);
+      const crewChips=el('div');crewChips.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
+      S.crews.forEach(crew=>{
+        const idx=(seg.crews||[]).indexOf(crew.name);
+        const isSelected=idx>=0;
+        const chip=el('button');
+        chip.style.cssText='padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;transition:all .12s;position:relative;'
+          +(isSelected
+            ?'background:'+crew.color+';color:'+crew.tc+';border:2px solid '+crew.color+';opacity:1'
+            :'background:#f0f2f5;color:#888;border:2px solid #e4e8f0;opacity:.7');
+        chip.textContent=crew.name;
+        if(isSelected&&(seg.crews||[]).length>1){
+          const badge=el('span');badge.style.cssText='position:absolute;top:-5px;right:-4px;background:#fff;color:'+crew.color+';border:1.5px solid '+crew.color+';border-radius:8px;font-size:8px;font-weight:800;padding:0 3px;line-height:13px;min-width:13px;text-align:center';
+          badge.textContent=idx+1;chip.appendChild(badge);
+        }
+        chip.onclick=()=>{
+          const current=t.segs[si].crews||[];
+          const pos=current.indexOf(crew.name);
+          if(pos>=0){t.segs[si].crews=current.filter(c=>c!==crew.name)}
+          else{t.segs[si].crews=[...current,crew.name]}
+          if(si===0)t.crew=(t.segs[0].crews[0])||'';
+          renderSegs();
+        };
+        crewChips.appendChild(chip);
+      });
+      crewSec.appendChild(crewChips);
+      row.appendChild(crewSec);
+      listDiv.appendChild(row);
+      function validate(){
+        const s=t.segs[si]?.s,e2=t.segs[si]?.e;
+        if(s&&e2&&e2<s){endInp.classList.add('inp-err');errDiv.textContent='End must be on or after start.'}
+        else{endInp.classList.remove('inp-err');errDiv.textContent=''}
+      }
+      if(seg.s&&seg.e&&seg.e<seg.s){endInp.classList.add('inp-err');errDiv.textContent='End must be on or after start.'}
+    });
+    renderWd();
+  }
+  function renderWd(){
+    const valid=t.segs.filter(sg=>sg.s&&sg.e&&sg.e>=sg.s);
+    const wd=workDays(valid,holDates,t.wknd);
+    if(wd>0){wdDiv.className='wd-total';wdDiv.textContent='Total work days across all dates: '+wd+' day'+(wd!==1?'s':'')}
+    else{wdDiv.className='';wdDiv.textContent=''}
+  }
+  renderSegs();
+  return segsDiv;
+}
+
+// ── buildTaskSubtaskSection ──────────────────────────────────────────────────
+// Builds the "Supporting Items" (subtask) section with type selector, list,
+// complete toggle, and add-item form. Mutates S.subtasks on save/delete.
+// Returns the subSec DOM element.
+function buildTaskSubtaskSection(t){
+  const STYPE_META={
+    equipment:{icon:'🚜',label:'Equipment',detailLabel:'Unit / ID'},
+    delivery: {icon:'📦',label:'Delivery', detailLabel:'Supplier & qty'},
+    dependency:{icon:'🔗',label:'Dependency',detailLabel:'What must be done'},
+    note:     {icon:'📋',label:'Note',     detailLabel:'Details'}
+  };
+  const subSec=el('div');subSec.className='subtask-section';
+  const subHdr=el('div');subHdr.className='subtask-hdr';
+  const subTitle=el('span');subTitle.className='subtask-hdr-title';subTitle.textContent='⚙ Supporting Items';subHdr.appendChild(subTitle);
+  const subCount=el('span');subCount.className='subtask-count';subHdr.appendChild(subCount);
+  const addItemBtn=el('button');addItemBtn.className='btn-sm';addItemBtn.style.fontSize='11px';addItemBtn.textContent='+ Add Item';subHdr.appendChild(addItemBtn);
+  subSec.appendChild(subHdr);
+  const subList=el('div');
+  subSec.appendChild(subList);
+  const addForm=el('div');addForm.className='subtask-add-form';addForm.style.display='none';subSec.appendChild(addForm);
+
+  let localSubs=taskSubtasks(t.id).map(s=>({...s}));
+
+  function renderSubtasks(){
+    subList.innerHTML='';
+    const done=localSubs.filter(s=>s.complete).length;
+    subCount.textContent=localSubs.length+' item'+(localSubs.length!==1?'s':'')+
+      (localSubs.length>0?' · '+done+' complete':'');
+    localSubs.forEach((sub,si)=>{
+      const meta=STYPE_META[sub.type]||STYPE_META.note;
+      const row=el('div');row.className='subtask-row'+(sub.complete?' done':'');
+      const ico=el('span');ico.className='subtask-type-icon';ico.textContent=meta.icon;row.appendChild(ico);
+      const desc=el('span');desc.className='subtask-descr';desc.textContent=sub.descr||'—';row.appendChild(desc);
+      if(sub.detail){const det=el('span');det.className='subtask-detail';det.textContent=sub.detail;row.appendChild(det)}
+      if(sub.assigned_to){
+        const cm2=crewMap();
+        const crew=cm2[sub.assigned_to];
+        const chip=el('span');chip.style.cssText='font-size:10px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;white-space:nowrap;'+(crew?'background:'+crew.color+';color:'+crew.tc:'background:#f3f4f6;color:#374151');
+        chip.textContent=sub.assigned_to;row.appendChild(chip);
+      }
+      if(sub.scheduled_dt){
+        const isPast=sub.scheduled_dt<TODAY;
+        const dt=el('span');dt.className='subtask-date '+(isPast&&!sub.complete?'past':'ok');
+        dt.textContent=fmtDate(sub.scheduled_dt);row.appendChild(dt);
+      }
+      const chkBtn=el('button');chkBtn.style.cssText='background:none;border:1.5px solid '+(sub.complete?'#16a34a':'#d1d5db')+';color:'+(sub.complete?'#16a34a':'#9ca3af')+';border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center';
+      chkBtn.textContent=sub.complete?'✓':'○';chkBtn.title=sub.complete?'Mark incomplete':'Mark complete';
+      chkBtn.onclick=async()=>{localSubs[si].complete=!localSubs[si].complete;renderSubtasks();await upsertSubtask(localSubs[si])};
+      row.appendChild(chkBtn);
+      const delBtn2=el('button');delBtn2.style.cssText='background:none;border:none;color:#dc3545;cursor:pointer;font-size:15px;padding:0 2px;flex-shrink:0';
+      delBtn2.textContent='×';delBtn2.title='Remove this item';
+      delBtn2.onclick=async()=>{
+        if(!confirm('Remove this item?'))return;
+        await deleteSubtask(sub.id);
+        localSubs=localSubs.filter(s=>s.id!==sub.id);
+        S.subtasks=S.subtasks.filter(s=>s.id!==sub.id);
+        renderSubtasks();
+      };
+      row.appendChild(delBtn2);
+      subList.appendChild(row);
+    });
+  }
+
+  let addFormType='equipment';
+  function buildAddForm(){
+    addForm.innerHTML='';
+    const typeBtns=el('div');typeBtns.className='subtask-type-btns';
+    Object.entries(STYPE_META).forEach(([type,meta])=>{
+      const b=el('button');b.className='subtask-type-btn'+(type===addFormType?' active':'');
+      b.textContent=meta.icon+' '+meta.label;
+      b.onclick=()=>{addFormType=type;buildAddForm()};
+      typeBtns.appendChild(b);
+    });
+    addForm.appendChild(typeBtns);
+    const meta=STYPE_META[addFormType];
+    const grid=el('div');grid.className='fg';
+    const dw=el('div');dw.className='fg-full';dw.appendChild(lbl2('Description'));
+    const dInp=el('input');dInp.className='inp';dInp.placeholder='e.g. 310 excavator needed on site';dw.appendChild(dInp);grid.appendChild(dw);
+    const tw=el('div');tw.appendChild(lbl2(meta.detailLabel+' (optional)'));
+    const tInp=el('input');tInp.className='inp';tInp.placeholder=addFormType==='equipment'?'e.g. CAT 310 / unit 04':addFormType==='delivery'?'e.g. RMCC, 10m³, 7am':'';
+    tw.appendChild(tInp);grid.appendChild(tw);
+    const aw=el('div');aw.appendChild(lbl2('Assigned to (optional)'));
+    const aInp=el('input');aInp.className='inp';aInp.placeholder='Crew name or company';
+    aInp.setAttribute('list','crew-datalist-sub');
+    const dl=el('datalist');dl.id='crew-datalist-sub';
+    S.crews.forEach(c=>{const opt=el('option');opt.value=c.name;dl.appendChild(opt)});
+    aw.appendChild(aInp);aw.appendChild(dl);grid.appendChild(aw);
+    const dtw=el('div');dtw.appendChild(lbl2('Date needed (optional)'));
+    const dtInp=el('input');dtInp.type='date';dtInp.className='inp';dtInp.min=SEASON_DATE_MIN;dtInp.max=SEASON_DATE_MAX;
+    dtw.appendChild(dtInp);grid.appendChild(dtw);
+    addForm.appendChild(grid);
+    const footer=el('div');footer.style.cssText='display:flex;gap:8px;margin-top:8px;justify-content:flex-end';
+    const cancelBtn=el('button');cancelBtn.className='btn-sec';cancelBtn.style.fontSize='11px';cancelBtn.textContent='Cancel';
+    cancelBtn.onclick=()=>{addForm.style.display='none';addItemBtn.style.display='inline-block'};
+    const saveBtn=el('button');saveBtn.className='btn-primary';saveBtn.style.fontSize='11px';saveBtn.textContent='Add Item';
+    saveBtn.onclick=async()=>{
+      const descr=dInp.value.trim();
+      if(!descr){toast('Please enter a description.','error');return}
+      const newSub={id:uid(),task_id:t.id,project_id:t.project_id,type:addFormType,descr,
+        detail:tInp.value.trim()||null,assigned_to:aInp.value.trim()||null,
+        scheduled_dt:dtInp.value||null,complete:false,sort_order:localSubs.length};
+      saveBtn.disabled=true;saveBtn.textContent='Saving…';
+      try{
+        await upsertSubtask(newSub);
+        localSubs=[...localSubs,newSub];S.subtasks=[...S.subtasks,newSub];
+        addForm.style.display='none';addItemBtn.style.display='inline-block';
+        renderSubtasks();
+      }catch(e){toast('⚠ Could not save: '+e.message,'error')}
+      finally{saveBtn.disabled=false;saveBtn.textContent='Add Item'}
+    };
+    footer.appendChild(cancelBtn);footer.appendChild(saveBtn);addForm.appendChild(footer);
+  }
+  addItemBtn.onclick=()=>{addFormType='equipment';buildAddForm();addForm.style.display='block';addItemBtn.style.display='none'};
+  renderSubtasks();
+  return subSec;
+}
+
+// ── buildTaskFinancialSection ─────────────────────────────────────────────────
+// Builds the "Financial" section with the Task Value input.
+// Mutates t.task_value directly. Returns the finSec DOM element.
+function buildTaskFinancialSection(t){
+  const finSec=el('div');finSec.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #e4e8f0';
+  const finHdr=el('div');finHdr.style.cssText='font-size:10px;font-weight:800;color:#1F3864;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px';finHdr.textContent='💰 Financial';finSec.appendChild(finHdr);
+  const tvRow=el('div');tvRow.style.cssText='display:flex;align-items:center;gap:8px';
+  const tvLbl=el('label');tvLbl.className='lbl';tvLbl.style.marginTop='0';tvLbl.textContent='Task Value (CAD $)';tvRow.appendChild(tvLbl);
+  const tvInp=el('input');tvInp.className='inp';tvInp.type='text';tvInp.placeholder='e.g. 8500 (optional)';
+  tvInp.value=t.task_value?((t.task_value/100).toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0})):'';
+  tvInp.style.cssText='flex:1;max-width:180px';
+  tvInp.oninput=e=>{t.task_value=dollarsToCents(e.target.value)};
+  tvRow.appendChild(tvInp);
+  const tvHint=el('span');tvHint.style.cssText='font-size:11px;color:#888';tvHint.textContent='Used for per-day revenue projection';tvRow.appendChild(tvHint);
+  finSec.appendChild(tvRow);
+  return finSec;
+}
+
 function buildTaskModal(m){
   const t=S.modal.t;
   const holDates=S.holidays.map(h=>h.date);
@@ -3303,270 +3601,15 @@ function buildTaskModal(m){
   const ww=el('div');ww.className='fg-full';ww.style.marginTop='8px';
   const wl=el('label');wl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444';
   const cb=el('input');cb.type='checkbox';cb.checked=t.wknd;
-  cb.onchange=e=>{t.wknd=e.target.checked;renderSegs()};
+  cb.onchange=e=>{t.wknd=e.target.checked;m.replaceChild(buildTaskDatesSection(t,holDates),m.querySelector('[data-section="dates"]'))};
   wl.appendChild(cb);wl.appendChild(document.createTextNode('Include weekends & holidays in Work Days'));ww.appendChild(wl);g.appendChild(ww);
   m.appendChild(g);
 
-  // ── Phase 8: Dynamic unlimited segment list ──────────────────────────────
-  const segsDiv=el('div');segsDiv.style.cssText='margin-top:14px;border-top:1px solid #e4e8f0;padding-top:10px';
-  const segHdr=el('div');segHdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
-  const segTitle=el('span');segTitle.style.cssText='font-weight:700;font-size:12px;color:#1F3864';segTitle.textContent='Scheduled Dates';segHdr.appendChild(segTitle);
-  const addBtn=el('button');addBtn.className='btn-sm';addBtn.style.fontWeight='700';addBtn.textContent='+ Add Date';
-  addBtn.onclick=()=>{t.segs.push({s:null,e:null,crews:[]});renderSegs()};
-  segHdr.appendChild(addBtn);segsDiv.appendChild(segHdr);
-
-  const listDiv=el('div'); // rows rendered here
-  segsDiv.appendChild(listDiv);
-  const wdDiv=el('div');wdDiv.style.marginTop='6px';
-  segsDiv.appendChild(wdDiv);
-  m.appendChild(segsDiv);
-
-  function renderSegs(){
-    listDiv.innerHTML='';
-    t.segs.forEach((seg,si)=>{
-      const row=el('div');row.style.cssText='margin-bottom:8px;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e4e8f0';
-      // ── Date row ──
-      const dateRow=el('div');dateRow.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:8px';
-      // Start
-      const sw2=el('div');sw2.style.flex='1';sw2.appendChild(lbl2('Start'));
-      const startInp=el('input');startInp.type='date';startInp.className='inp';
-      startInp.min=SEASON_DATE_MIN;startInp.max=SEASON_DATE_MAX;
-      startInp.value=seg.s||'';
-      startInp.onchange=e=>{t.segs[si].s=e.target.value||null;validate();renderWd()};
-      sw2.appendChild(startInp);dateRow.appendChild(sw2);
-      // End
-      const ew=el('div');ew.style.flex='1';ew.appendChild(lbl2('End'));
-      const endInp=el('input');endInp.type='date';endInp.className='inp';
-      endInp.min=SEASON_DATE_MIN;endInp.max=SEASON_DATE_MAX;
-      endInp.value=seg.e||'';
-      endInp.onchange=e=>{t.segs[si].e=e.target.value||null;validate();renderWd()};
-      ew.appendChild(endInp);
-      const errDiv=el('div');errDiv.className='field-err';ew.appendChild(errDiv);
-      dateRow.appendChild(ew);
-      // Days auto-calc
-      const dn=el('div');dn.style.cssText='min-width:38px;text-align:center;padding-top:18px';
-      const dlbl=el('div');dlbl.style.cssText='font-size:10px;color:#888';dlbl.textContent='Days';dn.appendChild(dlbl);
-      const dval=el('div');dval.style.cssText='font-size:15px;font-weight:700;color:#1F3864;line-height:1.2';
-      dval.textContent=(seg.s&&seg.e&&seg.e>=seg.s)?workDays([seg],holDates,t.wknd):'—';
-      dn.appendChild(dval);dateRow.appendChild(dn);
-      // Remove button
-      const xb=el('button');xb.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;border-radius:4px;flex-shrink:0;margin-top:18px';
-      xb.textContent='×';xb.title='Remove this date';
-      xb.onclick=()=>{t.segs.splice(si,1);if(t.segs.length===0)t.segs.push({s:null,e:null,crews:[]});renderSegs()};
-      dateRow.appendChild(xb);
-      row.appendChild(dateRow);
-
-      // ── Crew picker row ──
-      const crewSec=el('div');crewSec.style.cssText='border-top:1px solid #e8ecf2;padding-top:7px';
-      const crewLblRow=el('div');crewLblRow.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:5px';
-      const crewLbl=el('span');crewLbl.style.cssText='font-size:10px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.4px';crewLbl.textContent='Crew';crewLblRow.appendChild(crewLbl);
-      if(seg.crews&&seg.crews.length>1){
-        const hint=el('span');hint.style.cssText='font-size:10px;color:#888';hint.textContent='1st = bar colour · 2nd = stripe';crewLblRow.appendChild(hint);
-      }
-      crewSec.appendChild(crewLblRow);
-      const crewChips=el('div');crewChips.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
-      S.crews.forEach(crew=>{
-        const idx=(seg.crews||[]).indexOf(crew.name);
-        const isSelected=idx>=0;
-        const chip=el('button');
-        chip.style.cssText='padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;transition:all .12s;position:relative;'
-          +(isSelected
-            ?'background:'+crew.color+';color:'+crew.tc+';border:2px solid '+crew.color+';opacity:1'
-            :'background:#f0f2f5;color:#888;border:2px solid #e4e8f0;opacity:.7');
-        chip.textContent=crew.name;
-        // Show order badge for selected crews
-        if(isSelected&&(seg.crews||[]).length>1){
-          const badge=el('span');badge.style.cssText='position:absolute;top:-5px;right:-4px;background:#fff;color:'+crew.color+';border:1.5px solid '+crew.color+';border-radius:8px;font-size:8px;font-weight:800;padding:0 3px;line-height:13px;min-width:13px;text-align:center';
-          badge.textContent=idx+1;chip.appendChild(badge);
-        }
-        chip.onclick=()=>{
-          const current=t.segs[si].crews||[];
-          const pos=current.indexOf(crew.name);
-          if(pos>=0){t.segs[si].crews=current.filter(c=>c!==crew.name)}
-          else{t.segs[si].crews=[...current,crew.name]}
-          // Update task.crew to reflect first crew of first segment
-          if(si===0)t.crew=(t.segs[0].crews[0])||'';
-          renderSegs();
-        };
-        crewChips.appendChild(chip);
-      });
-      crewSec.appendChild(crewChips);
-      row.appendChild(crewSec);
-      listDiv.appendChild(row);
-
-      // Inline date validation
-      function validate(){
-        const s=t.segs[si]?.s,e2=t.segs[si]?.e;
-        if(s&&e2&&e2<s){endInp.classList.add('inp-err');errDiv.textContent='End must be on or after start.'}
-        else{endInp.classList.remove('inp-err');errDiv.textContent=''}
-      }
-      if(seg.s&&seg.e&&seg.e<seg.s){endInp.classList.add('inp-err');errDiv.textContent='End must be on or after start.'}
-    });
-    renderWd();
-  }
-  function renderWd(){
-    const valid=t.segs.filter(sg=>sg.s&&sg.e&&sg.e>=sg.s);
-    const wd=workDays(valid,holDates,t.wknd);
-    if(wd>0){wdDiv.className='wd-total';wdDiv.textContent='Total work days across all dates: '+wd+' day'+(wd!==1?'s':'')}
-    else{wdDiv.className='';wdDiv.textContent=''}
-  }
-  renderSegs();
-
-  // ── Phase 12B: Supporting Items (sub-tasks) ──────────────────────────────
-  const STYPE_META={
-    equipment:{icon:'🚜',label:'Equipment',detailLabel:'Unit / ID'},
-    delivery: {icon:'📦',label:'Delivery', detailLabel:'Supplier & qty'},
-    dependency:{icon:'🔗',label:'Dependency',detailLabel:'What must be done'},
-    note:     {icon:'📋',label:'Note',     detailLabel:'Details'}
-  };
-
-  const subSec=el('div');subSec.className='subtask-section';
-  const subHdr=el('div');subHdr.className='subtask-hdr';
-  const subTitle=el('span');subTitle.className='subtask-hdr-title';subTitle.textContent='⚙ Supporting Items';subHdr.appendChild(subTitle);
-  const subCount=el('span');subCount.className='subtask-count';subHdr.appendChild(subCount);
-  const addItemBtn=el('button');addItemBtn.className='btn-sm';addItemBtn.style.fontSize='11px';addItemBtn.textContent='+ Add Item';subHdr.appendChild(addItemBtn);
-  subSec.appendChild(subHdr);
-
-  const subList=el('div'); // rendered subtask rows go here
-  subSec.appendChild(subList);
-  const addForm=el('div');addForm.className='subtask-add-form';addForm.style.display='none';subSec.appendChild(addForm);
-  m.appendChild(subSec);
-
-  // Working copy of subtasks for this task — mutations applied locally then saved
-  let localSubs=taskSubtasks(t.id).map(s=>({...s}));
-
-  function renderSubtasks(){
-    subList.innerHTML='';
-    const done=localSubs.filter(s=>s.complete).length;
-    subCount.textContent=localSubs.length+' item'+(localSubs.length!==1?'s':'')+
-      (localSubs.length>0?' · '+done+' complete':'');
-    localSubs.forEach((sub,si)=>{
-      const meta=STYPE_META[sub.type]||STYPE_META.note;
-      const row=el('div');row.className='subtask-row'+(sub.complete?' done':'');
-      // Type icon
-      const ico=el('span');ico.className='subtask-type-icon';ico.textContent=meta.icon;row.appendChild(ico);
-      // Description
-      const desc=el('span');desc.className='subtask-descr';desc.textContent=sub.descr||'—';row.appendChild(desc);
-      // Detail (grey)
-      if(sub.detail){const det=el('span');det.className='subtask-detail';det.textContent=sub.detail;row.appendChild(det)}
-      // Assigned to chip
-      if(sub.assigned_to){
-        const cm2=crewMap();
-        const crew=cm2[sub.assigned_to];
-        const chip=el('span');chip.style.cssText='font-size:10px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;white-space:nowrap;'+(crew?'background:'+crew.color+';color:'+crew.tc:'background:#f3f4f6;color:#374151');
-        chip.textContent=sub.assigned_to;row.appendChild(chip);
-      }
-      // Date
-      if(sub.scheduled_dt){
-        const isPast=sub.scheduled_dt<TODAY;
-        const dt=el('span');dt.className='subtask-date '+(isPast&&!sub.complete?'past':'ok');
-        dt.textContent=fmtDate(sub.scheduled_dt);row.appendChild(dt);
-      }
-      // Complete toggle
-      const chkBtn=el('button');chkBtn.style.cssText='background:none;border:1.5px solid '+(sub.complete?'#16a34a':'#d1d5db')+';color:'+(sub.complete?'#16a34a':'#9ca3af')+';border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center';
-      chkBtn.textContent=sub.complete?'✓':'○';chkBtn.title=sub.complete?'Mark incomplete':'Mark complete';
-      chkBtn.onclick=async()=>{
-        localSubs[si].complete=!localSubs[si].complete;
-        renderSubtasks();
-        await upsertSubtask(localSubs[si]);
-      };
-      row.appendChild(chkBtn);
-      // Delete
-      const delBtn2=el('button');delBtn2.style.cssText='background:none;border:none;color:#dc3545;cursor:pointer;font-size:15px;padding:0 2px;flex-shrink:0';
-      delBtn2.textContent='×';delBtn2.title='Remove this item';
-      delBtn2.onclick=async()=>{
-        if(!confirm('Remove this item?'))return;
-        await deleteSubtask(sub.id);
-        localSubs=localSubs.filter(s=>s.id!==sub.id);
-        S.subtasks=S.subtasks.filter(s=>s.id!==sub.id);
-        renderSubtasks();
-      };
-      row.appendChild(delBtn2);
-      subList.appendChild(row);
-    });
-  }
-
-  // Add item form
-  let addFormType='equipment';
-  function buildAddForm(){
-    addForm.innerHTML='';
-    // Type selector buttons
-    const typeBtns=el('div');typeBtns.className='subtask-type-btns';
-    Object.entries(STYPE_META).forEach(([type,meta])=>{
-      const b=el('button');b.className='subtask-type-btn'+(type===addFormType?' active':'');
-      b.textContent=meta.icon+' '+meta.label;
-      b.onclick=()=>{addFormType=type;buildAddForm()};
-      typeBtns.appendChild(b);
-    });
-    addForm.appendChild(typeBtns);
-    const meta=STYPE_META[addFormType];
-    const grid=el('div');grid.className='fg';
-    // Description
-    const dw=el('div');dw.className='fg-full';dw.appendChild(lbl2('Description'));
-    const dInp=el('input');dInp.className='inp';dInp.placeholder='e.g. 310 excavator needed on site';dw.appendChild(dInp);grid.appendChild(dw);
-    // Detail
-    const tw=el('div');tw.appendChild(lbl2(meta.detailLabel+' (optional)'));
-    const tInp=el('input');tInp.className='inp';tInp.placeholder=addFormType==='equipment'?'e.g. CAT 310 / unit 04':addFormType==='delivery'?'e.g. RMCC, 10m³, 7am':'';
-    tw.appendChild(tInp);grid.appendChild(tw);
-    // Assigned to
-    const aw=el('div');aw.appendChild(lbl2('Assigned to (optional)'));
-    const aInp=el('input');aInp.className='inp';aInp.placeholder='Crew name or company';
-    aInp.setAttribute('list','crew-datalist-sub');
-    const dl=el('datalist');dl.id='crew-datalist-sub';
-    S.crews.forEach(c=>{const opt=el('option');opt.value=c.name;dl.appendChild(opt)});
-    aw.appendChild(aInp);aw.appendChild(dl);grid.appendChild(aw);
-    // Date
-    const dtw=el('div');dtw.appendChild(lbl2('Date needed (optional)'));
-    const dtInp=el('input');dtInp.type='date';dtInp.className='inp';dtInp.min=SEASON_DATE_MIN;dtInp.max=SEASON_DATE_MAX;
-    dtw.appendChild(dtInp);grid.appendChild(dtw);
-    addForm.appendChild(grid);
-    // Save / Cancel
-    const footer=el('div');footer.style.cssText='display:flex;gap:8px;margin-top:8px;justify-content:flex-end';
-    const cancelBtn=el('button');cancelBtn.className='btn-sec';cancelBtn.style.fontSize='11px';cancelBtn.textContent='Cancel';
-    cancelBtn.onclick=()=>{addForm.style.display='none';addItemBtn.style.display='inline-block'};
-    const saveBtn=el('button');saveBtn.className='btn-primary';saveBtn.style.fontSize='11px';saveBtn.textContent='Add Item';
-    saveBtn.onclick=async()=>{
-      const descr=dInp.value.trim();
-      if(!descr){toast('Please enter a description.','error');return}
-      const newSub={
-        id:uid(),task_id:t.id,project_id:t.project_id,
-        type:addFormType,descr,
-        detail:tInp.value.trim()||null,
-        assigned_to:aInp.value.trim()||null,
-        scheduled_dt:dtInp.value||null,
-        complete:false,sort_order:localSubs.length
-      };
-      saveBtn.disabled=true;saveBtn.textContent='Saving…';
-      try{
-        await upsertSubtask(newSub);
-        localSubs=[...localSubs,newSub];
-        S.subtasks=[...S.subtasks,newSub];
-        addForm.style.display='none';addItemBtn.style.display='inline-block';
-        renderSubtasks();
-      }catch(e){toast('⚠ Could not save: '+e.message,'error')}
-      finally{saveBtn.disabled=false;saveBtn.textContent='Add Item'}
-    };
-    footer.appendChild(cancelBtn);footer.appendChild(saveBtn);addForm.appendChild(footer);
-  }
-
-  addItemBtn.onclick=()=>{
-    addFormType='equipment';buildAddForm();
-    addForm.style.display='block';addItemBtn.style.display='none';
-  };
-  renderSubtasks();
-
-  // Phase 10: Financial section — Task Value
-  const finSec=el('div');finSec.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #e4e8f0';
-  const finHdr=el('div');finHdr.style.cssText='font-size:10px;font-weight:800;color:#1F3864;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px';finHdr.textContent='💰 Financial';finSec.appendChild(finHdr);
-  const tvRow=el('div');tvRow.style.cssText='display:flex;align-items:center;gap:8px';
-  const tvLbl=el('label');tvLbl.className='lbl';tvLbl.style.marginTop='0';tvLbl.textContent='Task Value (CAD $)';tvRow.appendChild(tvLbl);
-  const tvInp=el('input');tvInp.className='inp';tvInp.type='text';tvInp.placeholder='e.g. 8500 (optional)';
-  tvInp.value=t.task_value?((t.task_value/100).toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0})):'';
-  tvInp.style.cssText='flex:1;max-width:180px';
-  tvInp.oninput=e=>{t.task_value=dollarsToCents(e.target.value)};
-  tvRow.appendChild(tvInp);
-  const tvHint=el('span');tvHint.style.cssText='font-size:11px;color:#888';tvHint.textContent='Used for per-day revenue projection';tvRow.appendChild(tvHint);
-  finSec.appendChild(tvRow);m.appendChild(finSec);
+  const datesEl=buildTaskDatesSection(t,holDates);
+  datesEl.dataset.section='dates';
+  m.appendChild(datesEl);
+  m.appendChild(buildTaskSubtaskSection(t));
+  m.appendChild(buildTaskFinancialSection(t));
 
   const delBtn=(()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Task';
     b.onclick=async()=>{if(confirm('Delete this task?')){await deleteTask(t.id);S.tasks=S.tasks.filter(x=>x.id!==t.id);closeModal();render()}};return b})();
