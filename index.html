@@ -1941,13 +1941,78 @@ async function callClaude(apiKey,content){
   if(!Array.isArray(parsed.tasks))throw new Error('Unexpected response — Claude did not return tasks array.');
   return parsed;
 }
+// ── LOCAL ESTIMATE PARSER ────────────────────────────────────────────────────
+// Parses pasted QBO / Strada estimate text without requiring an API call.
+// Handles the standard QBO format: ESTIMATE # XXXX, ADDRESS block, line items.
+function parseEstimateLocally(t){
+  const result={job_num:'',client:'',location:'',tasks:[]};
+
+  // Estimate / job number
+  const estMatch=t.match(/(?:estimate|job)\s*#\s*([A-Za-z0-9\-]+)/i);
+  if(estMatch)result.job_num=estMatch[1].trim();
+
+  // Client — QBO puts client name right after ADDRESS label
+  const addrMatch=t.match(/ADDRESS[\s\n]+([^\n]+)/i);
+  if(addrMatch)result.client=addrMatch[1].trim();
+
+  // Location — QBO "SHIP TO" block
+  const shipMatch=t.match(/SHIP\s*TO[\s\n]+([^\n]+)/i);
+  if(shipMatch)result.location=shipMatch[1].trim();
+
+  // Line items — scan lines after the ACTIVITY header
+  // QBO format: activity title (short line), description lines, then QTY RATE AMOUNT
+  const lines=t.split('\n');
+  const amtRe=/^([\d,]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$/;
+  const skipRe=/subtotal|hst|total|gst|tax|activity|rate|amount|date|address|ship|accepted|estimate|registration/i;
+
+  let inItems=false;
+  let firstTitle=null;
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i].trim();
+    if(!line)continue;
+    // Start scanning after the ACTIVITY QTY RATE AMOUNT header row
+    if(/^ACTIVITY\s+QTY/i.test(line)){inItems=true;continue;}
+    if(!inItems)continue;
+    const amtMatch=line.match(amtRe);
+    if(amtMatch){
+      const qty=amtMatch[1],amount=amtMatch[3];
+      if(firstTitle){
+        result.tasks.push({
+          description:firstTitle,
+          quantity:qty+(qty==='1'?' unit':' units')+' — $'+amount
+        });
+      }
+      firstTitle=null;
+    }else if(firstTitle===null&&line.length<55&&/^[A-Z]/.test(line)&&!skipRe.test(line)&&!/^\d/.test(line)){
+      // First short title-case line after an amount = next activity header
+      firstTitle=line;
+    }
+  }
+
+  // Return null if nothing useful was found
+  if(!result.client&&result.tasks.length===0)return null;
+  return result;
+}
+
 async function runAnalysis(file,pasteText){
-  const apiKey=await fetchApiKey();
-  if(!apiKey)throw new Error('No Anthropic API key found. Go to Settings → Data → API Keys and save your key first.');
+  // ── PASTE TEXT PATH ───────────────────────────────────────────────────────
+  // If the user pasted text, try the local parser first — no API key required.
+  // This works reliably for QBO estimates and Strada estimates.
   if(pasteText&&pasteText.trim().length>20){
+    const local=parseEstimateLocally(pasteText.trim());
+    if(local&&(local.client||local.tasks.length>0)){
+      return local; // success — no API call needed
+    }
+    // Local parser couldn't extract enough — try API
+    const apiKey=await fetchApiKey();
+    if(!apiKey)throw new Error('Could not parse this document automatically. Go to Settings → Data → save your Anthropic API key, then try again — or make sure the pasted text includes the client name and line items.');
     return await callClaude(apiKey,'Extract project info from this construction document:\n\n'+pasteText.trim());
   }
+
+  // ── FILE PATH — requires API ──────────────────────────────────────────────
   if(!file)throw new Error('Please select a file or paste some text.');
+  const apiKey=await fetchApiKey();
+  if(!apiKey)throw new Error('No Anthropic API key found. Go to Settings → Data → API Keys and save your key first. Or paste the document text directly into the text field — that works without an API key.');
   const ext=file.name.split('.').pop().toLowerCase();
   if(ext==='pdf'){
     const b64=await fileToBase64(file);
@@ -2579,8 +2644,21 @@ function buildImportModal(m){
 }
 
 function buildImportInput(m,ms){
-  const zone=el('div');zone.className='drop-zone';
-  const ico=el('div');ico.className='drop-zone-icon';ico.textContent='📄';zone.appendChild(ico);
+  // ── PRIMARY: Paste text (no API key, no internet needed) ─────────────────
+  const pasteHdr=el('div');pasteHdr.style.cssText='font-size:13px;font-weight:700;color:#1F3864;margin-bottom:6px';
+  pasteHdr.textContent='📋 Paste estimate or quote text';m.appendChild(pasteHdr);
+  const pasteWrap=el('div');pasteWrap.style.cssText='background:#f0f7ff;border:1.5px solid #93c5fd;border-radius:8px;padding:10px 12px;margin-bottom:10px';
+  const pasteLbl=el('div');pasteLbl.style.cssText='font-size:11px;color:#1d4ed8;margin-bottom:6px;line-height:1.5';
+  pasteLbl.innerHTML='Copy all text from your QBO estimate or any quote document and paste it here.<br><strong>No API key or internet connection required.</strong> Works immediately.';
+  const ta=el('textarea');ta.className='import-textarea';ta.style.cssText='min-height:110px;background:#fff';
+  ta.placeholder='Paste your estimate text here — include the estimate number, client name, and all line items…';
+  ta.value=ms.pasteText||'';ta.oninput=e=>{ms.pasteText=e.target.value};
+  pasteWrap.appendChild(pasteLbl);pasteWrap.appendChild(ta);m.appendChild(pasteWrap);
+
+  // ── SECONDARY: File upload (requires API key) ─────────────────────────────
+  const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or upload a file (requires Anthropic API key in Settings)';m.appendChild(orDiv);
+  const zone=el('div');zone.className='drop-zone';zone.style.cssText='margin-top:0;padding:16px 20px';
+  const ico=el('div');ico.className='drop-zone-icon';ico.style.fontSize='22px';ico.textContent='📄';zone.appendChild(ico);
   const dt=el('div');dt.className='drop-zone-text';dt.textContent='Click to select a PDF or Word (.docx) file';zone.appendChild(dt);
   const fl=el('div');fl.className='drop-zone-file';fl.textContent=ms.file?'📎 '+ms.file.name:'';zone.appendChild(fl);
   const fi=el('input');fi.type='file';fi.accept='.pdf,.docx';fi.style.display='none';
@@ -2597,30 +2675,22 @@ function buildImportInput(m,ms){
     ms.file=f;fl.textContent='📎 '+f.name;dt.textContent='File selected — click Analyze to continue';
   });
   m.appendChild(fi);m.appendChild(zone);
-  const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or paste document text directly (works without browser extensions)';m.appendChild(orDiv);
-  const pasteWrap=el('div');pasteWrap.style.cssText='background:#f0f7ff;border:1px solid #bcd;border-radius:8px;padding:10px 12px;margin-bottom:4px';
-  const pasteLbl=el('div');pasteLbl.style.cssText='font-size:11px;font-weight:700;color:#1F3864;margin-bottom:6px';pasteLbl.textContent='📋 Paste document text here — reliable fallback if file upload is blocked';
-  const ta=el('textarea');ta.className='import-textarea';
-  ta.placeholder='Paste the quote text, scope of work, or price schedule here…';
-  ta.value=ms.pasteText||'';ta.oninput=e=>{ms.pasteText=e.target.value};
-  pasteWrap.appendChild(pasteLbl);pasteWrap.appendChild(ta);m.appendChild(pasteWrap);
-  const note=el('p');note.style.cssText='font-size:11px;color:#aaa;margin-top:8px;line-height:1.5';
-  note.textContent='Requires an Anthropic API key (Settings → Data). Analysis takes ~5–15 seconds per document.';m.appendChild(note);
+
   const footer=el('div');footer.className='modal-footer';
   const lb=el('div');footer.appendChild(lb);
   const rb=el('div');rb.style.cssText='display:flex;gap:8px';
   const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.addEventListener('click',closeModal);rb.appendChild(cancel);
-  const btn=el('button');btn.className='btn-primary';btn.textContent='🤖 Analyze Document';
+  const btn=el('button');btn.className='btn-primary';btn.textContent='📥 Extract & Preview';
   btn.addEventListener('click',async()=>{
     if(!ms.file&&!(ms.pasteText&&ms.pasteText.trim().length>20)){
-      toast('Please select a file or paste at least a few sentences of text.','error');return;
+      toast('Paste your estimate text or select a file first.','error');return;
     }
     ms.state='analyzing';openModal();
     try{
       const result=await runAnalysis(ms.file,ms.pasteText||'');
       ms.editProj={job_num:result.job_num||'',client:result.client||'',location:result.location||'',status:'Not started'};
       ms.editTasks=(result.tasks||[]).filter(t=>(t.description||'').trim()).map(t=>({id:uid(),description:(t.description||'').trim(),quantity:(t.quantity||'').trim()}));
-      if(ms.editTasks.length===0)throw new Error('No tasks were extracted. Try pasting the document text directly.');
+      if(ms.editTasks.length===0)throw new Error('No tasks were extracted. Make sure the pasted text includes line item descriptions.');
       ms.state='preview';ms.error=null;
     }catch(e){ms.error=e.message;ms.state='error'}
     openModal();
