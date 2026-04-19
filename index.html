@@ -212,6 +212,24 @@ input,select,textarea{font-family:inherit;font-size:12px}
 }
 /* Phase 10: task value badge */
 .task-val-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;background:#dcfce7;color:#166534;border:1px solid #86efac;white-space:nowrap;flex-shrink:0;margin-left:3px}
+/* Phase 12B: subtask supporting items */
+.subtask-section{margin-top:12px;padding-top:10px;border-top:1px solid #e4e8f0}
+.subtask-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.subtask-hdr-title{font-size:10px;font-weight:800;color:#1F3864;text-transform:uppercase;letter-spacing:.6px;flex:1}
+.subtask-count{font-size:10px;color:#6b7280;background:#f3f4f6;border-radius:10px;padding:1px 7px;font-weight:600}
+.subtask-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:4px;background:#f8fafc;transition:opacity .15s}
+.subtask-row.done{opacity:.45}
+.subtask-type-icon{font-size:14px;flex-shrink:0;width:20px;text-align:center}
+.subtask-descr{flex:1;font-size:12px;color:#1a2b4a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subtask-detail{font-size:11px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}
+.subtask-date{font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+.subtask-date.past{background:#fef3c7;color:#92400e}
+.subtask-date.ok{background:#f0f4ff;color:#3730a3}
+.subtask-badge{font-size:9px;font-weight:700;padding:1px 5px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:2px}
+.subtask-add-form{background:#f0f4ff;border:1px solid #c5d0e8;border-radius:8px;padding:10px 12px;margin-top:6px}
+.subtask-type-btns{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap}
+.subtask-type-btn{padding:3px 10px;border-radius:5px;border:1.5px solid #d1d5db;font-size:11px;font-weight:700;cursor:pointer;background:#fff;color:#6b7280;transition:all .12s}
+.subtask-type-btn.active{border-color:#1F3864;background:#1F3864;color:#fff}
 .recon-line{font-size:11px;padding:6px 10px;border-radius:5px;margin-top:6px;font-weight:600}
 .recon-ok{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
 .recon-warn{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}
@@ -392,7 +410,7 @@ const S={
   view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',
   // ganttGrid loaded from config — persisted so it survives page reload
   ganttGrid:(()=>{try{return JSON.parse(localStorage.getItem(CFG_KEY)||'{}').ganttGrid||false}catch{return false}})(),
-  projects:[],tasks:[],crews:[],holidays:[],
+  projects:[],tasks:[],crews:[],holidays:[],subtasks:[],
   loading:false,syncing:false,
   // Phase 2: filter & sort state (persisted to localStorage per user)
   filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false},
@@ -751,12 +769,13 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl]=await withTimeout(
+    const[pr,tk,cr,hl,st]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
         sb.from('crews').select('*').order('sort_order'),
-        sb.from('holidays').select('*').order('date')
+        sb.from('holidays').select('*').order('date'),
+        sb.from('subtasks').select('*').order('task_id').order('sort_order')
       ]),
       QUERY_TIMEOUT_MS
     );
@@ -764,7 +783,8 @@ async function loadAll(){
     if(!tk.error&&tk.data)S.tasks=tk.data.map(dbTaskToApp);
     if(!cr.error&&cr.data)S.crews=cr.data;
     if(!hl.error&&hl.data)S.holidays=hl.data;
-    _projTaskCache=null; // invalidate memoised cache after fresh data
+    if(!st.error&&st.data)S.subtasks=st.data;
+    _projTaskCache=null;
   }finally{
     S.syncing=false;refreshToolbar();
   }
@@ -800,11 +820,18 @@ function handleRealtimeEvent(table, payload){
         else S.tasks=[...S.tasks,t];
         _projTaskCache=null;renderSafe();return;
       }
+      if(table==='subtasks'){
+        const st=nw;
+        if(S.subtasks.find(x=>x.id===st.id))S.subtasks=S.subtasks.map(x=>x.id===st.id?st:x);
+        else S.subtasks=[...S.subtasks,st];
+        renderSafe();return;
+      }
     }
     if(eventType==='DELETE'){
       const id=(ol||{}).id;if(!id)throw new Error('no id');
-      if(table==='projects'){S.projects=S.projects.filter(x=>x.id!==id);S.tasks=S.tasks.filter(x=>x.project_id!==id)}
-      if(table==='tasks'){S.tasks=S.tasks.filter(x=>x.id!==id)}
+      if(table==='projects'){S.projects=S.projects.filter(x=>x.id!==id);S.tasks=S.tasks.filter(x=>x.project_id!==id);S.subtasks=S.subtasks.filter(x=>x.project_id!==id)}
+      if(table==='tasks'){S.tasks=S.tasks.filter(x=>x.id!==id);S.subtasks=S.subtasks.filter(x=>x.task_id!==id)}
+      if(table==='subtasks'){S.subtasks=S.subtasks.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
   }catch(e){
@@ -817,6 +844,7 @@ function startRealtime(){
   realtimeCh=sb.channel('db-changes')
     .on('postgres_changes',{event:'*',schema:'public',table:'projects'},p=>handleRealtimeEvent('projects',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},p=>handleRealtimeEvent('tasks',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'subtasks'},p=>handleRealtimeEvent('subtasks',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
@@ -832,6 +860,18 @@ const upsertProject=p=>api(async()=>{const{error}=await sb.from('projects').upse
 const deleteProject=id=>api(async()=>{const{error}=await sb.from('projects').delete().eq('id',id);if(error)throw error});
 const upsertTask=t=>api(async()=>{const{error}=await sb.from('tasks').upsert(appTaskToDB(t));if(error)throw error});
 const deleteTask=id=>api(async()=>{const{error}=await sb.from('tasks').delete().eq('id',id);if(error)throw error});
+const upsertSubtask=st=>api(async()=>{const{error}=await sb.from('subtasks').upsert(st);if(error)throw error});
+const deleteSubtask=id=>api(async()=>{const{error}=await sb.from('subtasks').delete().eq('id',id);if(error)throw error});
+function taskSubtasks(taskId){
+  return S.subtasks.filter(s=>s.task_id===taskId).sort((a,b)=>{
+    const typeOrder={equipment:0,delivery:1,dependency:2,note:3};
+    const to=(typeOrder[a.type]||3)-(typeOrder[b.type]||3);
+    if(to!==0)return to;
+    if(a.scheduled_dt&&b.scheduled_dt)return a.scheduled_dt.localeCompare(b.scheduled_dt);
+    if(a.scheduled_dt)return -1;if(b.scheduled_dt)return 1;
+    return(a.sort_order||0)-(b.sort_order||0);
+  });
+}
 const upsertCrew=c=>api(async()=>{const{error}=await sb.from('crews').upsert(c);if(error)throw error});
 const deleteCrew=id=>api(async()=>{const{error}=await sb.from('crews').delete().eq('id',id);if(error)throw error});
 const upsertHol=h=>api(async()=>{const{error}=await sb.from('holidays').upsert(h);if(error)throw error});
@@ -1345,6 +1385,14 @@ function buildFieldScheduleTab(m,ms){
         dspan.textContent=rangeStr+(wd>0?' ('+wd+'d)':'');row.appendChild(dspan);
         const loc=el('span');loc.style.cssText='font-size:10px;color:#888;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis';
         loc.textContent=proj.loc;row.appendChild(loc);
+        // Subtask alerts for this task
+        const subs=taskSubtasks(task.id).filter(s=>!s.complete);
+        if(subs.length>0){
+          const alert=el('span');alert.style.cssText='font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:#fef3c7;color:#92400e;white-space:nowrap;flex-shrink:0';
+          alert.textContent='⚙ '+subs.length+' item'+(subs.length!==1?'s':'')+' pending';
+          alert.title=subs.map(s=>s.descr).join(', ');
+          row.appendChild(alert);
+        }
         bodyWrap.appendChild(row);
       });
     });
@@ -1449,7 +1497,8 @@ function buildStatusReportTab(m,ms){
       p.job_value?centsToDisplay(p.job_value):'—',
       taskValTotal>0?centsToDisplay(taskValTotal):'—',
       p.po_num||'—',p.estimate_num||'—',p.invoice_num||'—',
-      p.locates_req?'✓':'—',p.soils_req?'✓':'—',
+      (()=>{const b=getLocateBadge(p);return b?b.text:(p.locates_req==='no'||!p.locates_req?'—':'—')})(),
+      p.soils_req?'✓':'—',
       crews,fmtDate(sp2.s)||'—',fmtDate(sp2.e)||'—',
       totalWd>0?totalWd+'d':'—'
     ];
@@ -1491,7 +1540,7 @@ function printStatusReport(){
       <td>${p.job_value?centsToDisplay(p.job_value):'—'}</td>
       <td${taskValTotal>0&&p.job_value&&Math.abs(taskValTotal-p.job_value)/p.job_value>0.05?' style="color:#92400e;font-weight:700"':''}>${taskValTotal>0?centsToDisplay(taskValTotal):'—'}</td>
       <td>${p.po_num||'—'}</td><td>${p.estimate_num||'—'}</td><td>${p.invoice_num||'—'}</td>
-      <td>${p.locates_req?'✓':'—'}</td><td>${p.soils_req?'✓':'—'}</td>
+      <td>${(()=>{const b=getLocateBadge(p);return b?b.text:(p.locates_req==='no'||!p.locates_req?'—':'—')})()}</td><td>${p.soils_req?'✓':'—'}</td>
       <td>${crews}</td><td>${fmtDate(sp2.s)||'—'}</td><td>${fmtDate(sp2.e)||'—'}</td>
       <td>${totalWd>0?totalWd+'d':'—'}</td>
     </tr>`;
@@ -1855,7 +1904,7 @@ function buildCsvTab(m,ms){
   // Preview first few rows
   const wrap=el('div');wrap.className='exp-scroll print-frame-wrap';
   const tbl=el('table');tbl.className='exp-tbl';
-  const headers=['Job #','Client','Location','Status','Job Value ($)','PO #','Estimate #','Invoice #','Locates Req','Soils Req','Start Date','End Date','Total Work Days','Crews','Task Count','Tasks'];
+  const headers=['Job #','Client','Location','Status','Job Value ($)','PO #','Estimate #','Invoice #','Locates','Soils Req','Locate Stage','Locates Expiry','Start Date','End Date','Total Work Days','Crews','Task Count','Subtask Count','Notes','Tasks'];
   const thead=el('thead');const hr=el('tr');headers.forEach(h=>{const th=el('th');th.textContent=h;hr.appendChild(th)});thead.appendChild(hr);tbl.appendChild(thead);
   const tbody=el('tbody');
   const MAX_PREVIEW=8;
@@ -1890,13 +1939,21 @@ function csvRowValues(p,holDates){
   const totalWd=tasks.reduce((s,t)=>s+workDays(t.segs,holDates,t.wknd),0);
   const crews=[...new Set(tasks.flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).join('; ')||'';
   const taskDescs=tasks.map(t=>t.descr).filter(Boolean).join('; ');
+  const subtaskCount=tasks.reduce((n,t)=>n+taskSubtasks(t.id).length,0);
+  // Locate status string
+  const locReq=p.locates_req;
+  const locatesStr=(!locReq||locReq==='no')?'No':locReq==='unknown'?'Unknown':'Yes';
+  const locBadge=getLocateBadge(p);
+  const locStage=locBadge?locBadge.text.replace(/[^\w\s]/g,'').trim():'';
   return[
     p.job_num,p.client,p.loc,p.status,
     p.job_value?(p.job_value/100).toFixed(2):'',
     p.po_num||'',p.estimate_num||'',p.invoice_num||'',
-    p.locates_req?'Yes':'No',p.soils_req?'Yes':'No',
+    locatesStr,p.soils_req?'Yes':'No',
+    locStage,p.loc_exp||'',
     sp2.s||'',sp2.e||'',totalWd||0,
-    crews,tasks.length,taskDescs
+    crews,tasks.length,subtaskCount||'',
+    p.notes||'',taskDescs
   ];
 }
 
@@ -2305,6 +2362,21 @@ function buildGantt(){
       if(wd>0){const wds=el('span');wds.style.cssText='color:#555;font-size:11px;flex-shrink:0;min-width:26px;text-align:right';wds.textContent=wd+'d';lc.appendChild(wds)}
       // Phase 10 CP2: task value badge
       if(row.task.task_value){const tvb=el('span');tvb.className='task-val-badge';tvb.textContent=centsToBadge(row.task.task_value);tvb.title='Task value: '+centsToDisplay(row.task.task_value);lc.appendChild(tvb)}
+      // Phase 12B: subtask badge
+      const subs=taskSubtasks(row.task.id);
+      if(subs.length>0){
+        const done=subs.filter(s=>s.complete).length;
+        const total=subs.length;
+        const hasPastIncomplete=subs.some(s=>!s.complete&&s.scheduled_dt&&s.scheduled_dt<TODAY);
+        const bg=hasPastIncomplete?'#fee2e2':done===total?'#dcfce7':'#fef3c7';
+        const col=hasPastIncomplete?'#dc2626':done===total?'#166534':'#92400e';
+        const border=hasPastIncomplete?'#dc2626':done===total?'#86efac':'#fcd34d';
+        const stb=el('span');stb.className='subtask-badge';
+        stb.style.cssText='background:'+bg+';color:'+col+';border:1px solid '+border;
+        stb.textContent='⚙ '+done+'/'+total;
+        stb.title=subs.map(s=>(s.complete?'✓ ':'○ ')+s.descr).join('\n');
+        lc.appendChild(stb);
+      }
       lc.appendChild(iBtn('✎',()=>{
         try{
           const safeSegs=(row.task.segs||[{s:null,e:null,crews:[]}]).map(s=>({
@@ -2468,10 +2540,24 @@ function buildBoardCard(p,cm){
   const crd=el('div');crd.style.cssText='display:flex;flex-wrap:wrap;gap:3px';
   [...new Set(projTasks(p.id).flatMap(t=>t.segs.flatMap(sg=>sg.crews&&sg.crews.length?sg.crews:(t.crew?[t.crew]:[]))))].filter(Boolean).forEach(cn2=>{const cr=cm[cn2];if(cr){const cb=el('span');cb.className='crew-badge';cb.style.cssText='background:'+cr.color+';color:'+cr.tc;cb.textContent=cr.name;crd.appendChild(cb)}});
   card.appendChild(crd);
-  const bl2=el('div');bl2.style.cssText='font-size:11px;color:#888;margin-top:4px;display:flex;justify-content:space-between;align-items:center';
+  const bl2=el('div');bl2.style.cssText='font-size:11px;color:#888;margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px';
   const tcount=el('span');tcount.textContent=projTasks(p.id).length+' task'+(projTasks(p.id).length!==1?'s':'');bl2.appendChild(tcount);
+  // Subtask count chip
+  const allSubs=projTasks(p.id).flatMap(t=>taskSubtasks(t.id));
+  if(allSubs.length>0){
+    const sdone=allSubs.filter(s=>s.complete).length;
+    const sc=el('span');sc.style.cssText='font-size:10px;font-weight:700;padding:1px 5px;border-radius:8px;'+(sdone===allSubs.length?'background:#dcfce7;color:#166534':'background:#fef3c7;color:#92400e');
+    sc.textContent='⚙ '+sdone+'/'+allSubs.length;sc.title='Supporting items';bl2.appendChild(sc);
+  }
   if(p.job_value){const vl=el('span');vl.style.cssText='font-weight:700;color:#155724;font-size:11px';vl.textContent=centsToDisplay(p.job_value);bl2.appendChild(vl)}
   card.appendChild(bl2);
+  // Locate badge row
+  const locBadgeCard=getLocateBadge(p);
+  if(locBadgeCard){
+    const lb=el('div');lb.style.cssText='margin-top:4px';
+    const lbs=el('span');lbs.style.cssText='font-size:9px;font-weight:700;padding:2px 7px;border-radius:9px;background:'+locBadgeCard.bg+';color:'+locBadgeCard.color+';border:1px solid '+locBadgeCard.border;
+    lbs.textContent=locBadgeCard.text;lb.appendChild(lbs);card.appendChild(lb);
+  }
   return card;
 }
 
@@ -2622,19 +2708,18 @@ function buildDataPanel(){
   card('Seed initial data','Load all 41 projects from the 2026 job board. Skip if you already have data.',[seedBtn]);
   const expBtn=el('button');expBtn.className='btn-primary';expBtn.style.fontSize='12px';expBtn.textContent='⬇ Export JSON backup';
   expBtn.onclick=()=>{
-    // Phase 8 CP11: export includes segments field (tasks already use segs array in S.tasks)
     const exportData={
       projects:S.projects,
       tasks:S.tasks.map(t=>({...t,segments:(t.segs||[]).filter(sg=>sg.s||sg.e)})),
       crews:S.crews,holidays:S.holidays,
+      subtasks:S.subtasks,
       exportedAt:new Date().toISOString()
     };
     const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='strada_backup_'+TODAY+'.json';a.click();
-    // Phase 8 CP12: store last backup timestamp
     localStorage.setItem('strada_last_backup',new Date().toLocaleString('en-CA',{dateStyle:'medium',timeStyle:'short'}));
     toast('✓ Backup downloaded','ok');
-    render(); // refresh to show updated timestamp
+    render();
   };
   const lastBk=localStorage.getItem('strada_last_backup');
   const bkRow=el('div');bkRow.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
@@ -2654,6 +2739,7 @@ function buildDataPanel(){
         if(data.holidays?.length)await sb.from('holidays').upsert(data.holidays);
         if(data.projects?.length)for(let i=0;i<data.projects.length;i+=20)await sb.from('projects').upsert(data.projects.slice(i,i+20));
         if(data.tasks?.length)for(let i=0;i<data.tasks.length;i+=50)await sb.from('tasks').upsert(data.tasks.map(appTaskToDB).slice(i,i+50));
+        if(data.subtasks?.length)for(let i=0;i<data.subtasks.length;i+=50)await sb.from('subtasks').upsert(data.subtasks.slice(i,i+50));
         await loadAll();toast('✓ Import complete','ok');render();
       }catch(err){toast('⚠ Import failed: '+err.message,'error')}
       S.syncing=false;refreshToolbar();
@@ -3229,6 +3315,149 @@ function buildTaskModal(m){
     else{wdDiv.className='';wdDiv.textContent=''}
   }
   renderSegs();
+
+  // ── Phase 12B: Supporting Items (sub-tasks) ──────────────────────────────
+  const STYPE_META={
+    equipment:{icon:'🚜',label:'Equipment',detailLabel:'Unit / ID'},
+    delivery: {icon:'📦',label:'Delivery', detailLabel:'Supplier & qty'},
+    dependency:{icon:'🔗',label:'Dependency',detailLabel:'What must be done'},
+    note:     {icon:'📋',label:'Note',     detailLabel:'Details'}
+  };
+
+  const subSec=el('div');subSec.className='subtask-section';
+  const subHdr=el('div');subHdr.className='subtask-hdr';
+  const subTitle=el('span');subTitle.className='subtask-hdr-title';subTitle.textContent='⚙ Supporting Items';subHdr.appendChild(subTitle);
+  const subCount=el('span');subCount.className='subtask-count';subHdr.appendChild(subCount);
+  const addItemBtn=el('button');addItemBtn.className='btn-sm';addItemBtn.style.fontSize='11px';addItemBtn.textContent='+ Add Item';subHdr.appendChild(addItemBtn);
+  subSec.appendChild(subHdr);
+
+  const subList=el('div'); // rendered subtask rows go here
+  subSec.appendChild(subList);
+  const addForm=el('div');addForm.className='subtask-add-form';addForm.style.display='none';subSec.appendChild(addForm);
+  m.appendChild(subSec);
+
+  // Working copy of subtasks for this task — mutations applied locally then saved
+  let localSubs=taskSubtasks(t.id).map(s=>({...s}));
+
+  function renderSubtasks(){
+    subList.innerHTML='';
+    const done=localSubs.filter(s=>s.complete).length;
+    subCount.textContent=localSubs.length+' item'+(localSubs.length!==1?'s':'')+
+      (localSubs.length>0?' · '+done+' complete':'');
+    localSubs.forEach((sub,si)=>{
+      const meta=STYPE_META[sub.type]||STYPE_META.note;
+      const row=el('div');row.className='subtask-row'+(sub.complete?' done':'');
+      // Type icon
+      const ico=el('span');ico.className='subtask-type-icon';ico.textContent=meta.icon;row.appendChild(ico);
+      // Description
+      const desc=el('span');desc.className='subtask-descr';desc.textContent=sub.descr||'—';row.appendChild(desc);
+      // Detail (grey)
+      if(sub.detail){const det=el('span');det.className='subtask-detail';det.textContent=sub.detail;row.appendChild(det)}
+      // Assigned to chip
+      if(sub.assigned_to){
+        const cm2=crewMap();
+        const crew=cm2[sub.assigned_to];
+        const chip=el('span');chip.style.cssText='font-size:10px;font-weight:700;padding:1px 6px;border-radius:9px;flex-shrink:0;white-space:nowrap;'+(crew?'background:'+crew.color+';color:'+crew.tc:'background:#f3f4f6;color:#374151');
+        chip.textContent=sub.assigned_to;row.appendChild(chip);
+      }
+      // Date
+      if(sub.scheduled_dt){
+        const isPast=sub.scheduled_dt<TODAY;
+        const dt=el('span');dt.className='subtask-date '+(isPast&&!sub.complete?'past':'ok');
+        dt.textContent=fmtDate(sub.scheduled_dt);row.appendChild(dt);
+      }
+      // Complete toggle
+      const chkBtn=el('button');chkBtn.style.cssText='background:none;border:1.5px solid '+(sub.complete?'#16a34a':'#d1d5db')+';color:'+(sub.complete?'#16a34a':'#9ca3af')+';border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center';
+      chkBtn.textContent=sub.complete?'✓':'○';chkBtn.title=sub.complete?'Mark incomplete':'Mark complete';
+      chkBtn.onclick=async()=>{
+        localSubs[si].complete=!localSubs[si].complete;
+        renderSubtasks();
+        await upsertSubtask(localSubs[si]);
+      };
+      row.appendChild(chkBtn);
+      // Delete
+      const delBtn2=el('button');delBtn2.style.cssText='background:none;border:none;color:#dc3545;cursor:pointer;font-size:15px;padding:0 2px;flex-shrink:0';
+      delBtn2.textContent='×';delBtn2.title='Remove this item';
+      delBtn2.onclick=async()=>{
+        if(!confirm('Remove this item?'))return;
+        await deleteSubtask(sub.id);
+        localSubs=localSubs.filter(s=>s.id!==sub.id);
+        S.subtasks=S.subtasks.filter(s=>s.id!==sub.id);
+        renderSubtasks();
+      };
+      row.appendChild(delBtn2);
+      subList.appendChild(row);
+    });
+  }
+
+  // Add item form
+  let addFormType='equipment';
+  function buildAddForm(){
+    addForm.innerHTML='';
+    // Type selector buttons
+    const typeBtns=el('div');typeBtns.className='subtask-type-btns';
+    Object.entries(STYPE_META).forEach(([type,meta])=>{
+      const b=el('button');b.className='subtask-type-btn'+(type===addFormType?' active':'');
+      b.textContent=meta.icon+' '+meta.label;
+      b.onclick=()=>{addFormType=type;buildAddForm()};
+      typeBtns.appendChild(b);
+    });
+    addForm.appendChild(typeBtns);
+    const meta=STYPE_META[addFormType];
+    const grid=el('div');grid.className='fg';
+    // Description
+    const dw=el('div');dw.className='fg-full';dw.appendChild(lbl2('Description'));
+    const dInp=el('input');dInp.className='inp';dInp.placeholder='e.g. 310 excavator needed on site';dw.appendChild(dInp);grid.appendChild(dw);
+    // Detail
+    const tw=el('div');tw.appendChild(lbl2(meta.detailLabel+' (optional)'));
+    const tInp=el('input');tInp.className='inp';tInp.placeholder=addFormType==='equipment'?'e.g. CAT 310 / unit 04':addFormType==='delivery'?'e.g. RMCC, 10m³, 7am':'';
+    tw.appendChild(tInp);grid.appendChild(tw);
+    // Assigned to
+    const aw=el('div');aw.appendChild(lbl2('Assigned to (optional)'));
+    const aInp=el('input');aInp.className='inp';aInp.placeholder='Crew name or company';
+    aInp.setAttribute('list','crew-datalist-sub');
+    const dl=el('datalist');dl.id='crew-datalist-sub';
+    S.crews.forEach(c=>{const opt=el('option');opt.value=c.name;dl.appendChild(opt)});
+    aw.appendChild(aInp);aw.appendChild(dl);grid.appendChild(aw);
+    // Date
+    const dtw=el('div');dtw.appendChild(lbl2('Date needed (optional)'));
+    const dtInp=el('input');dtInp.type='date';dtInp.className='inp';dtInp.min='2026-01-01';dtInp.max='2026-12-31';
+    dtw.appendChild(dtInp);grid.appendChild(dtw);
+    addForm.appendChild(grid);
+    // Save / Cancel
+    const footer=el('div');footer.style.cssText='display:flex;gap:8px;margin-top:8px;justify-content:flex-end';
+    const cancelBtn=el('button');cancelBtn.className='btn-sec';cancelBtn.style.fontSize='11px';cancelBtn.textContent='Cancel';
+    cancelBtn.onclick=()=>{addForm.style.display='none';addItemBtn.style.display='inline-block'};
+    const saveBtn=el('button');saveBtn.className='btn-primary';saveBtn.style.fontSize='11px';saveBtn.textContent='Add Item';
+    saveBtn.onclick=async()=>{
+      const descr=dInp.value.trim();
+      if(!descr){toast('Please enter a description.','error');return}
+      const newSub={
+        id:uid(),task_id:t.id,project_id:t.project_id,
+        type:addFormType,descr,
+        detail:tInp.value.trim()||null,
+        assigned_to:aInp.value.trim()||null,
+        scheduled_dt:dtInp.value||null,
+        complete:false,sort_order:localSubs.length
+      };
+      saveBtn.disabled=true;saveBtn.textContent='Saving…';
+      try{
+        await upsertSubtask(newSub);
+        localSubs=[...localSubs,newSub];
+        S.subtasks=[...S.subtasks,newSub];
+        addForm.style.display='none';addItemBtn.style.display='inline-block';
+        renderSubtasks();
+      }catch(e){toast('⚠ Could not save: '+e.message,'error')}
+      finally{saveBtn.disabled=false;saveBtn.textContent='Add Item'}
+    };
+    footer.appendChild(cancelBtn);footer.appendChild(saveBtn);addForm.appendChild(footer);
+  }
+
+  addItemBtn.onclick=()=>{
+    addFormType='equipment';buildAddForm();
+    addForm.style.display='block';addItemBtn.style.display='none';
+  };
+  renderSubtasks();
 
   // Phase 10: Financial section — Task Value
   const finSec=el('div');finSec.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #e4e8f0';
