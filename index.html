@@ -327,9 +327,9 @@ const SEASON_DATE_MAX=SEASON_YEAR+'-12-31';   // date input max bound
 // one column right and causing Fridays to land in Saturday's skip zone.
 const GS=new Date(SEASON_YEAR,3,1,12,0,0),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
 const MONTH_CFG=[
-  {l:'APRIL',c:'#1565A9',n:30},{l:'MAY',c:'#217346',n:31},{l:'JUNE',c:'#BF5700',n:30},
-  {l:'JULY',c:'#7B3F00',n:31},{l:'AUGUST',c:'#5C2D91',n:31},{l:'SEPTEMBER',c:'#005B70',n:30},
-  {l:'OCTOBER',c:'#7D4000',n:31},{l:'NOVEMBER',c:'#2B4B6E',n:30},{l:'DECEMBER',c:'#8B0000',n:31}
+  {label:'APRIL',color:'#1565A9',days:30},{label:'MAY',color:'#217346',days:31},{label:'JUNE',color:'#BF5700',days:30},
+  {label:'JULY',color:'#7B3F00',days:31},{label:'AUGUST',color:'#5C2D91',days:31},{label:'SEPTEMBER',color:'#005B70',days:30},
+  {label:'OCTOBER',color:'#7D4000',days:31},{label:'NOVEMBER',color:'#2B4B6E',days:30},{label:'DECEMBER',color:'#8B0000',days:31}
 ];
 const ALL_DATES=Array.from({length:NDAYS},(_,i)=>{const d=new Date(GS);d.setDate(d.getDate()+i);return d});
 const TODAY=new Date().toISOString().slice(0,10);
@@ -337,7 +337,7 @@ const TODAYIDX=Math.round((new Date(TODAY+'T12:00:00')-GS)/86400000);
 const ST_OPTS=['Not started','In progress','On hold','Complete','To invoice'];
 const ST_CLR={'Not started':'#6c757d','In progress':'#0d6efd','On hold':'#dc3545','Complete':'#198754','To invoice':'#fd7e14'};
 const WDAY_IDXS=ALL_DATES.reduce((a,d,i)=>{if(d.getDay()===0||d.getDay()===6)a.push(i);return a},[]);
-const MONTH_BANDS=(()=>{let o=0;return MONTH_CFG.map(m=>{const b={...m,o};o+=m.n;return b})})();
+const MONTH_BANDS=(()=>{let o=0;return MONTH_CFG.map(m=>{const b={...m,o};o+=m.days;return b})})();
 const CFG_KEY='strada_cfg_v2';
 const FILTER_KEY='strada_filter_v1';
 const PRESETS_KEY='strada_presets_v1';
@@ -675,7 +675,7 @@ async function doSignIn(){
 }
 
 async function doSignOut(){
-  if(!confirm('Sign out of Strada Schedule?'))return;
+  if(!await confirmModal('Sign out of Strada Schedule?','Sign Out',false))return;
   await sb.auth.signOut();
 }
 
@@ -901,7 +901,7 @@ const upsertHol=h=>api(async()=>{const{error}=await sb.from('holidays').upsert(h
 const deleteHol=id=>api(async()=>{const{error}=await sb.from('holidays').delete().eq('id',id);if(error)throw error});
 
 async function seedData(){
-  if(!confirm('Load all 41 default projects into the database? This cannot be undone.'))return;
+  if(!await confirmModal('Load all 41 default projects into the database? This cannot be undone.','Load Data',false))return;
   S.syncing=true;refreshToolbar();
   try{
     await sb.from('crews').upsert(DEF_CREWS);
@@ -1049,7 +1049,7 @@ function getCalHeader(totalW,holI){
   if(_calCache&&_calCache.key===key)return _calCache.node.cloneNode(true);
   const calw=el('div');calw.className='cal-wrap';calw.style.width=totalW+'px';
   const mr=el('div');mr.className='month-row';
-  MONTH_BANDS.forEach(m=>{const mc=el('div');mc.className='mc';mc.style.cssText='width:'+m.n*DW+'px;height:18px;background:'+m.c;mc.textContent=m.l;mr.appendChild(mc)});calw.appendChild(mr);
+  MONTH_BANDS.forEach(m=>{const mc=el('div');mc.className='mc';mc.style.cssText='width:'+m.days*DW+'px;height:18px;background:'+m.color;mc.textContent=m.label;mr.appendChild(mc)});calw.appendChild(mr);
   const dr=el('div');dr.className='day-row';
   ALL_DATES.forEach((d,i)=>{
     const wk=WDAY_IDXS.includes(i),hl=holI.includes(i),tod=i===TODAYIDX;
@@ -1095,14 +1095,23 @@ function openModal(){
   root.innerHTML=''; // always clear first — prevents ghost modals
   if(!S.modal)return;
   const bg=el('div');bg.className='modal-bg';
+  bg.setAttribute('role','presentation'); // backdrop is not the dialog
   bg.addEventListener('click',e=>{if(e.target===bg)closeModal()});
   const m=el('div');m.className='modal';
+  m.setAttribute('role','dialog');
+  m.setAttribute('aria-modal','true');
+  // aria-labelledby is set by mhdr() after the heading element is created
   if(S.modal.type==='proj')buildProjModal(m);
   else if(S.modal.type==='task')buildTaskModal(m);
   else if(S.modal.type==='crew')buildCrewModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
+  // Move focus to first interactive element so keyboard users land inside the modal
+  requestAnimationFrame(()=>{
+    const first=m.querySelector('input,select,textarea,button:not(.modal-close)');
+    if(first)first.focus();
+  });
 }
 // Escape key closes modal. Ctrl+Z/Y handle undo/redo for drag operations.
 document.addEventListener('keydown',e=>{
@@ -1110,6 +1119,49 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undoApply();refreshToolbar()}
   if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redoApply();refreshToolbar()}
 });
+
+// ── confirmModal ──────────────────────────────────────────────────────────────
+// Async replacement for native confirm(). Uses the existing modal-root so it
+// matches the app design and doesn't block the main thread.
+// Usage: if(!await confirmModal('Delete this task?','Delete',true))return;
+// @param {string}  message       — text shown to the user
+// @param {string}  confirmLabel  — confirm button label (default 'Confirm')
+// @param {boolean} danger        — true = red btn-danger, false = btn-primary
+// @returns {Promise<boolean>}
+function confirmModal(message,confirmLabel='Confirm',danger=true){
+  return new Promise(resolve=>{
+    const root=document.getElementById('modal-root');
+    root.innerHTML='';
+    const bg=el('div');bg.className='modal-bg';
+    bg.setAttribute('role','presentation');
+    bg.addEventListener('click',e=>{if(e.target===bg){root.innerHTML='';resolve(false)}});
+    const m=el('div');m.className='modal';
+    m.style.cssText='max-width:400px;padding:28px';
+    m.setAttribute('role','alertdialog');
+    m.setAttribute('aria-modal','true');
+    const msgP=el('p');
+    msgP.style.cssText='font-size:14px;color:#1a2b4a;margin-bottom:24px;line-height:1.6';
+    msgP.textContent=message;m.appendChild(msgP);
+    const btns=el('div');btns.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+    const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';
+    cancel.setAttribute('aria-label','Cancel');
+    cancel.onclick=()=>{root.innerHTML='';resolve(false)};
+    const ok=el('button');
+    ok.className=danger?'btn-danger':'btn-primary';
+    ok.textContent=confirmLabel;
+    ok.setAttribute('aria-label',confirmLabel);
+    ok.onclick=()=>{root.innerHTML='';resolve(true)};
+    btns.appendChild(cancel);btns.appendChild(ok);m.appendChild(btns);
+    bg.appendChild(m);root.appendChild(bg);
+    // Escape cancels
+    const onKey=e=>{
+      if(e.key==='Escape'){root.innerHTML='';document.removeEventListener('keydown',onKey);resolve(false)}
+    };
+    document.addEventListener('keydown',onKey);
+    // Auto-focus the confirm button for keyboard accessibility
+    requestAnimationFrame(()=>ok.focus());
+  });
+}
 
 // ── FILTER & SORT LOGIC ───────────────────────────────────────────────────────
 function taskOverlapsRange(task,from,to){
@@ -1221,7 +1273,7 @@ function buildFilterBar(){
       }else{
         S.filter.crews=[...S.filter.crews,crew.name];
       }
-      saveFilters();render();
+      saveFilters();scheduleRender();
     });
     bar.appendChild(btn);
   });
@@ -1244,27 +1296,27 @@ function buildFilterBar(){
   [['default','Default order'],['startDate','Start date'],['client','Client name'],['jobNum','Job #'],['valuePerDay','Value/Day ↓']].forEach(([v,t])=>{
     const o=document.createElement('option');o.value=v;o.textContent=t;if(v===S.filter.sortBy)o.selected=true;sortSel.appendChild(o);
   });
-  sortSel.onchange=e=>{S.filter.sortBy=e.target.value;saveFilters();render()};bar.appendChild(sortSel);
+  sortSel.onchange=e=>{S.filter.sortBy=e.target.value;saveFilters();scheduleRender()};bar.appendChild(sortSel);
 
   bar.appendChild(mkSep());
 
   // ── Hide complete ───────────────────────────────────────────────────────────
   const hcLbl=document.createElement('label');hcLbl.className='fb-chk-lbl';
   const hcCb=document.createElement('input');hcCb.type='checkbox';hcCb.checked=S.filter.hideComplete;
-  hcCb.onchange=e=>{S.filter.hideComplete=e.target.checked;saveFilters();render()};
+  hcCb.onchange=e=>{S.filter.hideComplete=e.target.checked;saveFilters();scheduleRender()};
   hcLbl.appendChild(hcCb);hcLbl.appendChild(document.createTextNode('Hide Complete'));bar.appendChild(hcLbl);
 
   // Phase 9: Show Archived toggle
   const arcLbl=document.createElement('label');arcLbl.className='fb-chk-lbl';
   const arcCb=document.createElement('input');arcCb.type='checkbox';arcCb.checked=S.filter.showArchived||false;
-  arcCb.onchange=e=>{S.filter.showArchived=e.target.checked;saveFilters();render()};
+  arcCb.onchange=e=>{S.filter.showArchived=e.target.checked;saveFilters();scheduleRender()};
   arcLbl.appendChild(arcCb);arcLbl.appendChild(document.createTextNode('📁 Show Archived'));bar.appendChild(arcLbl);
 
   // Grid lines toggle — live control directly in the filter bar
   const gridLbl=document.createElement('label');gridLbl.className='fb-chk-lbl';
   gridLbl.title='Show vertical day separators on all Gantt rows';
   const gridCb=document.createElement('input');gridCb.type='checkbox';gridCb.checked=S.ganttGrid;
-  gridCb.onchange=e=>{S.ganttGrid=e.target.checked;saveCfg({ganttGrid:S.ganttGrid});render()};
+  gridCb.onchange=e=>{S.ganttGrid=e.target.checked;saveCfg({ganttGrid:S.ganttGrid});scheduleRender()};
   gridLbl.appendChild(gridCb);gridLbl.appendChild(document.createTextNode('📐 Grid'));bar.appendChild(gridLbl);
 
   bar.appendChild(mkSep());
@@ -1279,7 +1331,7 @@ function buildFilterBar(){
   presSel.onchange=e=>{
     _selPreset=e.target.value;
     const preset=S.presets.find(p=>p.id===e.target.value);
-    if(preset){S.filter={...preset.filter,crews:[...(preset.filter.crews||[])]};saveFilters();render()}
+    if(preset){S.filter={...preset.filter,crews:[...(preset.filter.crews||[])]};saveFilters();scheduleRender()}
     else{presSel.value=''}
   };
   bar.appendChild(presSel);
@@ -1292,7 +1344,7 @@ function buildFilterBar(){
     if(!name||!name.trim())return;
     const preset={id:'p_'+Date.now(),name:name.trim(),filter:{...S.filter,crews:[...S.filter.crews]}};
     S.presets=[...S.presets,preset];
-    saveFilters();render();
+    saveFilters();scheduleRender();
     toast('✓ Preset "'+preset.name+'" saved','ok');
   };
   bar.appendChild(saveBtn);
@@ -1301,14 +1353,14 @@ function buildFilterBar(){
   if(S.presets.length>0){
     const delBtn=document.createElement('button');delBtn.className='fb-del-btn';delBtn.textContent='🗑';
     delBtn.title='Delete selected preset';
-    delBtn.onclick=()=>{
+    delBtn.onclick=async()=>{
       const cur=presSel.value;
       if(!cur){toast('Select a preset to delete first','error');return}
       const preset=S.presets.find(p=>p.id===cur);
       if(!preset)return;
-      if(!confirm('Delete preset "'+preset.name+'"?'))return;
+      if(!await confirmModal('Delete preset "'+preset.name+'"?','Delete Preset',true))return;
       S.presets=S.presets.filter(p=>p.id!==cur);
-      saveFilters();render();
+      saveFilters();scheduleRender();
     };
     bar.appendChild(delBtn);
   }
@@ -1318,7 +1370,7 @@ function buildFilterBar(){
     const n=countActiveFilters();
     const badge=document.createElement('span');badge.className='filter-count';badge.textContent=n;bar.appendChild(badge);
     const clrBtn=document.createElement('button');clrBtn.className='fb-clear';clrBtn.textContent='✕ Clear all';
-    clrBtn.onclick=()=>{clearFilters();render()};bar.appendChild(clrBtn);
+    clrBtn.onclick=()=>{clearFilters();scheduleRender()};bar.appendChild(clrBtn);
   }
 
   return bar;
@@ -2317,6 +2369,16 @@ function render(){
   if(S.modal)openModal();else document.getElementById('modal-root').innerHTML='';
 }
 
+// ── scheduleRender ────────────────────────────────────────────────────────────
+// rAF-gated render: coalesces multiple synchronous state mutations in the same
+// JS frame into a single DOM pass. Use from filter-bar event handlers only.
+// Async save handlers (upsertTask etc.) call render() directly after awaiting.
+let _rafId=null;
+function scheduleRender(){
+  if(_rafId)return; // already queued for this frame
+  _rafId=requestAnimationFrame(()=>{_rafId=null;render()});
+}
+
 function refreshGanttRows(){
   // FIX CP4: explicit scroll save/restore on gantt-only refresh
   const old=document.querySelector('.gantt-wrap');if(!old)return;
@@ -2402,7 +2464,7 @@ function buildGantt(){
     const body=el('div');body.className='empty-state-body';
     body.textContent='Try adjusting or removing your crew, date, or status filters to see more projects.';es.appendChild(body);
     const btn=el('button');btn.className='empty-state-btn';btn.textContent='✕ Clear all filters';
-    btn.onclick=()=>{clearFilters();render()};es.appendChild(btn);
+    btn.onclick=()=>{clearFilters();scheduleRender()};es.appendChild(btn);
     wrap.appendChild(es);return wrap;
   }
 
@@ -2708,7 +2770,7 @@ function buildDisplayPanel(){
     '📐 Day grid lines',
     'Show vertical day separators on all Gantt rows. Also available as the "📐 Grid" checkbox in the Gantt filter bar for quick access without leaving the schedule.',
     S.ganttGrid,
-    e=>{S.ganttGrid=e.target.checked;saveCfg({ganttGrid:S.ganttGrid});render();}
+    e=>{S.ganttGrid=e.target.checked;saveCfg({ganttGrid:S.ganttGrid});scheduleRender();}
   ));
 
   const note=el('div');note.className='info-card';note.style.marginTop='8px';
@@ -2731,7 +2793,7 @@ function buildCrewsPanel(){
     const eb=el('button');eb.className='btn-sm';eb.textContent='Edit';
     eb.onclick=()=>{S.modal={type:'crew',isNew:false,c:{...c}};openModal()};card.appendChild(eb);
     const db=el('button');db.style.cssText='padding:3px 10px;border:1px solid #ffcccc;border-radius:5px;cursor:pointer;font-size:12px;background:#fff5f5;color:#dc3545';
-    db.textContent='×';db.onclick=()=>{if(confirm('Delete crew "'+c.name+'"?'))deleteCrew(c.id).then(()=>{S.crews=S.crews.filter(x=>x.id!==c.id);render()})};
+    db.textContent='×';db.onclick=async()=>{if(await confirmModal('Delete crew "'+c.name+'"?','Delete Crew',true)){await deleteCrew(c.id);S.crews=S.crews.filter(x=>x.id!==c.id);render()}};
     card.appendChild(db);d.appendChild(card);
   });return d;
 }
@@ -2841,7 +2903,7 @@ function buildDataPanel(){
       try{
         const data=JSON.parse(ev.target.result);
         if(!data.projects)throw new Error('Invalid file format');
-        if(!confirm('This will replace all data. Continue?'))return;
+        if(!await confirmModal('This will replace all data. Continue?','Replace All Data',true))return;
         S.syncing=true;refreshToolbar();
         if(data.crews?.length)await sb.from('crews').upsert(data.crews);
         if(data.holidays?.length)await sb.from('holidays').upsert(data.holidays);
@@ -3027,9 +3089,14 @@ function buildImportPreview(m,ms){
 // FIX CP1: modal header always uses closeModal() — no stale S.modal=null;render()
 function mhdr(m,title){
   const h=el('div');h.className='modal-hdr';
-  const t=el('h3');t.textContent=title;h.appendChild(t);
+  const t=el('h3');
+  // Unique heading id so aria-labelledby can reference it from the dialog element
+  const headingId='mhdr-'+Math.random().toString(36).slice(2,8);
+  t.id=headingId;
+  t.textContent=title;h.appendChild(t);
+  m.setAttribute('aria-labelledby',headingId);
   const c=el('button');c.className='modal-close';c.innerHTML='&times;';
-  c.setAttribute('aria-label','Close');
+  c.setAttribute('aria-label','Close dialog');
   c.addEventListener('click',closeModal); // direct function ref, not inline
   h.appendChild(c);m.appendChild(h);
 }
@@ -3287,9 +3354,9 @@ function buildProjModal(m){
   updateRecon();tsec.appendChild(reconDiv);m.appendChild(tsec);
   const delBtn=!S.modal.isNew?
     (()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Project';
-      b.onclick=async()=>{if(confirm('Delete "'+p.client+'"? This removes all tasks.')){
+      b.onclick=async()=>{if(!await confirmModal('Delete "'+p.client+'"? This removes all tasks.','Delete Project',true))return;
         await deleteProject(p.id);S.projects=S.projects.filter(x=>x.id!==p.id);S.tasks=S.tasks.filter(x=>x.project_id!==p.id);closeModal();render();
-      }};return b})():null;
+      };return b})():null;
   // Phase 9: Archive / Restore button
   const arcBtn=!S.modal.isNew?(()=>{
     const b=el('button');
@@ -3311,7 +3378,7 @@ function buildProjModal(m){
     }else{
       b.className='btn-archive';b.textContent='📁 Archive Project';
       b.onclick=async()=>{
-        if(!confirm('Move "'+p.client+'" to the archive? It will be hidden from the active schedule.'))return;
+        if(!await confirmModal('Move "'+p.client+'" to the archive? It will be hidden from the active schedule.','Archive',false))return;
         const prev={...p,archived:false};
         p.archived=true;
         S.projects=S.projects.map(x=>x.id===p.id?{...x,archived:true}:x);
@@ -3498,7 +3565,7 @@ function buildTaskSubtaskSection(t){
       const delBtn2=el('button');delBtn2.style.cssText='background:none;border:none;color:#dc3545;cursor:pointer;font-size:15px;padding:0 2px;flex-shrink:0';
       delBtn2.textContent='×';delBtn2.title='Remove this item';
       delBtn2.onclick=async()=>{
-        if(!confirm('Remove this item?'))return;
+        if(!await confirmModal('Remove this item?','Remove Item',true))return;
         await deleteSubtask(sub.id);
         localSubs=localSubs.filter(s=>s.id!==sub.id);
         S.subtasks=S.subtasks.filter(s=>s.id!==sub.id);
@@ -3612,7 +3679,8 @@ function buildTaskModal(m){
   m.appendChild(buildTaskFinancialSection(t));
 
   const delBtn=(()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Task';
-    b.onclick=async()=>{if(confirm('Delete this task?')){await deleteTask(t.id);S.tasks=S.tasks.filter(x=>x.id!==t.id);closeModal();render()}};return b})();
+    b.onclick=async()=>{if(!await confirmModal('Delete this task?','Delete Task',true))return;
+    await deleteTask(t.id);S.tasks=S.tasks.filter(x=>x.id!==t.id);closeModal();render()};return b})();
   mkFooter(m,delBtn,async()=>{
     const invalid=t.segs.some(sg=>sg.s&&sg.e&&sg.e<sg.s);
     if(invalid){toast('⚠ Fix date errors before saving.','error');return}
@@ -3654,7 +3722,8 @@ function buildCrewModal(m){
   });m.appendChild(tcrow);
   const delBtn=!S.modal.isNew?
     (()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Crew';
-      b.onclick=()=>{if(confirm('Delete crew "'+c.name+'"?'))deleteCrew(c.id).then(()=>{S.crews=S.crews.filter(x=>x.id!==c.id);closeModal();render()})};return b})():null;
+      b.onclick=async()=>{if(!await confirmModal('Delete crew "'+c.name+'"?','Delete Crew',true))return;
+      await deleteCrew(c.id);S.crews=S.crews.filter(x=>x.id!==c.id);closeModal();render()};return b})():null;
   mkFooter(m,delBtn,async()=>{
     const prevCrews=S.crews;
     if(!S.modal.isNew)S.crews=S.crews.map(x=>x.id===c.id?c:x);else S.crews=[...S.crews,c];
