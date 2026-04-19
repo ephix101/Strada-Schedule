@@ -1096,6 +1096,13 @@ function buildFilterBar(){
   arcCb.onchange=e=>{S.filter.showArchived=e.target.checked;saveFilters();render()};
   arcLbl.appendChild(arcCb);arcLbl.appendChild(document.createTextNode('📁 Show Archived'));bar.appendChild(arcLbl);
 
+  // Grid lines toggle — live control directly in the filter bar
+  const gridLbl=document.createElement('label');gridLbl.className='fb-chk-lbl';
+  gridLbl.title='Show vertical day separators on all Gantt rows';
+  const gridCb=document.createElement('input');gridCb.type='checkbox';gridCb.checked=S.ganttGrid;
+  gridCb.onchange=e=>{S.ganttGrid=e.target.checked;saveCfg({ganttGrid:S.ganttGrid});render()};
+  gridLbl.appendChild(gridCb);gridLbl.appendChild(document.createTextNode('📐 Grid'));bar.appendChild(gridLbl);
+
   bar.appendChild(mkSep());
 
   // ── Presets ──────────────────────────────────────────────────────────────────
@@ -2398,8 +2405,8 @@ function buildDisplayPanel(){
   }
 
   d.appendChild(toggleCard(
-    '📐 Day grid lines on project rows',
-    'Extends the vertical day separators into project header rows, giving the Gantt a full spreadsheet-style grid. Task rows always show grid lines.',
+    '📐 Day grid lines',
+    'Show vertical day separators on all Gantt rows. Also available as the "📐 Grid" checkbox in the Gantt filter bar for quick access without leaving the schedule.',
     S.ganttGrid,
     e=>{S.ganttGrid=e.target.checked;saveCfg({ganttGrid:S.ganttGrid});render();}
   ));
