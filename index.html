@@ -312,11 +312,20 @@ input,select,textarea{font-family:inherit;font-size:12px}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+// ── SEASON CONFIGURATION ──────────────────────────────────────────────────────
+// Change SEASON_YEAR each spring to start a new schedule year.
+// Every date bound, Gantt range, and default data entry derives from this one value.
+// The app shows a warning toast at startup if TODAY is past Dec 31 of this year.
+const SEASON_YEAR=2026;
+const SEASON_END_STR=SEASON_YEAR+'-12-31';   // used by startup banner check
+const SEASON_DATE_MIN=SEASON_YEAR+'-01-01';   // date input min bound
+const SEASON_DATE_MAX=SEASON_YEAR+'-12-31';   // date input max bound
+
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 // GS at noon matches s2d() which returns T12:00:00. Using midnight for GS caused
 // dayOff('2026-04-01') = Math.round(0.5) = 1 instead of 0, shifting every bar
 // one column right and causing Fridays to land in Saturday's skip zone.
-const GS=new Date(2026,3,1,12,0,0),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
+const GS=new Date(SEASON_YEAR,3,1,12,0,0),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
 const MONTH_CFG=[
   {l:'APRIL',c:'#1565A9',n:30},{l:'MAY',c:'#217346',n:31},{l:'JUNE',c:'#BF5700',n:30},
   {l:'JULY',c:'#7B3F00',n:31},{l:'AUGUST',c:'#5C2D91',n:31},{l:'SEPTEMBER',c:'#005B70',n:30},
@@ -344,14 +353,16 @@ const DEF_CREWS=[
   {id:'c7',name:'Troy',color:'#C4BD97',tc:'#333',sort_order:6}
 ];
 const DEF_HOLS=[
-  {id:'h1',date:'2026-01-01',name:"New Year's Day"},{id:'h2',date:'2026-02-16',name:'Family Day'},
-  {id:'h3',date:'2026-04-03',name:'Good Friday'},{id:'h4',date:'2026-05-18',name:'Victoria Day'},
-  {id:'h5',date:'2026-07-01',name:'Canada Day'},{id:'h6',date:'2026-08-03',name:'Civic Holiday'},
-  {id:'h7',date:'2026-09-07',name:'Labour Day'},{id:'h8',date:'2026-10-12',name:'Thanksgiving'},
-  {id:'h9',date:'2026-12-25',name:'Christmas Day'},{id:'h10',date:'2026-12-26',name:'Boxing Day'}
+  {id:'h1',date:SEASON_YEAR+'-01-01',name:"New Year's Day"},{id:'h2',date:SEASON_YEAR+'-02-16',name:'Family Day'},
+  {id:'h3',date:SEASON_YEAR+'-04-03',name:'Good Friday'},{id:'h4',date:SEASON_YEAR+'-05-18',name:'Victoria Day'},
+  {id:'h5',date:SEASON_YEAR+'-07-01',name:'Canada Day'},{id:'h6',date:SEASON_YEAR+'-08-03',name:'Civic Holiday'},
+  {id:'h7',date:SEASON_YEAR+'-09-07',name:'Labour Day'},{id:'h8',date:SEASON_YEAR+'-10-12',name:'Thanksgiving'},
+  {id:'h9',date:SEASON_YEAR+'-12-25',name:'Christmas Day'},{id:'h10',date:SEASON_YEAR+'-12-26',name:'Boxing Day'}
 ];
 
-let _uid=0;const uid=()=>'u'+(++_uid)+'_'+Date.now();
+// crypto.randomUUID() is built into all modern browsers and Node ≥ 14.17.
+// Eliminates the module-scoped counter collision risk under concurrent multi-user edits.
+const uid=()=>crypto.randomUUID();
 
 function mkSeeds(){
   const rows=[];let so=0;
@@ -611,6 +622,16 @@ async function enterApp(user){
     currentUser=user;
     saveCfg({lastEmail:user.email});
     loadFilters();
+
+    // Show a warning banner if today is past Dec 31 of the configured season year.
+    // This means SEASON_YEAR needs to be updated for the new schedule year.
+    if(TODAY>SEASON_END_STR){
+      setTimeout(()=>toast(
+        '⚠ Schedule is configured for '+SEASON_YEAR+'. Update SEASON_YEAR in the code for the new season.',
+        'warn'
+      ),2000);
+    }
+
     showApp();
     setLoading(true);renderSafe();
 
@@ -1766,7 +1787,7 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
     const col=MCOL[mName]||'#1F3864';
     const mx=leftW+mStart*dayW,mw=(endI-mStart)*dayW;
     svg+=`<rect x="${mx}" y="0" width="${mw}" height="18" fill="${col}"/>`;
-    svg+=`<text x="${mx+4}" y="13" font-size="9" font-weight="700" fill="white" letter-spacing="0.5">${mName}</text>`;
+    svg+=`<text x="${mx+4}" y="13" font-size="9" font-weight="700" fill="white" letter-spacing="0.5">${escSvg(mName)}</text>`;
     svg+=`<line x1="${mx}" y1="0" x2="${mx}" y2="18" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>`;
   };
   dates.forEach((d,i)=>{
@@ -1780,12 +1801,12 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
     const wd=d.getDay();const isWknd=wd===0||wd===6;const isToday=dateStrs[i]===TODAY;
     const bg=isToday?'#FFD700':isWknd?'#b0b4be':'#2a4a80';
     svg+=`<rect x="${leftW+i*dayW}" y="18" width="${dayW}" height="14" fill="${bg}"/>`;
-    svg+=`<text x="${leftW+i*dayW+dayW/2}" y="29" font-size="8" fill="${isToday?'#333':'white'}" text-anchor="middle">${d.getDate()}</text>`;
+    svg+=`<text x="${leftW+i*dayW+dayW/2}" y="29" font-size="8" fill="${isToday?'#333':'white'}" text-anchor="middle">${escSvg(String(d.getDate()))}</text>`;
   });
 
   // ── Left panel header ────────────────────────────────────────────────────
   svg+=`<rect x="0" y="0" width="${leftW}" height="${hdrH}" fill="#1F3864"/>`;
-  svg+=`<text x="8" y="22" font-size="10" fill="rgba(255,255,255,0.6)">Task / Project</text>`;
+  svg+=`<text x="8" y="22" font-size="10" fill="rgba(255,255,255,0.6)">${escSvg('Task / Project')}</text>`;
 
   // ── Rows ─────────────────────────────────────────────────────────────────
   let y=hdrH;
@@ -1823,7 +1844,7 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
       const taskWd=workDays(row.task.segs,holDates,row.task.wknd);
       if(taskWd>0){
         svg+=`<rect x="${leftW-daysColW}" y="${y+2}" width="${daysColW-2}" height="${h-4}" fill="#e0e7ff" rx="3"/>`;
-        svg+=`<text x="${leftW-daysColW/2-1}" y="${y+h/2+4}" font-size="8" font-weight="700" fill="#3730a3" text-anchor="middle">${taskWd}d</text>`;
+        svg+=`<text x="${leftW-daysColW/2-1}" y="${y+h/2+4}" font-size="8" font-weight="700" fill="#3730a3" text-anchor="middle">${escSvg(String(taskWd))}d</text>`;
       }
       // Separator line between task text and days column
       svg+=`<line x1="${leftW-daysColW}" y1="${y}" x2="${leftW-daysColW}" y2="${y+h}" stroke="#d0d7e3" stroke-width="0.5"/>`;
@@ -1888,7 +1909,24 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
   return svg;
 }
 
-function escSvg(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+// escSvg() MUST wrap ALL dynamic values inserted into svg+= template literals.
+// Static string literals are exempt. User-data fields and computed values are never exempt.
+function escSvg(s){
+  return(s||'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+// sanitize(): strip HTML tags and control characters from AI-extracted or user-supplied strings.
+// Apply to all fields stored in the database that originate from the import flow.
+const sanitize=(s,maxLen=500)=>(s||'')
+  .replace(/<[^>]*>/g,'')                        // strip HTML tags
+  .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'')  // strip non-printable control chars
+  .trim()
+  .slice(0,maxLen);
 
 // ── TAB 3: CSV Export ─────────────────────────────────────────────────────
 function buildCsvTab(m,ms){
@@ -2219,7 +2257,7 @@ function refreshGanttRows(){
 
 function buildToolbar(){
   const t=el('div');t.className='toolbar';t.id='toolbar';
-  const logo=el('span');logo.className='logo';logo.textContent='🏗 Strada Schedule 2026';t.appendChild(logo);
+  const logo=el('span');logo.className='logo';logo.textContent='🏗 Strada Schedule '+SEASON_YEAR;t.appendChild(logo);
   const tabs=el('div');tabs.className='tabs';
   [['gantt','📅 Gantt'],['board','📋 Board'],['settings','⚙️ Settings']].forEach(([v,l])=>{
     const b=el('button');b.className='tab'+(S.view===v?' active':'');b.textContent=l;
@@ -2277,7 +2315,7 @@ function buildGantt(){
     const ico=el('div');ico.className='empty-state-icon';ico.textContent='📋';es.appendChild(ico);
     const title=el('div');title.className='empty-state-title';title.textContent='No projects yet';es.appendChild(title);
     const body=el('div');body.className='empty-state-body';
-    body.textContent='The schedule is empty. Load the 41 sample projects from the 2026 job board, or create your first project using the + Project button above.';es.appendChild(body);
+    body.textContent='The schedule is empty. Load the 41 sample projects from the '+SEASON_YEAR+' job board, or create your first project using the + Project button above.';es.appendChild(body);
     const btn=el('button');btn.className='empty-state-btn';btn.textContent='🌱 Load Sample Data';btn.onclick=seedData;es.appendChild(btn);
     wrap.appendChild(es);return wrap;
   }
@@ -2631,7 +2669,7 @@ function buildHolsPanel(){
   const d=el('div');const hdr=el('div');hdr.className='panel-hdr';
   const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700';h.textContent='Holidays 2026';hdr.appendChild(h);
   const ab=el('button');ab.className='btn-primary';ab.style.fontSize='12px';ab.textContent='+ Add';
-  ab.onclick=async()=>{const nh={id:uid(),date:'2026-04-01',name:'New Holiday'};await upsertHol(nh);S.holidays=[...S.holidays,nh];render()};
+  ab.onclick=async()=>{const nh={id:uid(),date:SEASON_YEAR+'-04-01',name:'New Holiday'};await upsertHol(nh);S.holidays=[...S.holidays,nh];render()};
   hdr.appendChild(ab);d.appendChild(hdr);
   [...S.holidays].sort((a,b)=>a.date.localeCompare(b.date)).forEach(h=>{
     const card=el('div');card.className='hol-card';
@@ -2705,7 +2743,7 @@ function buildDataPanel(){
   d.appendChild(akCard);
   const seedBtn=el('button');seedBtn.className='btn-primary';seedBtn.style.fontSize='12px';
   seedBtn.textContent='🌱 Load Sample Data (41 projects)';seedBtn.onclick=seedData;
-  card('Seed initial data','Load all 41 projects from the 2026 job board. Skip if you already have data.',[seedBtn]);
+  card('Seed initial data','Load all 41 projects from the '+SEASON_YEAR+' job board. Skip if you already have data.',[seedBtn]);
   const expBtn=el('button');expBtn.className='btn-primary';expBtn.style.fontSize='12px';expBtn.textContent='⬇ Export JSON backup';
   expBtn.onclick=()=>{
     const exportData={
@@ -2779,8 +2817,19 @@ function buildImportInput(m,ms){
   pasteLbl.innerHTML='Copy all text from your QBO estimate or any quote document and paste it here.<br><strong>No API key or internet connection required.</strong> Works immediately.';
   const ta=el('textarea');ta.className='import-textarea';ta.style.cssText='min-height:110px;background:#fff';
   ta.placeholder='Paste your estimate text here — include the estimate number, client name, and all line items…';
-  ta.value=ms.pasteText||'';ta.oninput=e=>{ms.pasteText=e.target.value};
-  pasteWrap.appendChild(pasteLbl);pasteWrap.appendChild(ta);m.appendChild(pasteWrap);
+  ta.value=ms.pasteText||'';
+  const MAX_PASTE=20000;
+  const pasteCounter=el('div');
+  pasteCounter.style.cssText='font-size:10px;color:#9ca3af;text-align:right;margin-top:3px';
+  pasteCounter.textContent=(ms.pasteText||'').length+' / '+MAX_PASTE+' characters';
+  ta.oninput=e=>{
+    if(e.target.value.length>MAX_PASTE)e.target.value=e.target.value.slice(0,MAX_PASTE);
+    ms.pasteText=e.target.value;
+    const len=e.target.value.length;
+    pasteCounter.textContent=len+' / '+MAX_PASTE+' characters';
+    pasteCounter.style.color=len>MAX_PASTE*0.9?'#ea580c':'#9ca3af';
+  };
+  pasteWrap.appendChild(pasteLbl);pasteWrap.appendChild(ta);pasteWrap.appendChild(pasteCounter);m.appendChild(pasteWrap);
 
   // ── SECONDARY: File upload (requires API key) ─────────────────────────────
   const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or upload a file (requires Anthropic API key in Settings)';m.appendChild(orDiv);
@@ -2815,8 +2864,17 @@ function buildImportInput(m,ms){
     ms.state='analyzing';openModal();
     try{
       const result=await runAnalysis(ms.file,ms.pasteText||'');
-      ms.editProj={job_num:result.job_num||'',client:result.client||'',location:result.location||'',status:'Not started'};
-      ms.editTasks=(result.tasks||[]).filter(t=>(t.description||'').trim()).map(t=>({id:uid(),description:(t.description||'').trim(),quantity:(t.quantity||'').trim()}));
+      ms.editProj={
+        job_num:sanitize(result.job_num,30),
+        client:sanitize(result.client,120),
+        location:sanitize(result.location,200),
+        status:'Not started'
+      };
+      ms.editTasks=(result.tasks||[]).filter(t=>(t.description||'').trim()).map(t=>({
+        id:uid(),
+        description:sanitize(t.description,300),
+        quantity:sanitize(t.quantity,80)
+      }));
       if(ms.editTasks.length===0)throw new Error('No tasks were extracted. Make sure the pasted text includes line item descriptions.');
       ms.state='preview';ms.error=null;
     }catch(e){ms.error=e.message;ms.state='error'}
@@ -2909,7 +2967,7 @@ function lbl2(t){const l=el('label');l.className='lbl';l.textContent=t;return l}
 function inp2(val,fn,type,opts){
   const i=el(type==='select'?'select':'input');i.className='inp';
   if(type==='select'){(opts||[]).forEach(([v,t])=>{const o=el('option');o.value=v;o.textContent=t;if(v===val)o.selected=true;i.appendChild(o)})}
-  else{if(type)i.type=type;i.value=val||'';if(type==='date'){i.min='2026-01-01';i.max='2026-12-31'}}
+  else{if(type)i.type=type;i.value=val||'';if(type==='date'){i.min=SEASON_DATE_MIN;i.max=SEASON_DATE_MAX}}
   if(fn){i.onchange=fn;i.oninput=fn}return i;
 }
 function mkFooter(m,leftContent,onSave){
@@ -3158,19 +3216,33 @@ function buildProjModal(m){
     if(p.archived){
       b.className='btn-sec';b.textContent='📁 Restore from Archive';
       b.onclick=async()=>{
+        const prev={...p,archived:true};
         p.archived=false;
         S.projects=S.projects.map(x=>x.id===p.id?{...x,archived:false}:x);
-        closeModal();render();await upsertProject({...p,archived:false});
-        toast('✓ Project restored to active schedule','ok');
+        closeModal();render();
+        try{
+          await upsertProject({...p,archived:false});
+          toast('✓ Project restored to active schedule','ok');
+        }catch(e){
+          S.projects=S.projects.map(x=>x.id===p.id?prev:x);
+          render();toast('⚠ Restore failed — '+e.message,'error');
+        }
       };
     }else{
       b.className='btn-archive';b.textContent='📁 Archive Project';
       b.onclick=async()=>{
         if(!confirm('Move "'+p.client+'" to the archive? It will be hidden from the active schedule.'))return;
+        const prev={...p,archived:false};
         p.archived=true;
         S.projects=S.projects.map(x=>x.id===p.id?{...x,archived:true}:x);
-        closeModal();render();await upsertProject({...p,archived:true});
-        toast('✓ Project archived','ok');
+        closeModal();render();
+        try{
+          await upsertProject({...p,archived:true});
+          toast('✓ Project archived','ok');
+        }catch(e){
+          S.projects=S.projects.map(x=>x.id===p.id?prev:x);
+          render();toast('⚠ Archive failed — '+e.message,'error');
+        }
       };
     }
     return b;
@@ -3180,10 +3252,17 @@ function buildProjModal(m){
   if(arcBtn)leftDiv.appendChild(arcBtn);
   if(delBtn)leftDiv.appendChild(delBtn);
   mkFooter(m,leftDiv,async()=>{
+    // Close and show optimistic update immediately for snappy UX
     closeModal();render();
-    await upsertProject(p);
-    for(const t of tasks)await upsertTask(t);
-    await loadAll();render();
+    try{
+      await upsertProject(p);
+      for(const t of tasks)await upsertTask(t);
+      await loadAll();render(); // final refresh with confirmed server state
+    }catch(e){
+      // Save failed — reload from server to restore consistent state
+      toast('⚠ Save failed: '+e.message+'. Reloading…','error');
+      await loadAll();render();
+    }
   });
 }
 
@@ -3234,14 +3313,14 @@ function buildTaskModal(m){
       // Start
       const sw2=el('div');sw2.style.flex='1';sw2.appendChild(lbl2('Start'));
       const startInp=el('input');startInp.type='date';startInp.className='inp';
-      startInp.min='2026-01-01';startInp.max='2026-12-31';
+      startInp.min=SEASON_DATE_MIN;startInp.max=SEASON_DATE_MAX;
       startInp.value=seg.s||'';
       startInp.onchange=e=>{t.segs[si].s=e.target.value||null;validate();renderWd()};
       sw2.appendChild(startInp);dateRow.appendChild(sw2);
       // End
       const ew=el('div');ew.style.flex='1';ew.appendChild(lbl2('End'));
       const endInp=el('input');endInp.type='date';endInp.className='inp';
-      endInp.min='2026-01-01';endInp.max='2026-12-31';
+      endInp.min=SEASON_DATE_MIN;endInp.max=SEASON_DATE_MAX;
       endInp.value=seg.e||'';
       endInp.onchange=e=>{t.segs[si].e=e.target.value||null;validate();renderWd()};
       ew.appendChild(endInp);
@@ -3421,7 +3500,7 @@ function buildTaskModal(m){
     aw.appendChild(aInp);aw.appendChild(dl);grid.appendChild(aw);
     // Date
     const dtw=el('div');dtw.appendChild(lbl2('Date needed (optional)'));
-    const dtInp=el('input');dtInp.type='date';dtInp.className='inp';dtInp.min='2026-01-01';dtInp.max='2026-12-31';
+    const dtInp=el('input');dtInp.type='date';dtInp.className='inp';dtInp.min=SEASON_DATE_MIN;dtInp.max=SEASON_DATE_MAX;
     dtw.appendChild(dtInp);grid.appendChild(dtw);
     addForm.appendChild(grid);
     // Save / Cancel
@@ -3477,10 +3556,20 @@ function buildTaskModal(m){
   mkFooter(m,delBtn,async()=>{
     const invalid=t.segs.some(sg=>sg.s&&sg.e&&sg.e<sg.s);
     if(invalid){toast('⚠ Fix date errors before saving.','error');return}
-    closeModal();
+    // Snapshot current state for rollback if the save fails
+    const prevTasks=S.tasks;
     if(S.tasks.find(x=>x.id===t.id))S.tasks=S.tasks.map(x=>x.id===t.id?t:x);
     else S.tasks=[...S.tasks,t];
-    render();await upsertTask(t);
+    closeModal();render();
+    try{
+      await upsertTask(t);
+    }catch(e){
+      // Revert the optimistic update and re-open with the original data
+      S.tasks=prevTasks;
+      S.modal={type:'task',t};
+      render();
+      toast('⚠ Save failed — changes reverted. '+e.message,'error');
+    }
   });
 }
 
@@ -3507,8 +3596,16 @@ function buildCrewModal(m){
     (()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Crew';
       b.onclick=()=>{if(confirm('Delete crew "'+c.name+'"?'))deleteCrew(c.id).then(()=>{S.crews=S.crews.filter(x=>x.id!==c.id);closeModal();render()})};return b})():null;
   mkFooter(m,delBtn,async()=>{
+    const prevCrews=S.crews;
     if(!S.modal.isNew)S.crews=S.crews.map(x=>x.id===c.id?c:x);else S.crews=[...S.crews,c];
-    closeModal();render();await upsertCrew(c);
+    closeModal();render();
+    try{
+      await upsertCrew(c);
+    }catch(e){
+      S.crews=prevCrews;
+      render();
+      toast('⚠ Save failed — changes reverted. '+e.message,'error');
+    }
   });
 }
 
