@@ -2398,7 +2398,7 @@ function buildToolbar(){
   const sp=el('div');sp.className='spacer';t.appendChild(sp);
   const addBtn=el('button');addBtn.className='btn-primary';addBtn.style.fontSize='12px';addBtn.textContent='+ Project';
   addBtn.onclick=()=>{
-    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:'no',soils_req:false,notes:null,locate_req_num:null,locate_public_ordered:false,locate_private_ordered:false,locate_public_complete:false,locate_private_complete:false,locate_public_req:null,locate_private_req:null}};
+    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:'no',soils_req:false,notes:null,locate_public_ordered:false,locate_private_ordered:false,locate_public_complete:false,locate_private_complete:false,locate_public_req:null,locate_private_req:null}};
     openModal();
   };t.appendChild(addBtn);
   const impBtn=el('button');impBtn.className='import-btn';impBtn.textContent='📄 Import';
