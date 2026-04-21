@@ -3296,6 +3296,9 @@ function buildProjModal(m){
   // ── Section 4: Tasks (unchanged logic) ────────────────────────────────────
   const tsec=el('div');tsec.style.cssText='margin-top:14px;border-top:1px solid #e4e8f0;padding-top:12px';
   const tasks=[...projTasks(p.id)];
+  // Track IDs of tasks the user removes via × so we can delete them from DB on save.
+  // Only tracks tasks that already exist in the DB (have a matching entry in S.tasks).
+  const deletedTaskIds=new Set();
   const thdr2=el('div');thdr2.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
   const tcnt=el('span');tcnt.style.cssText='font-weight:700;font-size:13px;color:#1F3864';thdr2.appendChild(tcnt);
   const addt=el('button');addt.className='btn-sm';addt.style.fontWeight='700';addt.textContent='+ Task';
@@ -3316,7 +3319,11 @@ function buildProjModal(m){
       row.appendChild(handle);
       const di=inp2(t.descr,e=>{tasks[ti].descr=e.target.value});di.placeholder='Task description';di.style.flex='1';row.appendChild(di);
       const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:15px;padding:0 4px';
-      db.textContent='×';db.onclick=()=>{tasks.splice(ti,1);rTL()};row.appendChild(db);
+      db.textContent='×';db.onclick=()=>{
+        // If this task already exists in the DB, mark it for deletion on save
+        if(S.tasks.find(x=>x.id===t.id))deletedTaskIds.add(t.id);
+        tasks.splice(ti,1);rTL();
+      };row.appendChild(db);
       // HTML5 drag-and-drop for reorder
       row.addEventListener('dragstart',e=>{
         e.dataTransfer.effectAllowed='move';
@@ -3399,9 +3406,17 @@ function buildProjModal(m){
   if(arcBtn)leftDiv.appendChild(arcBtn);
   if(delBtn)leftDiv.appendChild(delBtn);
   mkFooter(m,leftDiv,async()=>{
-    // Close and show optimistic update immediately for snappy UX
+    // Optimistically update S.tasks so the Gantt shows changes immediately:
+    // — remove tasks the user deleted via ×
+    // — add brand-new tasks (not yet in S.tasks) so they appear before loadAll()
+    S.tasks=S.tasks.filter(x=>!deletedTaskIds.has(x.id));
+    const newTasks=tasks.filter(t=>!S.tasks.find(x=>x.id===t.id));
+    if(newTasks.length)S.tasks=[...S.tasks,...newTasks];
+    _projTaskCache=null;
     closeModal();render();
     try{
+      // Delete removed tasks from the database first
+      for(const id of deletedTaskIds)await deleteTask(id);
       await upsertProject(p);
       for(const t of tasks)await upsertTask(t);
       await loadAll();render(); // final refresh with confirmed server state
