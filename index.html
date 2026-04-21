@@ -879,7 +879,31 @@ async function api(fn){
   catch(e){toast('⚠ '+e.message,'error')}
   finally{S.syncing=false;refreshToolbar()}
 }
-const upsertProject=p=>api(async()=>{const{error}=await sb.from('projects').upsert(p);if(error)throw error});
+// projectToDB: whitelist the exact columns that exist in the projects table.
+// This prevents any extra client-side fields from reaching Supabase and causing
+// "column not found in schema cache" errors when new UI fields are added before
+// the corresponding DB migration is run.
+function projectToDB(p){
+  return{
+    id:p.id, job_num:p.job_num, client:p.client, loc:p.loc,
+    loc_exp:p.loc_exp||null, status:p.status, collapsed:!!p.collapsed,
+    sort_order:p.sort_order||0, archived:!!p.archived,
+    // Phase 7 financial fields
+    job_value:p.job_value||null, po_num:p.po_num||null,
+    estimate_num:p.estimate_num||null, invoice_num:p.invoice_num||null,
+    // Phase 7 flags
+    soils_req:!!p.soils_req,
+    // Phase 12A locate fields
+    locates_req:p.locates_req||'no',
+    locate_public_ordered:!!p.locate_public_ordered,
+    locate_private_ordered:!!p.locate_private_ordered,
+    locate_public_complete:!!p.locate_public_complete,
+    locate_private_complete:!!p.locate_private_complete,
+    locate_public_req:p.locate_public_req||null,
+    locate_private_req:p.locate_private_req||null,
+  };
+}
+const upsertProject=p=>api(async()=>{const{error}=await sb.from('projects').upsert(projectToDB(p));if(error)throw error});
 const deleteProject=id=>api(async()=>{const{error}=await sb.from('projects').delete().eq('id',id);if(error)throw error});
 const upsertTask=t=>api(async()=>{const{error}=await sb.from('tasks').upsert(appTaskToDB(t));if(error)throw error});
 const deleteTask=id=>api(async()=>{const{error}=await sb.from('tasks').delete().eq('id',id);if(error)throw error});
