@@ -226,7 +226,16 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .subtask-date.past{background:#fef3c7;color:#92400e}
 .subtask-date.ok{background:#f0f4ff;color:#3730a3}
 .subtask-badge{font-size:9px;font-weight:700;padding:1px 5px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:2px}
-/* Gantt bar pins — icon flags above bars for incomplete supporting items */
+/* Gantt sub-rows — supporting items displayed below their parent task */
+.sub-row .lc{background:#f5f7fa!important;border-right:2px solid #d0d7e3;border-bottom:1px solid #eaecf0}
+.sub-row .gc{background:#f5f7fa!important;border-bottom:1px solid #eaecf0}
+.sub-row-done .lc{background:#f9fafb!important;opacity:.6}
+.sub-row-done .gc{background:#f9fafb!important;opacity:.6}
+.sub-lbl{font-size:10px;color:#4b5563;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;line-height:1.2}
+.sub-lbl.done{text-decoration:line-through;color:#9ca3af}
+.sub-type-dot{font-size:9px;flex-shrink:0;width:14px;text-align:center;line-height:14px}
+.sub-milestone{position:absolute;pointer-events:none;transform:rotate(45deg);border-radius:1px}
+.sub-milestone-line{position:absolute;pointer-events:none;border-top:1.5px dashed}
 .sub-pin{position:absolute;pointer-events:none;z-index:8;display:flex;gap:1px;align-items:center;top:0;transform:translateY(-1px)}
 .sub-pin-ico{font-size:9px;line-height:1;padding:1px 2px;border-radius:3px;border:1px solid;font-family:'Segoe UI Emoji',sans-serif}
 .subtask-add-form{background:#f0f4ff;border:1px solid #c5d0e8;border-radius:8px;padding:10px 12px;margin-top:6px}
@@ -328,7 +337,7 @@ const SEASON_DATE_MAX=SEASON_YEAR+'-12-31';   // date input max bound
 // GS at noon matches s2d() which returns T12:00:00. Using midnight for GS caused
 // dayOff('2026-04-01') = Math.round(0.5) = 1 instead of 0, shifting every bar
 // one column right and causing Fridays to land in Saturday's skip zone.
-const GS=new Date(SEASON_YEAR,3,1,12,0,0),NDAYS=275,DW=24,RH=28,PH=34,LW=530;
+const GS=new Date(SEASON_YEAR,3,1,12,0,0),NDAYS=275,DW=24,RH=28,PH=34,SRH=14,LW=530;
 const MONTH_CFG=[
   {label:'APRIL',color:'#1565A9',days:30},{label:'MAY',color:'#217346',days:31},{label:'JUNE',color:'#BF5700',days:30},
   {label:'JULY',color:'#7B3F00',days:31},{label:'AUGUST',color:'#5C2D91',days:31},{label:'SEPTEMBER',color:'#005B70',days:30},
@@ -1890,7 +1899,8 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
   const dateStrs=dates.map(d=>d.toISOString().slice(0,10));
   const totalW=leftW+nDays*dayW;
 
-  // Collect rows
+  // Collect rows — proj, task, then subtask sub-rows after each task
+  const svgSubH=10; // sub-row height in SVG (smaller than task rows for MS-Project feel)
   const projs=applyFilters().projects.filter(p=>!p.archived);
   const rows=[];
   projs.forEach(proj=>{
@@ -1900,12 +1910,14 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
     rows.push({type:'proj',proj});
     tasks.forEach(task=>{
       const hasSegs=(task.segs||[]).some(sg=>sg.s&&sg.e&&sg.e>=from&&sg.s<=to);
-      if(hasSegs)rows.push({type:'task',proj,task});
+      if(!hasSegs)return;
+      rows.push({type:'task',proj,task});
+      taskSubtasks(task.id).forEach(sub=>rows.push({type:'subtask',proj,task,sub}));
     });
   });
 
-  // Calculate actual total height — project rows are taller than task rows
-  const totalH=hdrH+rows.reduce((s,r)=>s+(r.type==='proj'?projH:rowH),0)+4;
+  // Calculate total height — project rows taller, subtask rows shorter
+  const totalH=hdrH+rows.reduce((s,r)=>s+(r.type==='proj'?projH:r.type==='subtask'?svgSubH:rowH),0)+4;
   let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" style="font-family:Arial,sans-serif">`;
 
   // ── Background: weekend columns ──────────────────────────────────────────
@@ -1951,7 +1963,56 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
   // ── Rows ─────────────────────────────────────────────────────────────────
   let y=hdrH;
   rows.forEach((row,ri)=>{
-    const h=row.type==='proj'?projH:rowH;
+    const h=row.type==='proj'?projH:row.type==='subtask'?svgSubH:rowH;
+    if(row.type==='subtask'){
+      // ── SVG sub-row ────────────────────────────────────────────────────────
+      const subBg=row.sub.complete?'#f9fafb':'#f0f2f8';
+      svg+=`<rect x="0" y="${y}" width="${leftW}" height="${h}" fill="${subBg}"/>`;
+      svg+=`<rect x="${leftW}" y="${y}" width="${totalW-leftW}" height="${h}" fill="${subBg}"/>`;
+      svg+=`<line x1="0" y1="${y+h}" x2="${totalW}" y2="${y+h}" stroke="#eaecf0" stroke-width="0.5"/>`;
+      svg+=`<line x1="${leftW}" y1="${y}" x2="${leftW}" y2="${y+h}" stroke="#c0cce0" stroke-width="2"/>`;
+      // Vertical guide indent line
+      svg+=`<line x1="32" y1="${y}" x2="32" y2="${y+h}" stroke="#d1d5db" stroke-width="1" opacity="0.6"/>`;
+      // Type abbreviation
+      const svgTypeAbbr={equipment:'E',delivery:'D',dependency:'L',note:'N'};
+      const svgTypeCol={equipment:'#c2410c',delivery:'#1d4ed8',dependency:'#7e22ce',note:'#15803d'};
+      const subCol=row.sub.complete?'#9ca3af':svgTypeCol[row.sub.type]||'#6b7280';
+      svg+=`<rect x="35" y="${y+1}" width="9" height="${h-2}" fill="${subCol}" opacity="${row.sub.complete?'0.2':'0.15'}" rx="1"/>`;
+      svg+=`<text x="39" y="${y+h/2+3}" font-size="6" font-weight="800" fill="${subCol}" text-anchor="middle">${escSvg(svgTypeAbbr[row.sub.type]||'?')}</text>`;
+      // Description (truncated, strikethrough if done)
+      const subDescr=(row.sub.descr||'').slice(0,42);
+      const strike=row.sub.complete?'line-through':'none';
+      svg+=`<text x="48" y="${y+h/2+3}" font-size="7" fill="${subCol}" text-decoration="${strike}">${escSvg(subDescr)}</text>`;
+      // Assigned crew name (right of description)
+      if(row.sub.assigned_to){
+        svg+=`<text x="${leftW-daysColW-4}" y="${y+h/2+3}" font-size="6" fill="#6b7280" text-anchor="end">${escSvg(row.sub.assigned_to)}</text>`;
+      }
+      // Milestone diamond or no-date line in calendar area
+      if(row.sub.scheduled_dt){
+        const dIdx=dateStrs.indexOf(row.sub.scheduled_dt);
+        if(dIdx>=0){
+          const cx=leftW+dIdx*dayW+dayW/2;const cy=y+h/2;const ds=4;
+          const isOD=!row.sub.complete&&row.sub.scheduled_dt<TODAY;
+          const dCol=row.sub.complete?'#9ca3af':isOD?'#dc2626':subCol;
+          // Rotated square = diamond
+          svg+=`<rect x="${cx-ds/1.41}" y="${cy-ds/1.41}" width="${ds*1.41}" height="${ds*1.41}" fill="${dCol}" transform="rotate(45,${cx},${cy})" opacity="${row.sub.complete?'0.4':'0.85'}"/>`;
+          // Overdue label
+          if(isOD)svg+=`<text x="${cx+ds+1}" y="${cy+3}" font-size="5" fill="#dc2626" font-weight="700">OD</text>`;
+        }
+      }else{
+        // No date — thin dashed line across parent task range
+        const parentSpan=projSpan([row.task]);
+        if(parentSpan.s&&parentSpan.e){
+          const sx=dateStrs.indexOf(parentSpan.s<from?from:parentSpan.s);
+          const ex=dateStrs.indexOf(parentSpan.e>to?to:parentSpan.e);
+          if(sx>=0&&ex>=sx){
+            svg+=`<line x1="${leftW+sx*dayW}" y1="${y+h/2}" x2="${leftW+(ex+1)*dayW}" y2="${y+h/2}" stroke="${subCol}" stroke-width="1" stroke-dasharray="3,2" opacity="0.35"/>`;
+          }
+        }
+      }
+      y+=h;
+      return; // skip the rest of the loop for subtask rows
+    }
     if(row.type==='proj'){
       // Project row — full navy background, two lines of info
       svg+=`<rect x="0" y="${y}" width="${totalW}" height="${h}" fill="#2F4F8F"/>`;
@@ -2553,7 +2614,12 @@ function buildGantt(){
   const flatRows=[];
   visProjs.forEach(proj=>{
     flatRows.push({type:'proj',proj});
-    if(!proj.collapsed)(visibleTasks[proj.id]||[]).forEach(task=>flatRows.push({type:'task',proj,task}));
+    if(!proj.collapsed)(visibleTasks[proj.id]||[]).forEach(task=>{
+      flatRows.push({type:'task',proj,task});
+      // Add a sub-row for each supporting item, sorted by type then date
+      const subs=taskSubtasks(task.id);
+      subs.forEach(sub=>flatRows.push({type:'subtask',proj,task,sub}));
+    });
   });
 
   // Header
@@ -2568,10 +2634,19 @@ function buildGantt(){
   wrap.appendChild(hdr);
 
   flatRows.forEach((row,ri)=>{
-    const isP=row.type==='proj';const h=isP?PH:RH;
+    const isP=row.type==='proj';
+    const isSub=row.type==='subtask';
+    const h=isP?PH:isSub?SRH:RH;
     const g=el('div');
     const arcClass=isP&&row.proj.archived?' proj-row-archived':'';
-    g.className='g-row '+(isP?'proj-row'+arcClass:'task-row task-'+(ri%2===0?'even':'odd'));g.style.height=h+'px';
+    if(isP){
+      g.className='g-row proj-row'+arcClass;
+    }else if(isSub){
+      g.className='g-row sub-row'+(row.sub.complete?' sub-row-done':'');
+    }else{
+      g.className='g-row task-row task-'+(ri%2===0?'even':'odd');
+    }
+    g.style.height=h+'px';
     const lc=el('div');lc.className='lc';lc.style.cssText='width:'+LW+'px;height:'+h+'px';
     if(isP){
       lc.appendChild(iBtn(row.proj.collapsed?'▶':'▼',()=>{
@@ -2603,8 +2678,57 @@ function buildGantt(){
       },'rgba(255,255,255,.7)','Add task to '+row.proj.client));
       btns.appendChild(iBtn('✎',()=>{S.modal={type:'proj',isNew:false,p:{...row.proj}};openModal()},'rgba(255,255,255,.7)','Edit project: '+row.proj.client));
       lc.appendChild(btns);
-    } else {
-      const wd=workDays(row.task.segs,holDates,row.task.wknd);
+    } else if(isSub){
+      // ── Sub-row left panel ─────────────────────────────────────────────────
+      const typeIcons={equipment:'🚜',delivery:'📦',dependency:'🔗',note:'📋'};
+      const typeColors={
+        equipment:'#c2410c',delivery:'#1d4ed8',dependency:'#7e22ce',note:'#15803d'
+      };
+      lc.style.cssText='width:'+LW+'px;height:'+h+'px;padding-left:42px;display:flex;align-items:center;gap:4px;overflow:hidden';
+      // Vertical guide line connecting sub-rows to parent
+      const guide=el('span');
+      guide.style.cssText='width:1px;height:100%;background:#d1d5db;flex-shrink:0;align-self:stretch;margin-right:4px;margin-left:-12px';
+      lc.appendChild(guide);
+      // Type icon
+      const tIco=el('span');tIco.className='sub-type-dot';
+      tIco.textContent=typeIcons[row.sub.type]||'📋';
+      tIco.title=row.sub.type;
+      lc.appendChild(tIco);
+      // Description
+      const dsp=el('span');dsp.className='sub-lbl'+(row.sub.complete?' done':'');
+      dsp.textContent=row.sub.descr||'—';
+      dsp.title=[
+        row.sub.descr,
+        row.sub.detail||'',
+        row.sub.assigned_to?'Assigned: '+row.sub.assigned_to:'',
+        row.sub.scheduled_dt?'Date: '+fmtDate(row.sub.scheduled_dt):'No date set',
+        row.sub.complete?'✓ Complete':'○ Pending',
+      ].filter(Boolean).join('\n');
+      lc.appendChild(dsp);
+      // Assigned crew chip (if set)
+      if(row.sub.assigned_to){
+        const cr=crewMap()[row.sub.assigned_to];
+        const chip=el('span');
+        chip.style.cssText='font-size:9px;font-weight:700;padding:0 5px;border-radius:8px;flex-shrink:0;white-space:nowrap;'
+          +(cr?'background:'+cr.color+';color:'+cr.tc:'background:#e5e7eb;color:#374151');
+        chip.textContent=row.sub.assigned_to;
+        lc.appendChild(chip);
+      }
+      // Scheduled date (right-aligned, coloured if overdue)
+      if(row.sub.scheduled_dt){
+        const isPast=!row.sub.complete&&row.sub.scheduled_dt<TODAY;
+        const dateSp=el('span');
+        dateSp.style.cssText='font-size:9px;font-weight:700;flex-shrink:0;padding:0 4px;border-radius:4px;'
+          +(isPast?'color:#dc2626;background:#fee2e2':'color:#6b7280');
+        dateSp.textContent=(isPast?'⚠ ':'')+fmtDate(row.sub.scheduled_dt);
+        lc.appendChild(dateSp);
+      }
+      // Complete checkmark
+      const chk=el('span');
+      chk.style.cssText='font-size:10px;flex-shrink:0;color:'+(row.sub.complete?'#16a34a':'#d1d5db');
+      chk.textContent=row.sub.complete?'✓':'○';
+      chk.title=row.sub.complete?'Complete — click task to manage':'Pending';
+      lc.appendChild(chk);
       lc.style.paddingLeft='22px';
       const arr=el('span');arr.style.cssText='color:#bbb;font-size:11px;flex-shrink:0;margin-right:4px';arr.textContent='↳';lc.appendChild(arr);
       const desc=el('span');desc.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#1a2b4a';desc.textContent=row.task.descr;lc.appendChild(desc);
@@ -2666,6 +2790,55 @@ function buildGantt(){
     if(isP){
       const sp=projSpan(projTasks(row.proj.id));
       if(sp.s&&sp.e){const sb2=el('div');sb2.className='proj-span';sb2.style.cssText='left:'+dayOff(sp.s)*DW+'px;width:'+(dayOff(sp.e)-dayOff(sp.s)+1)*DW+'px;top:50%;transform:translateY(-50%);height:6px';gc.appendChild(sb2)}
+    } else if(isSub){
+      // ── Sub-row calendar area ──────────────────────────────────────────────
+      const typeColors={
+        equipment:'#c2410c',delivery:'#1d4ed8',dependency:'#7e22ce',note:'#15803d'
+      };
+      const subColor=row.sub.complete?'#9ca3af'
+        :(row.sub.scheduled_dt&&row.sub.scheduled_dt<TODAY&&!row.sub.complete)?'#dc2626'
+        :typeColors[row.sub.type]||'#6b7280';
+      if(row.sub.scheduled_dt){
+        // Milestone diamond at scheduled_dt
+        const dIdx=dayOff(row.sub.scheduled_dt);
+        if(dIdx>=0&&dIdx<NDAYS){
+          const cx=dIdx*DW+DW/2;const cy=h/2;const ds=5;
+          const diamond=el('div');diamond.className='sub-milestone';
+          diamond.style.cssText=[
+            'left:'+(cx-ds)+'px',
+            'top:'+(cy-ds)+'px',
+            'width:'+(ds*2)+'px',
+            'height:'+(ds*2)+'px',
+            'background:'+subColor,
+            'opacity:'+(row.sub.complete?'0.4':'0.85'),
+          ].join(';');
+          diamond.title=row.sub.descr+(row.sub.complete?' (complete)':' — '+fmtDate(row.sub.scheduled_dt));
+          gc.appendChild(diamond);
+          // Thin vertical line from diamond to the parent task bar above
+          const vline=el('div');
+          vline.style.cssText='position:absolute;pointer-events:none;left:'+(cx-0.5)+'px;top:0;width:1px;height:'+(h/2-ds)+'px;background:'+subColor+';opacity:0.3';
+          gc.appendChild(vline);
+        }
+      }else{
+        // No date — thin dashed line spanning the parent task's overall date range
+        const parentSpan=projSpan([row.task]);
+        if(parentSpan.s&&parentSpan.e){
+          const sI=Math.max(0,dayOff(parentSpan.s));
+          const eI=Math.min(NDAYS-1,dayOff(parentSpan.e));
+          if(eI>=sI){
+            const noDateLine=el('div');noDateLine.className='sub-milestone-line';
+            noDateLine.style.cssText=[
+              'left:'+sI*DW+'px',
+              'top:'+(h/2)+'px',
+              'width:'+(eI-sI+1)*DW+'px',
+              'border-color:'+subColor,
+              'opacity:'+(row.sub.complete?'0.25':'0.4'),
+            ].join(';');
+            noDateLine.title=row.sub.descr+' — no date scheduled';
+            gc.appendChild(noDateLine);
+          }
+        }
+      }
     } else {
       row.task.segs.forEach((seg,si)=>{
         if(!seg.s||!seg.e)return;
