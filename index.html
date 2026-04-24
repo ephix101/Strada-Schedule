@@ -2707,7 +2707,7 @@ function buildGantt(){
       lc.appendChild(dsp);
       // Assigned crew chip (if set)
       if(row.sub.assigned_to){
-        const cr=crewMap()[row.sub.assigned_to];
+        const cr=cm[row.sub.assigned_to];
         const chip=el('span');
         chip.style.cssText='font-size:9px;font-weight:700;padding:0 5px;border-radius:8px;flex-shrink:0;white-space:nowrap;'
           +(cr?'background:'+cr.color+';color:'+cr.tc:'background:#e5e7eb;color:#374151');
@@ -2729,6 +2729,9 @@ function buildGantt(){
       chk.textContent=row.sub.complete?'✓':'○';
       chk.title=row.sub.complete?'Complete — click task to manage':'Pending';
       lc.appendChild(chk);
+    } else {
+      // ── Task row left panel ────────────────────────────────────────────────
+      const wd=workDays(row.task.segs,holDates,row.task.wknd);
       lc.style.paddingLeft='22px';
       const arr=el('span');arr.style.cssText='color:#bbb;font-size:11px;flex-shrink:0;margin-right:4px';arr.textContent='↳';lc.appendChild(arr);
       const desc=el('span');desc.style.cssText='flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#1a2b4a';desc.textContent=row.task.descr;lc.appendChild(desc);
