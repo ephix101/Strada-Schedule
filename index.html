@@ -226,6 +226,9 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .subtask-date.past{background:#fef3c7;color:#92400e}
 .subtask-date.ok{background:#f0f4ff;color:#3730a3}
 .subtask-badge{font-size:9px;font-weight:700;padding:1px 5px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:2px}
+/* Gantt bar pins — icon flags above bars for incomplete supporting items */
+.sub-pin{position:absolute;pointer-events:none;z-index:8;display:flex;gap:1px;align-items:center;top:0;transform:translateY(-1px)}
+.sub-pin-ico{font-size:9px;line-height:1;padding:1px 2px;border-radius:3px;border:1px solid;font-family:'Segoe UI Emoji',sans-serif}
 .subtask-add-form{background:#f0f4ff;border:1px solid #c5d0e8;border-radius:8px;padding:10px 12px;margin-top:6px}
 .subtask-type-btns{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap}
 .subtask-type-btn{padding:3px 10px;border-radius:5px;border:1.5px solid #d1d5db;font-size:11px;font-weight:700;cursor:pointer;background:#fff;color:#6b7280;transition:all .12s}
@@ -1991,6 +1994,43 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
       const firstSegCrews=(row.task.segs[0]?.crews&&row.task.segs[0].crews.length>0)?row.task.segs[0].crews:(row.task.crew?[row.task.crew]:[]);
       const firstCrew=cm[firstSegCrews[0]];
       if(firstCrew)svg+=`<circle cx="13" cy="${y+h/2}" r="4" fill="${firstCrew.color}"/>`;
+      // ── Supporting items indicator (visible in PDF) ─────────────────────────
+      // Shows coloured type-icon badges in the left panel and a notch on the bar.
+      const svgSubs=taskSubtasks(row.task.id);
+      const svgSubsPending=svgSubs.filter(s=>!s.complete);
+      if(svgSubsPending.length>0){
+        const svgSubsDone=svgSubs.filter(s=>s.complete).length;
+        const hasOverdue=svgSubsPending.some(s=>s.scheduled_dt&&s.scheduled_dt<TODAY);
+        // Small coloured badge in left panel showing count + overdue state
+        const badgeW=28;const badgeH=h-8;
+        const badgeX=leftW-daysColW-badgeW-3;
+        const badgeFill=hasOverdue?'#fee2e2':svgSubsDone===svgSubs.length?'#dcfce7':'#fef3c7';
+        const badgeStroke=hasOverdue?'#f87171':svgSubsDone===svgSubs.length?'#86efac':'#fcd34d';
+        const badgeTextCol=hasOverdue?'#dc2626':svgSubsDone===svgSubs.length?'#166534':'#92400e';
+        svg+=`<rect x="${badgeX}" y="${y+4}" width="${badgeW}" height="${badgeH}" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1" rx="3"/>`;
+        // Count text centred in badge
+        const typeIcoSvg={equipment:'E',delivery:'D',dependency:'L',note:'N'};
+        const pendingTypes=[...new Set(svgSubsPending.map(s=>s.type))];
+        const typeStr=pendingTypes.map(t=>typeIcoSvg[t]||'?').join('');
+        svg+=`<text x="${badgeX+badgeW/2}" y="${y+h/2+1}" font-size="7" font-weight="800" fill="${badgeTextCol}" text-anchor="middle" font-family="monospace">${escSvg(typeStr)}</text>`;
+        svg+=`<text x="${badgeX+badgeW/2}" y="${y+h/2+8}" font-size="6" font-weight="700" fill="${badgeTextCol}" text-anchor="middle">${escSvg(svgSubsDone+'/'+svgSubs.length)}</text>`;
+        // Warning triangle on the first bar segment start (clearly visible in print)
+        if(svgSubsPending.length>0){
+          // Find first valid segment start x
+          const firstSeg=(row.task.segs||[]).find(s=>s.s&&s.e&&dateStrs.indexOf(s.s<from?from:s.s)>=0);
+          if(firstSeg){
+            const clampStart=firstSeg.s<from?from:firstSeg.s;
+            const barStartI=dateStrs.indexOf(clampStart);
+            if(barStartI>=0){
+              const bx=leftW+barStartI*dayW;
+              const triCol=hasOverdue?'#dc2626':'#d97706';
+              // Filled triangle notch above bar (pointing down into bar top)
+              const tx=bx+2,ty=y+3,ts=6;
+              svg+=`<polygon points="${tx},${ty} ${tx+ts},${ty} ${tx+ts/2},${ty+ts}" fill="${triCol}" opacity="0.9"/>`;
+            }
+          }
+        }
+      }
       // Segment bars — per-segment crew colors
       (row.task.segs||[]).forEach(seg=>{
         if(!seg.s||!seg.e)return;
@@ -2042,6 +2082,24 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
 
   // ── Border ───────────────────────────────────────────────────────────────
   svg+=`<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="none" stroke="#d0d7e3" stroke-width="1"/>`;
+
+  // ── Supporting items legend ───────────────────────────────────────────────
+  // Only shown when at least one task in the export has supporting items
+  const anySubsPending=rows.some(r=>r.type==='task'&&taskSubtasks(r.task.id).some(s=>!s.complete));
+  if(anySubsPending){
+    const legY=totalH+6;
+    const legItems=[
+      {col:'#fef3c7',stroke:'#fcd34d',text:'▼ = Supporting items pending  (amber = pending, red = overdue)'},
+      {col:'#fff7ed',stroke:'#fb923c',text:'E = Equipment  D = Delivery  L = Dependency  N = Note'},
+    ];
+    legItems.forEach((li,i)=>{
+      svg+=`<rect x="2" y="${legY+i*14}" width="12" height="10" fill="${li.col}" stroke="${li.stroke}" stroke-width="1" rx="2"/>`;
+      svg+=`<text x="18" y="${legY+i*14+8}" font-size="8" fill="#374151">${escSvg(li.text)}</text>`;
+    });
+    // Adjust SVG viewBox to include legend
+    svg=svg.replace(/viewBox="0 0 \d+ \d+"/, `viewBox="0 0 ${totalW} ${totalH+36}"`);
+    svg=svg.replace(/height="\d+"( width)/, `height="${totalH+36}"$1`);
+  }
   svg+='</svg>';
   return svg;
 }
@@ -2556,19 +2614,30 @@ function buildGantt(){
       if(wd>0){const wds=el('span');wds.style.cssText='color:#555;font-size:11px;flex-shrink:0;min-width:26px;text-align:right';wds.textContent=wd+'d';lc.appendChild(wds)}
       // Phase 10 CP2: task value badge
       if(row.task.task_value){const tvb=el('span');tvb.className='task-val-badge';tvb.textContent=centsToBadge(row.task.task_value);tvb.title='Task value: '+centsToDisplay(row.task.task_value);lc.appendChild(tvb)}
-      // Phase 12B: subtask badge
+      // Phase 12B: subtask badge — shows type icons + overdue state
       const subs=taskSubtasks(row.task.id);
       if(subs.length>0){
         const done=subs.filter(s=>s.complete).length;
         const total=subs.length;
-        const hasPastIncomplete=subs.some(s=>!s.complete&&s.scheduled_dt&&s.scheduled_dt<TODAY);
-        const bg=hasPastIncomplete?'#fee2e2':done===total?'#dcfce7':'#fef3c7';
-        const col=hasPastIncomplete?'#dc2626':done===total?'#166534':'#92400e';
-        const border=hasPastIncomplete?'#dc2626':done===total?'#86efac':'#fcd34d';
+        const overdue=subs.filter(s=>!s.complete&&s.scheduled_dt&&s.scheduled_dt<TODAY);
+        const pending=subs.filter(s=>!s.complete);
+        // Badge colour: red if any overdue, green if all done, amber otherwise
+        const bg=overdue.length?'#fee2e2':done===total?'#dcfce7':'#fef3c7';
+        const col=overdue.length?'#dc2626':done===total?'#166534':'#92400e';
+        const border=overdue.length?'#fca5a5':done===total?'#86efac':'#fcd34d';
         const stb=el('span');stb.className='subtask-badge';
-        stb.style.cssText='background:'+bg+';color:'+col+';border:1px solid '+border;
-        stb.textContent='⚙ '+done+'/'+total;
-        stb.title=subs.map(s=>(s.complete?'✓ ':'○ ')+s.descr).join('\n');
+        stb.style.cssText='background:'+bg+';color:'+col+';border:1px solid '+border+';cursor:default';
+        // Build icon list for pending items by type
+        const typeIcons={equipment:'🚜',delivery:'📦',dependency:'🔗',note:'📋'};
+        const pendingTypes=[...new Set(pending.map(s=>s.type))];
+        const icons=pendingTypes.map(t=>typeIcons[t]||'📋').join('');
+        stb.textContent=(icons||'⚙')+' '+done+'/'+total+(overdue.length?' ⚠':'');
+        stb.title=[
+          done+'/'+total+' items complete',
+          ...(overdue.length?['⚠ Overdue: '+overdue.map(s=>s.descr).join(', ')]:[]),
+          ...pending.map(s=>'○ '+s.descr+(s.scheduled_dt?' ('+fmtDate(s.scheduled_dt)+')':'')),
+          ...subs.filter(s=>s.complete).map(s=>'✓ '+s.descr),
+        ].join('\n');
         lc.appendChild(stb);
       }
       lc.appendChild(iBtn('✎',()=>{
@@ -2655,8 +2724,49 @@ function buildGantt(){
           document.body.style.cursor=type==='move'?'grabbing':'ew-resize';
         });
         gc.appendChild(ov);
-      });
-    }
+
+        // ── Subtask pins: icon flags above the bar for incomplete items ──────
+        // Only render on the first segment (si===0) to avoid duplication.
+        // Pins sit above the bar (top:0 via CSS) and are pointer-events:none
+        // so they never interfere with drag handles.
+        if(si===0){
+          const subItems=taskSubtasks(row.task.id).filter(s=>!s.complete);
+          if(subItems.length>0){
+            const typeIcons={equipment:'🚜',delivery:'📦',dependency:'🔗',note:'📋'};
+            const typeColors={
+              equipment:{bg:'#fff7ed',col:'#c2410c',bdr:'#fb923c'},
+              delivery: {bg:'#eff6ff',col:'#1d4ed8',bdr:'#60a5fa'},
+              dependency:{bg:'#fdf4ff',col:'#7e22ce',bdr:'#c084fc'},
+              note:     {bg:'#f0fdf4',col:'#15803d',bdr:'#4ade80'},
+            };
+            // Group by type, mark overdue
+            const byType={};
+            subItems.forEach(s=>{
+              const isOverdue=s.scheduled_dt&&s.scheduled_dt<TODAY;
+              const key=isOverdue?'__overdue__':s.type;
+              if(!byType[key])byType[key]={type:s.type,items:[],overdue:isOverdue};
+              byType[key].items.push(s);
+            });
+            const pin=el('div');pin.className='sub-pin';
+            // Position pin at the left edge of the first segment
+            pin.style.left=sIdx*DW+'px';
+            Object.values(byType).forEach(group=>{
+              const colors=group.overdue
+                ?{bg:'#fef2f2',col:'#dc2626',bdr:'#f87171'}
+                :typeColors[group.type]||{bg:'#f3f4f6',col:'#374151',bdr:'#9ca3af'};
+              const ico=el('span');ico.className='sub-pin-ico';
+              ico.style.cssText='background:'+colors.bg+';color:'+colors.col+';border-color:'+colors.bdr;
+              ico.textContent=(typeIcons[group.type]||'📋')+(group.items.length>1?group.items.length:'');
+              ico.title=(group.overdue?'⚠ OVERDUE — ':'')+group.items.map(s=>
+                s.descr+(s.scheduled_dt?' ('+fmtDate(s.scheduled_dt)+')':'')
+              ).join('\n');
+              pin.appendChild(ico);
+            });
+            gc.appendChild(pin);
+          }
+        }
+      }); // end seg forEach
+    } // end else (task row)
     g.appendChild(gc);wrap.appendChild(g);
   });
   const spacer=el('div');spacer.style.height='60px';wrap.appendChild(spacer);
