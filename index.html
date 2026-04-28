@@ -348,6 +348,20 @@ const TODAY=new Date().toISOString().slice(0,10);
 const TODAYIDX=Math.round((new Date(TODAY+'T12:00:00')-GS)/86400000);
 const ST_OPTS=['Not started','In progress','On hold','Complete','To invoice'];
 const ST_CLR={'Not started':'#6c757d','In progress':'#0d6efd','On hold':'#dc3545','Complete':'#198754','To invoice':'#fd7e14'};
+// TYPE_ICONS / TYPE_COLORS: used in Gantt sub-rows, subtask badge, SVG export, and bar pins.
+// Centralised here so colour/icon changes only need one edit.
+const TYPE_ICONS={equipment:'🚜',delivery:'📦',dependency:'🔗',note:'📋'};
+// TYPE_COLORS: flat colour per type (text/border on white background)
+const TYPE_COLORS={equipment:'#c2410c',delivery:'#1d4ed8',dependency:'#7e22ce',note:'#15803d'};
+// TYPE_PIN_COLORS: richer {bg,col,bdr} palette for the Gantt bar pin icons
+const TYPE_PIN_COLORS={
+  equipment:{bg:'#fff7ed',col:'#c2410c',bdr:'#fb923c'},
+  delivery: {bg:'#eff6ff',col:'#1d4ed8',bdr:'#60a5fa'},
+  dependency:{bg:'#fdf4ff',col:'#7e22ce',bdr:'#c084fc'},
+  note:     {bg:'#f0fdf4',col:'#15803d',bdr:'#4ade80'},
+};
+// SVG_TYPE_ABBR: single-letter abbreviations for SVG/PDF export (emoji don't render in SVG text)
+const SVG_TYPE_ABBR={equipment:'E',delivery:'D',dependency:'L',note:'N'};
 const WDAY_IDXS=ALL_DATES.reduce((a,d,i)=>{if(d.getDay()===0||d.getDay()===6)a.push(i);return a},[]);
 const MONTH_BANDS=(()=>{let o=0;return MONTH_CFG.map(m=>{const b={...m,o};o+=m.days;return b})})();
 const CFG_KEY='strada_cfg_v2';
@@ -681,14 +695,20 @@ async function doSignIn(){
   const btn=document.getElementById('li-btn');
   if(!email||!pass){errEl.textContent='Please enter your email and password.';return}
   btn.disabled=true;btn.textContent='Signing in…';errEl.textContent='';
-  const{error}=await sb.auth.signInWithPassword({email,password:pass});
-  btn.disabled=false;btn.textContent='Sign In';
-  if(error){errEl.textContent=error.message==='Invalid login credentials'?'Incorrect email or password.':error.message}
+  try{
+    const{error}=await sb.auth.signInWithPassword({email,password:pass});
+    if(error){errEl.textContent=error.message==='Invalid login credentials'?'Incorrect email or password.':error.message}
+  }catch(e){
+    errEl.textContent='Connection error — check your internet connection and try again.';
+  }finally{
+    btn.disabled=false;btn.textContent='Sign In';
+  }
 }
 
 async function doSignOut(){
   if(!await confirmModal('Sign out of Strada Schedule?','Sign Out',false))return;
-  await sb.auth.signOut();
+  try{await sb.auth.signOut()}
+  catch(e){toast('⚠ Sign out error: '+e.message,'error')}
 }
 
 async function doForgot(){
@@ -697,10 +717,15 @@ async function doForgot(){
   const btn=document.getElementById('fp-btn');
   if(!email){msgEl.textContent='Please enter your email address.';return}
   btn.disabled=true;btn.textContent='Sending…';msgEl.textContent='';
-  const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
-  btn.disabled=false;btn.textContent='Send Reset Link';
-  if(error){msgEl.style.color='#dc3545';msgEl.textContent=error.message}
-  else{msgEl.style.color='#198754';msgEl.textContent='✓ Reset link sent — check your inbox (and spam folder).'}
+  try{
+    const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+    if(error){msgEl.style.color='#dc3545';msgEl.textContent=error.message}
+    else{msgEl.style.color='#198754';msgEl.textContent='✓ Reset link sent — check your inbox (and spam folder).'}
+  }catch(e){
+    msgEl.style.color='#dc3545';msgEl.textContent='Connection error — check your internet connection.';
+  }finally{
+    btn.disabled=false;btn.textContent='Send Reset Link';
+  }
 }
 
 async function doUpdatePass(){
@@ -711,13 +736,18 @@ async function doUpdatePass(){
   if(p1.length<6){errEl.textContent='Password must be at least 6 characters.';return}
   if(p1!==p2){errEl.textContent='Passwords do not match.';return}
   btn.disabled=true;btn.textContent='Setting password…';errEl.textContent='';
-  const{error}=await sb.auth.updateUser({password:p1});
-  btn.disabled=false;btn.textContent='Set Password';
-  if(error){errEl.textContent=error.message}
-  else{
-    const{data:{session}}=await sb.auth.getSession();
-    if(session?.user){toast('✓ Password set — welcome!','ok');await enterApp(session.user)}
-    else{toast('✓ Password updated — please sign in.','ok');showLogin()}
+  try{
+    const{error}=await sb.auth.updateUser({password:p1});
+    if(error){errEl.textContent=error.message}
+    else{
+      const{data:{session}}=await sb.auth.getSession();
+      if(session?.user){toast('✓ Password set — welcome!','ok');await enterApp(session.user)}
+      else{toast('✓ Password updated — please sign in.','ok');showLogin()}
+    }
+  }catch(e){
+    errEl.textContent='Connection error — check your internet connection.';
+  }finally{
+    btn.disabled=false;btn.textContent='Set Password';
   }
 }
 
@@ -895,6 +925,7 @@ async function api(fn){
 // This prevents any extra client-side fields from reaching Supabase and causing
 // "column not found in schema cache" errors when new UI fields are added before
 // the corresponding DB migration is run.
+// ⚠ notes requires: ALTER TABLE projects ADD COLUMN IF NOT EXISTS notes TEXT;
 function projectToDB(p){
   return{
     id:p.id, job_num:p.job_num, client:p.client, loc:p.loc,
@@ -913,13 +944,27 @@ function projectToDB(p){
     locate_private_complete:!!p.locate_private_complete,
     locate_public_req:p.locate_public_req||null,
     locate_private_req:p.locate_private_req||null,
+    // Internal notes — requires notes TEXT column (see migration comment above)
+    notes:p.notes||null,
   };
 }
 const upsertProject=p=>api(async()=>{const{error}=await sb.from('projects').upsert(projectToDB(p));if(error)throw error});
 const deleteProject=id=>api(async()=>{const{error}=await sb.from('projects').delete().eq('id',id);if(error)throw error});
 const upsertTask=t=>api(async()=>{const{error}=await sb.from('tasks').upsert(appTaskToDB(t));if(error)throw error});
 const deleteTask=id=>api(async()=>{const{error}=await sb.from('tasks').delete().eq('id',id);if(error)throw error});
-const upsertSubtask=st=>api(async()=>{const{error}=await sb.from('subtasks').upsert(st);if(error)throw error});
+// subtaskToDB: whitelist exact columns in the subtasks table.
+// Prevents "column not found in schema cache" crashes if extra client-side
+// fields are added to a subtask object before a matching DB migration runs.
+function subtaskToDB(s){
+  return{
+    id:s.id, task_id:s.task_id, project_id:s.project_id,
+    type:s.type||'note', descr:s.descr||'',
+    detail:s.detail||null, assigned_to:s.assigned_to||null,
+    scheduled_dt:s.scheduled_dt||null,
+    complete:!!s.complete, sort_order:s.sort_order||0,
+  };
+}
+const upsertSubtask=st=>api(async()=>{const{error}=await sb.from('subtasks').upsert(subtaskToDB(st));if(error)throw error});
 const deleteSubtask=id=>api(async()=>{const{error}=await sb.from('subtasks').delete().eq('id',id);if(error)throw error});
 function taskSubtasks(taskId){
   return S.subtasks.filter(s=>s.task_id===taskId).sort((a,b)=>{
@@ -1050,6 +1095,12 @@ function iBtn(ico,fn,col,label){const b=el('button');b.className='icon-btn';b.st
 // projTasks() was O(N_tasks) per call; called ~50+ times per render = O(N²).
 // We build a lookup map once per render and reuse it.
 let _projTaskCache=null;
+
+// ── Sub-row expand/collapse state ─────────────────────────────────────────────
+// Tracks which task IDs have their supporting-item sub-rows visible.
+// Session-only — resets on page reload (no persistence needed).
+// Tasks with overdue items are auto-expanded on first render.
+let _expandedSubTasks=new Set();
 function buildProjTaskCache(){
   _projTaskCache={};
   S.tasks.forEach(t=>{
@@ -1974,11 +2025,9 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
       // Vertical guide indent line
       svg+=`<line x1="32" y1="${y}" x2="32" y2="${y+h}" stroke="#d1d5db" stroke-width="1" opacity="0.6"/>`;
       // Type abbreviation
-      const svgTypeAbbr={equipment:'E',delivery:'D',dependency:'L',note:'N'};
-      const svgTypeCol={equipment:'#c2410c',delivery:'#1d4ed8',dependency:'#7e22ce',note:'#15803d'};
-      const subCol=row.sub.complete?'#9ca3af':svgTypeCol[row.sub.type]||'#6b7280';
+      const subCol=row.sub.complete?'#9ca3af':TYPE_COLORS[row.sub.type]||'#6b7280';
       svg+=`<rect x="35" y="${y+1}" width="9" height="${h-2}" fill="${subCol}" opacity="${row.sub.complete?'0.2':'0.15'}" rx="1"/>`;
-      svg+=`<text x="39" y="${y+h/2+3}" font-size="6" font-weight="800" fill="${subCol}" text-anchor="middle">${escSvg(svgTypeAbbr[row.sub.type]||'?')}</text>`;
+      svg+=`<text x="39" y="${y+h/2+3}" font-size="6" font-weight="800" fill="${subCol}" text-anchor="middle">${escSvg(SVG_TYPE_ABBR[row.sub.type]||'?')}</text>`;
       // Description — fit to available budget, single line (sub-rows are 10px tall)
       const subTextX=48;
       const subCrewReserve=row.sub.assigned_to?Math.min(row.sub.assigned_to.length*5+4,80):0;
@@ -2088,9 +2137,9 @@ function buildGanttSVG(from,to,crewFilter,showGrid=false){
         const badgeTextCol=hasOverdue?'#dc2626':svgSubsDone===svgSubs.length?'#166534':'#92400e';
         svg+=`<rect x="${badgeX}" y="${y+4}" width="${badgeW}" height="${badgeH}" fill="${badgeFill}" stroke="${badgeStroke}" stroke-width="1" rx="3"/>`;
         // Count text centred in badge
-        const typeIcoSvg={equipment:'E',delivery:'D',dependency:'L',note:'N'};
+        // SVG_TYPE_ABBR is a module-level constant (see top of script)
         const pendingTypes=[...new Set(svgSubsPending.map(s=>s.type))];
-        const typeStr=pendingTypes.map(t=>typeIcoSvg[t]||'?').join('');
+        const typeStr=pendingTypes.map(t=>SVG_TYPE_ABBR[t]||'?').join('');
         svg+=`<text x="${badgeX+badgeW/2}" y="${y+h/2+1}" font-size="7" font-weight="800" fill="${badgeTextCol}" text-anchor="middle" font-family="monospace">${escSvg(typeStr)}</text>`;
         svg+=`<text x="${badgeX+badgeW/2}" y="${y+h/2+8}" font-size="6" font-weight="700" fill="${badgeTextCol}" text-anchor="middle">${escSvg(svgSubsDone+'/'+svgSubs.length)}</text>`;
         // Warning triangle on the first bar segment start (clearly visible in print)
@@ -2195,36 +2244,49 @@ function escSvg(s){
 }
 
 // splitSvgText: wrap a string into SVG tspan lines that fit within pixelBudget.
-// Uses an approximate character-width table for Arial at the given font size.
+// Uses a per-character-class width table for Arial to handle wide (W,M) and
+// narrow (i,l,1) characters more accurately than a flat average.
 // Returns an array of line strings. maxLines caps output to avoid overflowing row height.
 function splitSvgText(text,pixelBudget,fontSize,maxLines=3){
   if(!text)return[''];
-  // Approximate average character width for Arial proportional font
-  // Wider chars (W M) ~= 1.1×, narrow chars (i l 1) ~= 0.5×, space ~= 0.28×
-  const avgCharW=fontSize*0.52; // conservative estimate that works well for mixed text
-  const charsPerLine=Math.max(10,Math.floor(pixelBudget/avgCharW));
+  // Per-class character width multipliers for Arial (proportional font).
+  // Upper-case wide letters (W,M,G) ≈ 0.75×; narrow chars (i,l,1,!) ≈ 0.42×;
+  // digits ≈ 0.56×; spaces ≈ 0.28×; most lower/upper ≈ 0.52×.
+  function charW(c){
+    if(/[WMm]/.test(c))return fontSize*0.75;
+    if(/[il1!|]/.test(c))return fontSize*0.42;
+    if(/[0-9]/.test(c))return fontSize*0.56;
+    if(/\s/.test(c))return fontSize*0.28;
+    if(/[A-Z]/.test(c))return fontSize*0.68;
+    return fontSize*0.52;
+  }
+  function lineWidth(s){return [...s].reduce((sum,c)=>sum+charW(c),0)}
   const words=text.split(' ');
   const lines=[];
   let cur='';
   for(const word of words){
     const test=cur?cur+' '+word:word;
-    if(test.length<=charsPerLine){cur=test}
+    if(lineWidth(test)<=pixelBudget){cur=test}
     else{
       if(cur)lines.push(cur);
-      // If a single word is wider than the budget, hard-break it
-      if(word.length>charsPerLine){
+      // Hard-break a single word that is wider than the budget
+      if(lineWidth(word)>pixelBudget){
         let w=word;
-        while(w.length>charsPerLine){lines.push(w.slice(0,charsPerLine));w=w.slice(charsPerLine)}
+        while(lineWidth(w)>pixelBudget){
+          let i=0,acc=0;
+          while(i<w.length&&acc+charW(w[i])<=pixelBudget){acc+=charW(w[i]);i++}
+          lines.push(w.slice(0,i));w=w.slice(i);
+          if(lines.length>=maxLines)break;
+        }
         cur=w;
       }else{cur=word}
     }
     if(lines.length>=maxLines)break;
   }
   if(cur&&lines.length<maxLines)lines.push(cur);
-  else if(cur&&lines.length===maxLines){
-    // Append ellipsis to last line if we ran out of room
+  else if(cur&&lines.length>=maxLines){
     const last=lines[lines.length-1];
-    lines[lines.length-1]=last.length>3?last.slice(0,-1)+'…':last+'…';
+    lines[lines.length-1]=last.slice(0,-1).trimEnd()+'…';
   }
   return lines.length?lines:[''];
 }
@@ -2631,6 +2693,113 @@ function buildToolbar(){
 }
 
 // ── GANTT ─────────────────────────────────────────────────────────────────────
+// ── buildSubRowLC ─────────────────────────────────────────────────────────────
+// Renders the left-column cell for a supporting-item sub-row.
+// Extracted from buildGantt to keep that function under 300 lines.
+// Mutates lc in place; all data comes through the row object and outer cm map.
+// @param {HTMLElement} lc - the pre-created lc div to populate
+// @param {{sub:object, task:object}} row - current flatRows entry
+// @param {number} h - row height in px (SRH)
+// @param {object} cm - crewMap() result from buildGantt scope
+function buildSubRowLC(lc, row, h, cm){
+  lc.style.cssText='width:'+LW+'px;height:'+h+'px;padding-left:42px;display:flex;align-items:center;gap:4px;overflow:hidden';
+  // Vertical guide line connecting sub-rows to parent task
+  const guide=el('span');
+  guide.style.cssText='width:1px;height:100%;background:#d1d5db;flex-shrink:0;align-self:stretch;margin-right:4px;margin-left:-12px';
+  lc.appendChild(guide);
+  // Type icon (uses module-level TYPE_ICONS)
+  const tIco=el('span');tIco.className='sub-type-dot';
+  tIco.textContent=TYPE_ICONS[row.sub.type]||'📋';
+  tIco.title=row.sub.type;
+  lc.appendChild(tIco);
+  // Description with full-detail tooltip
+  const dsp=el('span');dsp.className='sub-lbl'+(row.sub.complete?' done':'');
+  dsp.textContent=row.sub.descr||'—';
+  dsp.title=[
+    row.sub.descr,
+    row.sub.detail||'',
+    row.sub.assigned_to?'Assigned: '+row.sub.assigned_to:'',
+    row.sub.scheduled_dt?'Date: '+fmtDate(row.sub.scheduled_dt):'No date set',
+    row.sub.complete?'✓ Complete':'○ Pending',
+  ].filter(Boolean).join('\n');
+  lc.appendChild(dsp);
+  // Assigned crew chip
+  if(row.sub.assigned_to){
+    const cr=cm[row.sub.assigned_to];
+    const chip=el('span');
+    chip.style.cssText='font-size:9px;font-weight:700;padding:0 5px;border-radius:8px;flex-shrink:0;white-space:nowrap;'
+      +(cr?'background:'+cr.color+';color:'+cr.tc:'background:#e5e7eb;color:#374151');
+    chip.textContent=row.sub.assigned_to;
+    lc.appendChild(chip);
+  }
+  // Scheduled date — red with ⚠ if overdue
+  if(row.sub.scheduled_dt){
+    const isPast=!row.sub.complete&&row.sub.scheduled_dt<TODAY;
+    const dateSp=el('span');
+    dateSp.style.cssText='font-size:9px;font-weight:700;flex-shrink:0;padding:0 4px;border-radius:4px;'
+      +(isPast?'color:#dc2626;background:#fee2e2':'color:#6b7280');
+    dateSp.textContent=(isPast?'⚠ ':'')+fmtDate(row.sub.scheduled_dt);
+    lc.appendChild(dateSp);
+  }
+  // Completion status dot
+  const chk=el('span');
+  chk.style.cssText='font-size:10px;flex-shrink:0;color:'+(row.sub.complete?'#16a34a':'#d1d5db');
+  chk.textContent=row.sub.complete?'✓':'○';
+  chk.title=row.sub.complete?'Complete — click task to manage':'Pending';
+  lc.appendChild(chk);
+}
+
+// ── buildSubRowGC ─────────────────────────────────────────────────────────────
+// Renders the calendar-area cell for a supporting-item sub-row.
+// Shows a milestone diamond at scheduled_dt, or a dashed line if no date.
+// @param {HTMLElement} gc - the pre-created gc div to populate
+// @param {{sub:object, task:object}} row - current flatRows entry
+// @param {number} h - row height in px (SRH)
+function buildSubRowGC(gc, row, h){
+  // TYPE_COLORS is a module-level constant
+  const subColor=row.sub.complete?'#9ca3af'
+    :(row.sub.scheduled_dt&&row.sub.scheduled_dt<TODAY&&!row.sub.complete)?'#dc2626'
+    :TYPE_COLORS[row.sub.type]||'#6b7280';
+  if(row.sub.scheduled_dt){
+    // Milestone diamond ◆ at scheduled_dt
+    const dIdx=dayOff(row.sub.scheduled_dt);
+    if(dIdx>=0&&dIdx<NDAYS){
+      const cx=dIdx*DW+DW/2,cy=h/2,ds=5;
+      const diamond=el('div');diamond.className='sub-milestone';
+      diamond.style.cssText=[
+        'left:'+(cx-ds)+'px','top:'+(cy-ds)+'px',
+        'width:'+(ds*2)+'px','height:'+(ds*2)+'px',
+        'background:'+subColor,
+        'opacity:'+(row.sub.complete?'0.4':'0.85'),
+      ].join(';');
+      diamond.title=row.sub.descr+(row.sub.complete?' (complete)':' — '+fmtDate(row.sub.scheduled_dt));
+      gc.appendChild(diamond);
+      // Thin connector line from diamond up to the parent bar row above
+      const vline=el('div');
+      vline.style.cssText='position:absolute;pointer-events:none;left:'+(cx-0.5)+'px;top:0;width:1px;height:'+(cy-ds)+'px;background:'+subColor+';opacity:0.3';
+      gc.appendChild(vline);
+    }
+  }else{
+    // No date — dashed line spanning the parent task's overall date range
+    const parentSpan=projSpan([row.task]);
+    if(parentSpan.s&&parentSpan.e){
+      const sI=Math.max(0,dayOff(parentSpan.s));
+      const eI=Math.min(NDAYS-1,dayOff(parentSpan.e));
+      if(eI>=sI){
+        const noDateLine=el('div');noDateLine.className='sub-milestone-line';
+        noDateLine.style.cssText=[
+          'left:'+sI*DW+'px','top:'+(h/2)+'px',
+          'width:'+(eI-sI+1)*DW+'px',
+          'border-color:'+subColor,
+          'opacity:'+(row.sub.complete?'0.25':'0.4'),
+        ].join(';');
+        noDateLine.title=row.sub.descr+' — no date scheduled';
+        gc.appendChild(noDateLine);
+      }
+    }
+  }
+}
+
 function buildGantt(){
   const totalW=NDAYS*DW,holI=getHolIdxs(),cm=crewMap(),holDates=S.holidays.map(h=>h.date);
   const wrap=el('div');wrap.className='gantt-wrap';
@@ -2667,9 +2836,17 @@ function buildGantt(){
     flatRows.push({type:'proj',proj});
     if(!proj.collapsed)(visibleTasks[proj.id]||[]).forEach(task=>{
       flatRows.push({type:'task',proj,task});
-      // Add a sub-row for each supporting item, sorted by type then date
+      // Auto-expand any task that has at least one overdue supporting item
+      // (only on first encounter — do not override a manual collapse)
       const subs=taskSubtasks(task.id);
-      subs.forEach(sub=>flatRows.push({type:'subtask',proj,task,sub}));
+      if(subs.length>0&&!_expandedSubTasks.has(task.id)){
+        const hasOverdue=subs.some(s=>!s.complete&&s.scheduled_dt&&s.scheduled_dt<TODAY);
+        if(hasOverdue)_expandedSubTasks.add(task.id);
+      }
+      // Only show sub-rows when expanded
+      if(_expandedSubTasks.has(task.id)){
+        subs.forEach(sub=>flatRows.push({type:'subtask',proj,task,sub}));
+      }
     });
   });
 
@@ -2677,9 +2854,10 @@ function buildGantt(){
   const hdr=el('div');hdr.className='gantt-hdr';
   const corner=el('div');corner.className='corner';corner.style.cssText='width:'+LW+'px;height:43px';
   const ci=el('span');ci.style.cssText='color:rgba(255,255,255,.4);font-size:11px';
+  const taskRowCount=flatRows.filter(r=>r.type!=='subtask').length;
   const filteredInfo=isFilterActive()
     ?visProjs.length+' of '+totalProjCount+' jobs (filtered)'
-    :flatRows.length+' rows · '+totalProjCount+' jobs';
+    :taskRowCount+' rows · '+totalProjCount+' jobs';
   ci.textContent=filteredInfo;corner.appendChild(ci);hdr.appendChild(corner);
   hdr.appendChild(getCalHeader(totalW,holI)); // cached — not rebuilt every render
   wrap.appendChild(hdr);
@@ -2731,60 +2909,31 @@ function buildGantt(){
       lc.appendChild(btns);
     } else if(isSub){
       // ── Sub-row left panel ─────────────────────────────────────────────────
-      const typeIcons={equipment:'🚜',delivery:'📦',dependency:'🔗',note:'📋'};
-      const typeColors={
-        equipment:'#c2410c',delivery:'#1d4ed8',dependency:'#7e22ce',note:'#15803d'
-      };
-      lc.style.cssText='width:'+LW+'px;height:'+h+'px;padding-left:42px;display:flex;align-items:center;gap:4px;overflow:hidden';
-      // Vertical guide line connecting sub-rows to parent
-      const guide=el('span');
-      guide.style.cssText='width:1px;height:100%;background:#d1d5db;flex-shrink:0;align-self:stretch;margin-right:4px;margin-left:-12px';
-      lc.appendChild(guide);
-      // Type icon
-      const tIco=el('span');tIco.className='sub-type-dot';
-      tIco.textContent=typeIcons[row.sub.type]||'📋';
-      tIco.title=row.sub.type;
-      lc.appendChild(tIco);
-      // Description
-      const dsp=el('span');dsp.className='sub-lbl'+(row.sub.complete?' done':'');
-      dsp.textContent=row.sub.descr||'—';
-      dsp.title=[
-        row.sub.descr,
-        row.sub.detail||'',
-        row.sub.assigned_to?'Assigned: '+row.sub.assigned_to:'',
-        row.sub.scheduled_dt?'Date: '+fmtDate(row.sub.scheduled_dt):'No date set',
-        row.sub.complete?'✓ Complete':'○ Pending',
-      ].filter(Boolean).join('\n');
-      lc.appendChild(dsp);
-      // Assigned crew chip (if set)
-      if(row.sub.assigned_to){
-        const cr=cm[row.sub.assigned_to];
-        const chip=el('span');
-        chip.style.cssText='font-size:9px;font-weight:700;padding:0 5px;border-radius:8px;flex-shrink:0;white-space:nowrap;'
-          +(cr?'background:'+cr.color+';color:'+cr.tc:'background:#e5e7eb;color:#374151');
-        chip.textContent=row.sub.assigned_to;
-        lc.appendChild(chip);
-      }
-      // Scheduled date (right-aligned, coloured if overdue)
-      if(row.sub.scheduled_dt){
-        const isPast=!row.sub.complete&&row.sub.scheduled_dt<TODAY;
-        const dateSp=el('span');
-        dateSp.style.cssText='font-size:9px;font-weight:700;flex-shrink:0;padding:0 4px;border-radius:4px;'
-          +(isPast?'color:#dc2626;background:#fee2e2':'color:#6b7280');
-        dateSp.textContent=(isPast?'⚠ ':'')+fmtDate(row.sub.scheduled_dt);
-        lc.appendChild(dateSp);
-      }
-      // Complete checkmark
-      const chk=el('span');
-      chk.style.cssText='font-size:10px;flex-shrink:0;color:'+(row.sub.complete?'#16a34a':'#d1d5db');
-      chk.textContent=row.sub.complete?'✓':'○';
-      chk.title=row.sub.complete?'Complete — click task to manage':'Pending';
-      lc.appendChild(chk);
+      // TYPE_ICONS and TYPE_COLORS are module-level constants (see top of script)
+      buildSubRowLC(lc, row, h, cm);
     } else {
       // ── Task row left panel ────────────────────────────────────────────────
       const wd=workDays(row.task.segs,holDates,row.task.wknd);
       lc.style.paddingLeft='22px';
       const arr=el('span');arr.style.cssText='color:#bbb;font-size:11px;flex-shrink:0;margin-right:4px';arr.textContent='↳';lc.appendChild(arr);
+      // Supporting-item expand/collapse toggle — only shown when task has subtasks
+      const taskSubs=taskSubtasks(row.task.id);
+      if(taskSubs.length>0){
+        const isExpanded=_expandedSubTasks.has(row.task.id);
+        const togBtn=el('button');
+        togBtn.className='icon-btn';
+        togBtn.style.cssText='font-size:9px;color:'+(isExpanded?'#6b7280':'#9ca3af')+';padding:0 3px;flex-shrink:0;line-height:1';
+        togBtn.textContent=isExpanded?'◆':'◇';
+        togBtn.title=(isExpanded?'Hide':'Show')+' supporting items ('+taskSubs.length+')';
+        togBtn.setAttribute('aria-label',(isExpanded?'Collapse':'Expand')+' supporting items for '+row.task.descr.slice(0,30));
+        togBtn.onclick=e=>{
+          e.stopPropagation();
+          if(_expandedSubTasks.has(row.task.id)){_expandedSubTasks.delete(row.task.id)}
+          else{_expandedSubTasks.add(row.task.id)}
+          render();
+        };
+        lc.appendChild(togBtn);
+      }
       const desc=el('span');
       desc.style.cssText='flex:1;overflow:hidden;font-size:11px;color:#1a2b4a;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word';
       desc.textContent=row.task.descr;
@@ -2809,10 +2958,9 @@ function buildGantt(){
         const border=overdue.length?'#fca5a5':done===total?'#86efac':'#fcd34d';
         const stb=el('span');stb.className='subtask-badge';
         stb.style.cssText='background:'+bg+';color:'+col+';border:1px solid '+border+';cursor:default';
-        // Build icon list for pending items by type
-        const typeIcons={equipment:'🚜',delivery:'📦',dependency:'🔗',note:'📋'};
+        // Build icon list for pending items by type (uses module-level TYPE_ICONS)
         const pendingTypes=[...new Set(pending.map(s=>s.type))];
-        const icons=pendingTypes.map(t=>typeIcons[t]||'📋').join('');
+        const icons=pendingTypes.map(t=>TYPE_ICONS[t]||'📋').join('');
         stb.textContent=(icons||'⚙')+' '+done+'/'+total+(overdue.length?' ⚠':'');
         stb.title=[
           done+'/'+total+' items complete',
@@ -2849,54 +2997,7 @@ function buildGantt(){
       const sp=projSpan(projTasks(row.proj.id));
       if(sp.s&&sp.e){const sb2=el('div');sb2.className='proj-span';sb2.style.cssText='left:'+dayOff(sp.s)*DW+'px;width:'+(dayOff(sp.e)-dayOff(sp.s)+1)*DW+'px;top:50%;transform:translateY(-50%);height:6px';gc.appendChild(sb2)}
     } else if(isSub){
-      // ── Sub-row calendar area ──────────────────────────────────────────────
-      const typeColors={
-        equipment:'#c2410c',delivery:'#1d4ed8',dependency:'#7e22ce',note:'#15803d'
-      };
-      const subColor=row.sub.complete?'#9ca3af'
-        :(row.sub.scheduled_dt&&row.sub.scheduled_dt<TODAY&&!row.sub.complete)?'#dc2626'
-        :typeColors[row.sub.type]||'#6b7280';
-      if(row.sub.scheduled_dt){
-        // Milestone diamond at scheduled_dt
-        const dIdx=dayOff(row.sub.scheduled_dt);
-        if(dIdx>=0&&dIdx<NDAYS){
-          const cx=dIdx*DW+DW/2;const cy=h/2;const ds=5;
-          const diamond=el('div');diamond.className='sub-milestone';
-          diamond.style.cssText=[
-            'left:'+(cx-ds)+'px',
-            'top:'+(cy-ds)+'px',
-            'width:'+(ds*2)+'px',
-            'height:'+(ds*2)+'px',
-            'background:'+subColor,
-            'opacity:'+(row.sub.complete?'0.4':'0.85'),
-          ].join(';');
-          diamond.title=row.sub.descr+(row.sub.complete?' (complete)':' — '+fmtDate(row.sub.scheduled_dt));
-          gc.appendChild(diamond);
-          // Thin vertical line from diamond to the parent task bar above
-          const vline=el('div');
-          vline.style.cssText='position:absolute;pointer-events:none;left:'+(cx-0.5)+'px;top:0;width:1px;height:'+(h/2-ds)+'px;background:'+subColor+';opacity:0.3';
-          gc.appendChild(vline);
-        }
-      }else{
-        // No date — thin dashed line spanning the parent task's overall date range
-        const parentSpan=projSpan([row.task]);
-        if(parentSpan.s&&parentSpan.e){
-          const sI=Math.max(0,dayOff(parentSpan.s));
-          const eI=Math.min(NDAYS-1,dayOff(parentSpan.e));
-          if(eI>=sI){
-            const noDateLine=el('div');noDateLine.className='sub-milestone-line';
-            noDateLine.style.cssText=[
-              'left:'+sI*DW+'px',
-              'top:'+(h/2)+'px',
-              'width:'+(eI-sI+1)*DW+'px',
-              'border-color:'+subColor,
-              'opacity:'+(row.sub.complete?'0.25':'0.4'),
-            ].join(';');
-            noDateLine.title=row.sub.descr+' — no date scheduled';
-            gc.appendChild(noDateLine);
-          }
-        }
-      }
+      buildSubRowGC(gc, row, h);
     } else {
       row.task.segs.forEach((seg,si)=>{
         if(!seg.s||!seg.e)return;
@@ -2963,13 +3064,7 @@ function buildGantt(){
         if(si===0){
           const subItems=taskSubtasks(row.task.id).filter(s=>!s.complete);
           if(subItems.length>0){
-            const typeIcons={equipment:'🚜',delivery:'📦',dependency:'🔗',note:'📋'};
-            const typeColors={
-              equipment:{bg:'#fff7ed',col:'#c2410c',bdr:'#fb923c'},
-              delivery: {bg:'#eff6ff',col:'#1d4ed8',bdr:'#60a5fa'},
-              dependency:{bg:'#fdf4ff',col:'#7e22ce',bdr:'#c084fc'},
-              note:     {bg:'#f0fdf4',col:'#15803d',bdr:'#4ade80'},
-            };
+            // Uses module-level TYPE_ICONS and TYPE_PIN_COLORS constants
             // Group by type, mark overdue
             const byType={};
             subItems.forEach(s=>{
@@ -2984,10 +3079,10 @@ function buildGantt(){
             Object.values(byType).forEach(group=>{
               const colors=group.overdue
                 ?{bg:'#fef2f2',col:'#dc2626',bdr:'#f87171'}
-                :typeColors[group.type]||{bg:'#f3f4f6',col:'#374151',bdr:'#9ca3af'};
+                :TYPE_PIN_COLORS[group.type]||{bg:'#f3f4f6',col:'#374151',bdr:'#9ca3af'};
               const ico=el('span');ico.className='sub-pin-ico';
               ico.style.cssText='background:'+colors.bg+';color:'+colors.col+';border-color:'+colors.bdr;
-              ico.textContent=(typeIcons[group.type]||'📋')+(group.items.length>1?group.items.length:'');
+              ico.textContent=(TYPE_ICONS[group.type]||'📋')+(group.items.length>1?group.items.length:'');
               ico.title=(group.overdue?'⚠ OVERDUE — ':'')+group.items.map(s=>
                 s.descr+(s.scheduled_dt?' ('+fmtDate(s.scheduled_dt)+')':'')
               ).join('\n');
