@@ -263,6 +263,34 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .undo-btn:disabled{opacity:.35;cursor:not-allowed}
 .undo-badge{position:absolute;top:-5px;right:-5px;background:#f59e0b;color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:0 4px;min-width:14px;text-align:center;line-height:14px;pointer-events:none}
 .val-day-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;white-space:nowrap;flex-shrink:0;margin-left:2px}
+/* ── Management tab ──────────────────────────────────────────────────────── */
+.mgmt-wrap{flex:1;overflow:auto;padding:16px;background:#f0f2f5;display:flex;flex-direction:column;gap:14px}
+.mgmt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mgmt-card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e4e8f0}
+.mgmt-card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #f0f2f5}
+.mgmt-card-title{font-size:13px;font-weight:700;color:#1F3864;display:flex;align-items:center;gap:6px}
+.mgmt-lbl{font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 5px}
+.bid-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:5px;cursor:pointer;transition:box-shadow .12s}
+.bid-row:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.bid-stage{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+.bid-name{flex:1;font-size:12px;font-weight:600;color:#1a2b4a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bid-val{font-size:11px;font-weight:700;color:#166534;flex-shrink:0}
+.bid-date{font-size:10px;color:#9ca3af;flex-shrink:0}
+.toc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.toc-hdr{font-weight:700;color:#6b7280;text-align:center;padding:3px 0;font-size:10px}
+.toc-day{text-align:center;padding:3px 1px;border-radius:4px;min-height:28px;font-size:10px;position:relative}
+.toc-day.today{background:#dbeafe;color:#1d4ed8;font-weight:700}
+.toc-day.weekend{color:#d1d5db}
+.toc-day.off{background:#fee2e2}
+.toc-day.holiday{background:#fef9c3}
+.toc-pip{display:inline-block;width:7px;height:7px;border-radius:50%;margin:1px;vertical-align:middle}
+.hs-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;background:#f9fafb;margin-bottom:4px;font-size:12px;border:1px solid #f0f2f5}
+.hs-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.mgmt-gantt-wrap{overflow-x:auto;overflow-y:hidden;border:1px solid #e4e8f0;border-radius:6px}
+.mg-row{display:flex;height:28px;border-bottom:1px solid #f0f2f5;align-items:center}
+.mg-lc{width:180px;flex-shrink:0;padding:0 8px;font-size:11px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:2px solid #e4e8f0;height:100%;display:flex;align-items:center}
+.mg-gc{position:relative;flex:1;height:100%;background:repeating-linear-gradient(to right,transparent,transparent 23px,#f0f2f5 23px,#f0f2f5 24px)}
+.mg-bar{position:absolute;height:12px;top:50%;transform:translateY(-50%);border-radius:3px;font-size:8px;color:#fff;font-weight:700;display:flex;align-items:center;padding:0 4px;white-space:nowrap;overflow:hidden}
 </style>
 </head>
 <body>
@@ -367,6 +395,7 @@ const MONTH_BANDS=(()=>{let o=0;return MONTH_CFG.map(m=>{const b={...m,o};o+=m.d
 const CFG_KEY='strada_cfg_v2';
 const FILTER_KEY='strada_filter_v1';
 const PRESETS_KEY='strada_presets_v1';
+const MGMT_KEY='strada_mgmt_v1';
 
 // ── DEFAULT DATA ───────────────────────────────────────────────────────────────
 const DEF_CREWS=[
@@ -449,6 +478,8 @@ const S={
   ganttGrid:(()=>{try{return JSON.parse(localStorage.getItem(CFG_KEY)||'{}').ganttGrid||false}catch{return false}})(),
   projects:[],tasks:[],crews:[],holidays:[],subtasks:[],
   loading:false,syncing:false,
+  // Management tab — data persisted to localStorage keyed by user email
+  mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[]},
   // Phase 2: filter & sort state (persisted to localStorage per user)
   filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false},
   presets:[] // [{id,name,filter}]
@@ -463,7 +494,18 @@ function saveScroll(){
 }
 function restoreScroll(){
   const g=document.querySelector('.gantt-wrap'),b=document.querySelector('.board-wrap');
-  if(g){g.scrollLeft=_scroll.ganttX;g.scrollTop=_scroll.ganttY}
+  if(g){
+    // On first load (_scroll.ganttX===0), scroll to 1 work week before today
+    // so field staff see recent completed work alongside upcoming work
+    if(_scroll.ganttX===0&&TODAYIDX>0){
+      const weekBackDays=7; // calendar days back (≈ 1 work week buffer)
+      const targetIdx=Math.max(0,TODAYIDX-weekBackDays);
+      g.scrollLeft=targetIdx*DW;
+    }else{
+      g.scrollLeft=_scroll.ganttX;
+    }
+    g.scrollTop=_scroll.ganttY;
+  }
   if(b){b.scrollLeft=_scroll.boardX;b.scrollTop=_scroll.boardY}
 }
 
@@ -482,6 +524,15 @@ function loadFilters(){
     if(f)S.filter={crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',...f};
     const p=JSON.parse(localStorage.getItem(_presetsKey())||'null');
     if(Array.isArray(p))S.presets=p;
+  }catch(e){}
+}
+// Management tab persistence — stored per user
+function _mgmtKey(){return MGMT_KEY+(currentUser?'_'+currentUser.email:'')}
+function saveMgmt(){try{localStorage.setItem(_mgmtKey(),JSON.stringify(S.mgmt))}catch(e){}}
+function loadMgmt(){
+  try{
+    const m=JSON.parse(localStorage.getItem(_mgmtKey())||'null');
+    if(m)S.mgmt={bids:[],hsItems:[],timeOff:[],mgEvents:[],...m};
   }catch(e){}
 }
 
@@ -648,6 +699,7 @@ async function enterApp(user){
     currentUser=user;
     saveCfg({lastEmail:user.email});
     loadFilters();
+    loadMgmt();
 
     // Show a warning banner if today is past Dec 31 of the configured season year.
     // This means SEASON_YEAR needs to be updated for the new schedule year.
@@ -1057,12 +1109,19 @@ function getLocateBadge(proj){
     const exp=new Date(proj.loc_exp+'T12:00:00');
     const today=new Date(TODAY+'T12:00:00');
     const daysLeft=Math.round((exp-today)/86400000);
-    if(daysLeft<0)return{text:'🔴 EXPIRED',color:'#dc2626',bg:'#fee2e2',border:'#dc2626'};
-    if(daysLeft<=3)return{text:'🟠 EXPIRING',color:'#ea580c',bg:'#fed7aa',border:'#f97316'};
+    if(daysLeft<0)return{text:'🔴 EXPIRED',color:'#dc2626',bg:'#fee2e2',border:'#dc2626',
+      tooltip:'Locates EXPIRED '+Math.abs(daysLeft)+' day'+(Math.abs(daysLeft)===1?'':'s')+' ago — remark required before work proceeds'};
+    if(daysLeft<=3)return{text:'🟠 EXPIRING',color:'#ea580c',bg:'#fed7aa',border:'#f97316',
+      tooltip:'Locates expiring in '+daysLeft+' day'+(daysLeft===1?'':'s')+' — arrange remark immediately'};
+    return{text:'🟢 ACTIVE',color:'#166534',bg:'#dcfce7',border:'#16a34a',
+      tooltip:'Locates active — '+daysLeft+' day'+(daysLeft===1?'':'s')+' remaining (expires '+proj.loc_exp+')'};
   }
-  if(anyOrdered&&anyDone)return{text:'🟢 ACTIVE',color:'#166534',bg:'#dcfce7',border:'#16a34a'};
-  if(anyOrdered)return{text:'🟡 PENDING',color:'#854d0e',bg:'#fef9c3',border:'#ca8a04'};
-  return{text:'🔵 ORDER',color:'#1d4ed8',bg:'#dbeafe',border:'#3b82f6'};
+  if(anyOrdered&&anyDone)return{text:'🟢 ACTIVE',color:'#166534',bg:'#dcfce7',border:'#16a34a',
+    tooltip:'Locates active — no expiry date set'};
+  if(anyOrdered)return{text:'🟡 PENDING',color:'#854d0e',bg:'#fef9c3',border:'#ca8a04',
+    tooltip:'Locates ordered — awaiting completion'};
+  return{text:'🔵 ORDER',color:'#1d4ed8',bg:'#dbeafe',border:'#3b82f6',
+    tooltip:'Locates not yet ordered — order before work starts'};
 }
 
 // ── segCrews: resolve the crew list for a single segment ────────────────────
@@ -1796,13 +1855,21 @@ function printStatusReport(){
 
 // ── TAB 4: Gantt PDF Export ───────────────────────────────────────────────
 function buildGanttPdfTab(m,ms){
-  // Default date range: current month
+  // Default date range: 1 work week before today → 1 work week after today.
+  // This gives field staff a view of recent completed work alongside upcoming work.
   if(!ms.ganttFrom||!ms.ganttTo){
-    const now=new Date();
-    const firstDay=new Date(now.getFullYear(),now.getMonth(),1);
-    const lastDay=new Date(now.getFullYear(),now.getMonth()+1,0);
-    ms.ganttFrom=firstDay.toISOString().slice(0,10);
-    ms.ganttTo=lastDay.toISOString().slice(0,10);
+    // Walk back 5 working days from today for the start
+    function addWorkDays(dateStr,days){
+      const d=new Date(dateStr+'T12:00:00');
+      let count=0,dir=days<0?-1:1;
+      while(count<Math.abs(days)){
+        d.setDate(d.getDate()+dir);
+        if(d.getDay()!==0&&d.getDay()!==6)count++;
+      }
+      return d.toISOString().slice(0,10);
+    }
+    ms.ganttFrom=addWorkDays(TODAY,-5);
+    ms.ganttTo=addWorkDays(TODAY,5);
   }
   if(!ms.ganttCrews)ms.ganttCrews=[...S.crews.map(c=>c.name)];
   // Default: values hidden — this export is intended for field staff
@@ -2619,6 +2686,7 @@ function render(){
   bgGrad=buildBgGrad(getHolIdxs());
   if(S.view==='gantt')main.appendChild(buildGantt());
   else if(S.view==='board')main.appendChild(buildBoard());
+  else if(S.view==='management')main.appendChild(buildManagement());
   else main.appendChild(buildSettings());
   restoreScroll(); // FIX CP4: apply after new DOM is attached
   // Modal renders into its own root — call after main render
@@ -2647,7 +2715,7 @@ function buildToolbar(){
   const t=el('div');t.className='toolbar';t.id='toolbar';
   const logo=el('span');logo.className='logo';logo.textContent='🏗 Strada Schedule '+SEASON_YEAR;t.appendChild(logo);
   const tabs=el('div');tabs.className='tabs';
-  [['gantt','📅 Gantt'],['board','📋 Board'],['settings','⚙️ Settings']].forEach(([v,l])=>{
+  [['gantt','📅 Gantt'],['board','📋 Board'],['management','📊 Management'],['settings','⚙️ Settings']].forEach(([v,l])=>{
     const b=el('button');b.className='tab'+(S.view===v?' active':'');b.textContent=l;
     b.onclick=()=>{S.view=v;render()};tabs.appendChild(b);
   });t.appendChild(tabs);
@@ -2899,7 +2967,7 @@ function buildGantt(){
       if(row.proj.soils_req){const sb3=el('span');sb3.className='req-flag on';sb3.title='Soils report required';sb3.textContent='⚗SOI';lc.appendChild(sb3)}
       // Phase 12A: state-aware locate badge
       const locBadge=getLocateBadge(row.proj);
-      if(locBadge){const lb2=el('span');lb2.style.cssText='display:inline-flex;align-items:center;font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:3px;background:'+locBadge.bg+';color:'+locBadge.color+';border:1px solid '+locBadge.border;lb2.textContent=locBadge.text;lc.appendChild(lb2)}
+      if(locBadge){const lb2=el('span');lb2.style.cssText='display:inline-flex;align-items:center;font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;white-space:nowrap;flex-shrink:0;margin-left:3px;background:'+locBadge.bg+';color:'+locBadge.color+';border:1px solid '+locBadge.border+';cursor:default';lb2.textContent=locBadge.text;if(locBadge.tooltip)lb2.title=locBadge.tooltip;lc.appendChild(lb2)}
       const btns=el('div');btns.style.cssText='display:flex;gap:3px;flex-shrink:0;margin-left:4px';
       btns.appendChild(iBtn('+',()=>{
         const t={id:uid(),project_id:row.proj.id,descr:'',crew:'',status:row.proj.status,wknd:false,sort_order:projTasks(row.proj.id).length,segs:[{s:null,e:null,crews:[]}]};
@@ -2985,7 +3053,7 @@ function buildGantt(){
       },'#999','Edit task: '+row.task.descr.slice(0,40)));
     }
     g.appendChild(lc);
-    const gc=el('div');gc.className='gc'+((!isP||S.ganttGrid)?' gc-grid':'');gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
+    const gc=el('div');gc.className='gc'+(S.ganttGrid?' gc-grid':'');gc.style.cssText='width:'+totalW+'px;height:'+h+'px';
     if(bgGrad)gc.style.backgroundImage=bgGrad;
     if(TODAYIDX>=0&&TODAYIDX<NDAYS){
       const tl=el('div');tl.className='today-col';
@@ -3096,6 +3164,369 @@ function buildGantt(){
     g.appendChild(gc);wrap.appendChild(g);
   });
   const spacer=el('div');spacer.style.height='60px';wrap.appendChild(spacer);
+  return wrap;
+}
+
+// ── MANAGEMENT TAB ────────────────────────────────────────────────────────────
+// A focused office/back-office view. Deliberately minimal — the goal is to surface
+// information that needs action, not to create work. Each section is read-first,
+// add-second. No complex workflows here; those live in their own systems.
+function buildManagement(){
+  const wrap=el('div');wrap.className='mgmt-wrap';
+
+  // ── Row 1: Bid Board + H&S Tracker ───────────────────────────────────────
+  const row1=el('div');row1.className='mgmt-grid';
+
+  // ── BID BOARD ─────────────────────────────────────────────────────────────
+  const bidCard=el('div');bidCard.className='mgmt-card';
+  const bidHdr=el('div');bidHdr.className='mgmt-card-hdr';
+  const bidTitle=el('div');bidTitle.className='mgmt-card-title';bidTitle.textContent='📋 Bid Board';
+  const bidAdd=el('button');bidAdd.className='btn-sm';bidAdd.style.fontSize='11px';bidAdd.textContent='+ Add Bid';
+  bidHdr.appendChild(bidTitle);bidHdr.appendChild(bidAdd);bidCard.appendChild(bidHdr);
+
+  const BID_STAGES=[
+    {key:'lead',    label:'Lead',      bg:'#e0e7ff',col:'#3730a3'},
+    {key:'quoting', label:'Quoting',   bg:'#fef3c7',col:'#92400e'},
+    {key:'sent',    label:'Sent',      bg:'#dbeafe',col:'#1e40af'},
+    {key:'won',     label:'Won',       bg:'#dcfce7',col:'#166534'},
+    {key:'lost',    label:'Lost',      bg:'#fee2e2',col:'#991b1b'},
+  ];
+  const bidStageMap=Object.fromEntries(BID_STAGES.map(s=>[s.key,s]));
+
+  function renderBids(){
+    // Remove existing rows
+    [...bidCard.querySelectorAll('.bid-row')].forEach(r=>r.remove());
+    const bids=S.mgmt.bids||[];
+    if(bids.length===0){
+      const emp=el('div');emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:20px 0';
+      emp.textContent='No bids yet — click + Add Bid to track an opportunity.';
+      emp.className='bid-empty';bidCard.appendChild(emp);return;
+    }
+    bidCard.querySelectorAll('.bid-empty').forEach(e=>e.remove());
+    // Sort: won/lost last, then by dueDate
+    const sorted=[...bids].sort((a,b)=>{
+      const order={lead:0,quoting:1,sent:2,won:3,lost:4};
+      return (order[a.stage]||0)-(order[b.stage]||0)||(a.dueDate||'').localeCompare(b.dueDate||'');
+    });
+    sorted.forEach(bid=>{
+      const stage=bidStageMap[bid.stage]||BID_STAGES[0];
+      const row=el('div');row.className='bid-row';
+      const stageBadge=el('span');stageBadge.className='bid-stage';
+      stageBadge.style.cssText='background:'+stage.bg+';color:'+stage.col;
+      stageBadge.textContent=stage.label;row.appendChild(stageBadge);
+      const name=el('span');name.className='bid-name';
+      name.textContent=bid.name+(bid.client?' — '+bid.client:'');
+      name.title=bid.notes||bid.name;row.appendChild(name);
+      if(bid.value){const v=el('span');v.className='bid-val';v.textContent='$'+Number(bid.value).toLocaleString();row.appendChild(v)}
+      if(bid.dueDate){
+        const d=el('span');d.className='bid-date';
+        const daysUntil=Math.round((new Date(bid.dueDate+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+        const overdue=daysUntil<0&&bid.stage!=='won'&&bid.stage!=='lost';
+        d.style.color=overdue?'#dc2626':'#9ca3af';
+        d.textContent=(overdue?'⚠ ':'')+fmtDate(bid.dueDate);
+        row.appendChild(d);
+      }
+      const delB=el('button');delB.style.cssText='background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px;flex-shrink:0;padding:0 2px';
+      delB.textContent='×';delB.title='Remove bid';
+      delB.onclick=async e=>{
+        e.stopPropagation();
+        if(!await confirmModal('Remove bid "'+bid.name+'"?','Remove',true))return;
+        S.mgmt.bids=S.mgmt.bids.filter(b=>b.id!==bid.id);saveMgmt();renderBids();
+      };
+      row.appendChild(delB);
+      row.onclick=()=>openBidEdit(bid);
+      bidCard.appendChild(row);
+    });
+  }
+
+  function openBidEdit(bid){
+    // Inline edit form appears below the row — simple, no full modal
+    const existing=bidCard.querySelector('.bid-edit-form');if(existing)existing.remove();
+    const form=el('div');form.className='bid-edit-form';
+    form.style.cssText='background:#f8f9fc;border:1px solid #c5d0e8;border-radius:8px;padding:12px;margin-top:6px';
+    const g=el('div');g.className='fg';
+    const addFld=(parent,lbl,key,type='text',opts=null)=>{
+      const w=el('div');w.appendChild(lbl2(lbl));
+      const i=opts?inp2(bid[key]||'',e=>{bid[key]=e.target.value},'select',opts)
+               :inp2(bid[key]||'',e=>{bid[key]=e.target.value},type);
+      w.appendChild(i);parent.appendChild(w);
+    };
+    addFld(g,'Project / Bid Name','name');
+    addFld(g,'Client','client');
+    addFld(g,'Stage','stage','select',BID_STAGES.map(s=>[s.key,s.label]));
+    addFld(g,'Est. Value ($)','value','number');
+    addFld(g,'Due / Tender Date','dueDate','date');
+    const notesW=el('div');notesW.className='fg-full';notesW.appendChild(lbl2('Notes'));
+    const notesT=el('textarea');notesT.className='inp';notesT.style.cssText='min-height:50px;resize:vertical';
+    notesT.value=bid.notes||'';notesT.oninput=e=>{bid.notes=e.target.value};
+    notesW.appendChild(notesT);g.appendChild(notesW);
+    form.appendChild(g);
+    const footer=el('div');footer.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:8px';
+    const cancel=el('button');cancel.className='btn-sec';cancel.style.fontSize='11px';cancel.textContent='Cancel';
+    cancel.onclick=()=>form.remove();
+    const save=el('button');save.className='btn-primary';save.style.fontSize='11px';save.textContent='Save';
+    save.onclick=()=>{
+      if(!bid.name){toast('Please enter a bid name.','error');return}
+      const idx=S.mgmt.bids.findIndex(b=>b.id===bid.id);
+      if(idx>=0)S.mgmt.bids[idx]=bid;else S.mgmt.bids.push(bid);
+      saveMgmt();form.remove();renderBids();
+    };
+    footer.appendChild(cancel);footer.appendChild(save);form.appendChild(footer);
+    bidCard.appendChild(form);
+  }
+
+  bidAdd.onclick=()=>openBidEdit({id:uid(),name:'',client:'',stage:'lead',value:'',dueDate:'',notes:''});
+  renderBids();
+  row1.appendChild(bidCard);
+
+  // ── HEALTH & SAFETY TRACKER ───────────────────────────────────────────────
+  const hsCard=el('div');hsCard.className='mgmt-card';
+  const hsHdr=el('div');hsHdr.className='mgmt-card-hdr';
+  const hsTitle=el('div');hsTitle.className='mgmt-card-title';hsTitle.textContent='🦺 Health & Safety';
+  const hsAdd=el('button');hsAdd.className='btn-sm';hsAdd.style.fontSize='11px';hsAdd.textContent='+ Add Item';
+  hsHdr.appendChild(hsTitle);hsHdr.appendChild(hsAdd);hsCard.appendChild(hsHdr);
+
+  const HS_DEFAULTS=[
+    'WSIB clearance certificates on file',
+    'Toolbox talks — current week',
+    'First aid kits checked',
+    'PPE inventory adequate',
+    'Near-miss / incident log reviewed',
+    'Site safety signage in place',
+    'Equipment inspection records current',
+  ];
+  const HS_STATUS={ok:{dot:'#16a34a',label:'OK'},warn:{dot:'#d97706',label:'Due soon'},overdue:{dot:'#dc2626',label:'Overdue'}};
+
+  function renderHS(){
+    [...hsCard.querySelectorAll('.hs-row')].forEach(r=>r.remove());
+    const items=S.mgmt.hsItems||[];
+    if(items.length===0){
+      // Seed defaults on first use
+      S.mgmt.hsItems=HS_DEFAULTS.map((label,i)=>({id:uid(),label,status:'ok',dueDate:'',notes:''}));
+      saveMgmt();renderHS();return;
+    }
+    items.forEach((item,idx)=>{
+      const s=HS_STATUS[item.status]||HS_STATUS.ok;
+      const row=el('div');row.className='hs-row';
+      const dot=el('span');dot.className='hs-dot';dot.style.background=s.dot;row.appendChild(dot);
+      const lbl=el('span');lbl.style.cssText='flex:1;font-size:12px;color:#1a2b4a';lbl.textContent=item.label;row.appendChild(lbl);
+      if(item.dueDate){const d=el('span');d.style.cssText='font-size:10px;color:#9ca3af';d.textContent=fmtDate(item.dueDate);row.appendChild(d)}
+      // Status toggle
+      const tog=el('select');tog.className='inp';tog.style.cssText='width:90px;font-size:11px;padding:2px 4px';
+      Object.entries(HS_STATUS).forEach(([k,v])=>{const o=el('option');o.value=k;o.textContent=v.label;if(k===item.status)o.selected=true;tog.appendChild(o)});
+      tog.onchange=e=>{S.mgmt.hsItems[idx].status=e.target.value;saveMgmt();renderHS()};
+      row.appendChild(tog);
+      const del=el('button');del.style.cssText='background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px';
+      del.textContent='×';del.onclick=async()=>{
+        if(!await confirmModal('Remove "'+item.label+'"?','Remove',true))return;
+        S.mgmt.hsItems.splice(idx,1);saveMgmt();renderHS();
+      };
+      row.appendChild(del);
+      hsCard.appendChild(row);
+    });
+  }
+  hsAdd.onclick=()=>{
+    const label=prompt('H&S item label:');if(!label)return;
+    S.mgmt.hsItems.push({id:uid(),label,status:'ok',dueDate:'',notes:''});
+    saveMgmt();renderHS();
+  };
+  renderHS();
+  row1.appendChild(hsCard);
+  wrap.appendChild(row1);
+
+  // ── Row 2: Time Off Calendar ──────────────────────────────────────────────
+  const tocCard=el('div');tocCard.className='mgmt-card';
+  const tocHdr=el('div');tocHdr.className='mgmt-card-hdr';
+  const tocTitle=el('div');tocTitle.className='mgmt-card-title';tocTitle.textContent='🗓 Time Off / Availability';
+  const tocAdd=el('button');tocAdd.className='btn-sm';tocAdd.style.fontSize='11px';tocAdd.textContent='+ Add Time Off';
+  tocHdr.appendChild(tocTitle);tocHdr.appendChild(tocAdd);tocCard.appendChild(tocHdr);
+
+  // Build a 5-week rolling calendar starting from current Monday
+  function buildTOC(){
+    tocCard.querySelectorAll('.toc-wrap').forEach(e=>e.remove());
+    const tocWrap=el('div');tocWrap.className='toc-wrap';
+    const calGrid=el('div');calGrid.className='toc-grid';
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>{
+      const h=el('div');h.className='toc-hdr';h.textContent=d;calGrid.appendChild(h);
+    });
+    // Start from Monday of current week
+    const start=new Date(TODAY+'T12:00:00');
+    start.setDate(start.getDate()-(start.getDay()||7)+1);
+    const holSet=new Set(S.holidays.map(h=>h.date));
+    const timeOffMap={};
+    (S.mgmt.timeOff||[]).forEach(t=>{
+      if(!t.from||!t.to)return;
+      const d=new Date(t.from+'T12:00:00'),e=new Date(t.to+'T12:00:00');
+      while(d<=e){const k=d.toISOString().slice(0,10);if(!timeOffMap[k])timeOffMap[k]=[];timeOffMap[k].push(t);d.setDate(d.getDate()+1)}
+    });
+    for(let i=0;i<35;i++){
+      const d=new Date(start);d.setDate(d.getDate()+i);
+      const ds=d.toISOString().slice(0,10);
+      const isToday=ds===TODAY;
+      const isWeekend=d.getDay()===0||d.getDay()===6;
+      const isHol=holSet.has(ds);
+      const offs=timeOffMap[ds]||[];
+      const cell=el('div');cell.className='toc-day'+(isToday?' today':isHol?' holiday':isWeekend?' weekend':'');
+      const dayNum=el('span');dayNum.textContent=d.getDate();cell.appendChild(dayNum);
+      if(i===0||d.getDate()===1){const mLbl=el('div');mLbl.style.cssText='font-size:8px;color:#9ca3af;line-height:1';mLbl.textContent=d.toLocaleString('en-CA',{month:'short'});cell.appendChild(mLbl)}
+      offs.forEach(t=>{
+        const cr=S.crews.find(c=>c.name===t.crew);
+        const pip=el('span');pip.className='toc-pip';
+        pip.style.background=cr?cr.color:'#9ca3af';
+        pip.title=t.crew+(t.note?' — '+t.note:'');
+        cell.appendChild(pip);
+      });
+      calGrid.appendChild(cell);
+    }
+    tocWrap.appendChild(calGrid);
+    // Legend
+    if((S.mgmt.timeOff||[]).length>0){
+      const leg=el('div');leg.style.cssText='display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:10px;color:#6b7280';
+      const crews=[...new Set((S.mgmt.timeOff||[]).map(t=>t.crew))];
+      crews.forEach(name=>{
+        const cr=S.crews.find(c=>c.name===name);
+        const item=el('span');item.style.cssText='display:flex;align-items:center;gap:4px';
+        const pip=el('span');pip.className='toc-pip';pip.style.background=cr?cr.color:'#9ca3af';
+        item.appendChild(pip);item.appendChild(document.createTextNode(name));
+        leg.appendChild(item);
+      });
+      tocWrap.appendChild(leg);
+    }
+    tocCard.appendChild(tocWrap);
+  }
+
+  tocAdd.onclick=()=>{
+    const crewNames=S.crews.map(c=>c.name);
+    if(!crewNames.length){toast('Add crew members first in Settings.','error');return}
+    // Quick-add form
+    const existing=tocCard.querySelector('.toc-add-form');if(existing)existing.remove();
+    const form=el('div');form.className='toc-add-form';
+    form.style.cssText='background:#f8f9fc;border:1px solid #c5d0e8;border-radius:8px;padding:10px;margin-top:8px';
+    const g=el('div');g.style.cssText='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap';
+    const crewSel=inp2('',()=>{},'select',crewNames.map(n=>[n,n]));crewSel.style.width='120px';
+    const fromI=el('input');fromI.type='date';fromI.className='inp';fromI.style.width='120px';fromI.value=TODAY;
+    const toI=el('input');toI.type='date';toI.className='inp';toI.style.width='120px';toI.value=TODAY;
+    const noteI=el('input');noteI.className='inp';noteI.placeholder='Note (optional)';noteI.style.flex='1';
+    const saveB=el('button');saveB.className='btn-primary';saveB.style.fontSize='11px';saveB.textContent='Add';
+    saveB.onclick=()=>{
+      if(!crewSel.value||!fromI.value||!toI.value){toast('Select crew and dates.','error');return}
+      if(!S.mgmt.timeOff)S.mgmt.timeOff=[];
+      S.mgmt.timeOff.push({id:uid(),crew:crewSel.value,from:fromI.value,to:toI.value,note:noteI.value.trim()});
+      saveMgmt();form.remove();buildTOC();
+    };
+    const cancelB=el('button');cancelB.className='btn-sec';cancelB.style.fontSize='11px';cancelB.textContent='Cancel';
+    cancelB.onclick=()=>form.remove();
+    [lbl2('Crew'),crewSel,lbl2('From'),fromI,lbl2('To'),toI,lbl2('Note'),noteI,saveB,cancelB].forEach(i=>g.appendChild(i));
+    form.appendChild(g);tocCard.appendChild(form);
+  };
+  buildTOC();
+  wrap.appendChild(tocCard);
+
+  // ── Row 3: Management Gantt ───────────────────────────────────────────────
+  const mgCard=el('div');mgCard.className='mgmt-card';
+  const mgHdr=el('div');mgHdr.className='mgmt-card-hdr';
+  const mgTitle=el('div');mgTitle.className='mgmt-card-title';mgTitle.textContent='📅 Office / Admin Schedule';
+  const mgAdd=el('button');mgAdd.className='btn-sm';mgAdd.style.fontSize='11px';mgAdd.textContent='+ Add Event';
+  mgHdr.appendChild(mgTitle);mgHdr.appendChild(mgAdd);mgCard.appendChild(mgHdr);
+
+  const MG_COLORS=['#1F3864','#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#0dcaf0'];
+  const MG_DW=20; // pixels per day for this mini-Gantt
+
+  function buildMgGantt(){
+    mgCard.querySelectorAll('.mg-gantt').forEach(e=>e.remove());
+    const events=S.mgmt.mgEvents||[];
+    if(!events.length){
+      const emp=el('div');emp.className='mg-gantt';emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:16px 0';
+      emp.textContent='No events scheduled — add onboarding, training, inspections, permit deadlines…';
+      mgCard.appendChild(emp);return;
+    }
+    // Determine date range: 2 weeks before/after today, clamped to events
+    const allDates=events.flatMap(e=>[e.from,e.to]).filter(Boolean).sort();
+    const startD=new Date(Math.min(new Date(allDates[0]+'T12:00:00'),new Date(TODAY+'T12:00:00')));
+    startD.setDate(startD.getDate()-7);
+    const endD=new Date(Math.max(new Date(allDates[allDates.length-1]+'T12:00:00'),new Date(TODAY+'T12:00:00')));
+    endD.setDate(endD.getDate()+7);
+    const nDays=Math.round((endD-startD)/86400000)+1;
+    const totalW=nDays*MG_DW+180;
+
+    const wrap2=el('div');wrap2.className='mg-gantt mgmt-gantt-wrap';
+    wrap2.style.width='100%';
+    // Header row — month/day
+    const hdrRow=el('div');hdrRow.className='mg-row';hdrRow.style.background='#f8f9fc';
+    const hlc=el('div');hlc.className='mg-lc';hlc.style.cssText='background:#f8f9fc;font-size:10px;font-weight:700;color:#9ca3af;border-right:2px solid #e4e8f0;width:180px;flex-shrink:0';hlc.textContent='Event';hdrRow.appendChild(hlc);
+    const hgc=el('div');hgc.className='mg-gc';hgc.style.cssText='flex:1;height:28px;position:relative;min-width:'+(nDays*MG_DW)+'px';
+    for(let i=0;i<nDays;i++){
+      const d=new Date(startD);d.setDate(d.getDate()+i);
+      if(d.getDay()===1||i===0){const lbl=el('span');lbl.style.cssText='position:absolute;left:'+(i*MG_DW+2)+'px;top:8px;font-size:8px;color:#9ca3af;pointer-events:none';lbl.textContent=d.toLocaleDateString('en-CA',{month:'short',day:'numeric'});hgc.appendChild(lbl)}
+      // Today line
+      if(d.toISOString().slice(0,10)===TODAY){const tl=el('div');tl.style.cssText='position:absolute;left:'+(i*MG_DW+MG_DW/2)+'px;top:0;width:2px;height:28px;background:rgba(255,215,0,.6);pointer-events:none';hgc.appendChild(tl)}
+    }
+    hdrRow.appendChild(hgc);wrap2.appendChild(hdrRow);
+    events.forEach((ev,idx)=>{
+      const row=el('div');row.className='mg-row';row.style.background=idx%2===0?'#fff':'#f8f9fc';
+      const lc=el('div');lc.className='mg-lc';lc.textContent=ev.label||'Untitled';
+      lc.title=ev.label+(ev.notes?'\n'+ev.notes:'');row.appendChild(lc);
+      const gc=el('div');gc.className='mg-gc';gc.style.cssText='flex:1;height:28px;position:relative;min-width:'+(nDays*MG_DW)+'px';
+      if(ev.from&&ev.to){
+        const s=Math.round((new Date(ev.from+'T12:00:00')-startD)/86400000);
+        const e=Math.round((new Date(ev.to+'T12:00:00')-startD)/86400000);
+        if(e>=0&&s<=nDays){
+          const bar=el('div');bar.className='mg-bar';
+          bar.style.cssText='left:'+Math.max(0,s)*MG_DW+'px;width:'+(Math.min(e,nDays-1)-Math.max(0,s)+1)*MG_DW+'px;background:'+(ev.color||MG_COLORS[idx%MG_COLORS.length]);
+          bar.textContent=ev.label||'';bar.title=ev.label+(ev.notes?'\n'+ev.notes:'');
+          gc.appendChild(bar);
+        }
+      }
+      // Delete button via double-click on label
+      lc.ondblclick=async()=>{
+        if(!await confirmModal('Remove "'+ev.label+'"?','Remove',true))return;
+        S.mgmt.mgEvents.splice(idx,1);saveMgmt();buildMgGantt();
+      };
+      lc.title+=(ev.label?'\n':'')+'Double-click to remove';
+      row.appendChild(gc);wrap2.appendChild(row);
+    });
+    mgCard.appendChild(wrap2);
+  }
+
+  mgAdd.onclick=()=>{
+    const existing=mgCard.querySelector('.mg-add-form');if(existing)existing.remove();
+    const form=el('div');form.className='mg-add-form';
+    form.style.cssText='background:#f8f9fc;border:1px solid #c5d0e8;border-radius:8px;padding:10px;margin-top:8px';
+    const g=el('div');g.style.cssText='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap';
+    const nameI=el('input');nameI.className='inp';nameI.placeholder='Event label';nameI.style.flex='1;min-width:140px';
+    const fromI=el('input');fromI.type='date';fromI.className='inp';fromI.style.width='120px';fromI.value=TODAY;
+    const toI=el('input');toI.type='date';toI.className='inp';toI.style.width='120px';toI.value=TODAY;
+    const colSel=el('select');colSel.className='inp';colSel.style.width='80px';
+    MG_COLORS.forEach((c,i)=>{const o=el('option');o.value=c;o.textContent=['Navy','Blue','Green','Red','Orange','Purple','Teal'][i];colSel.appendChild(o)});
+    const noteI=el('input');noteI.className='inp';noteI.placeholder='Note (optional)';noteI.style.flex='1';
+    const saveB=el('button');saveB.className='btn-primary';saveB.style.fontSize='11px';saveB.textContent='Add';
+    saveB.onclick=()=>{
+      if(!nameI.value.trim()){toast('Enter an event label.','error');return}
+      if(!S.mgmt.mgEvents)S.mgmt.mgEvents=[];
+      S.mgmt.mgEvents.push({id:uid(),label:nameI.value.trim(),from:fromI.value,to:toI.value,color:colSel.value,notes:noteI.value.trim()});
+      saveMgmt();form.remove();buildMgGantt();
+    };
+    const cancelB=el('button');cancelB.className='btn-sec';cancelB.style.fontSize='11px';cancelB.textContent='Cancel';
+    cancelB.onclick=()=>form.remove();
+    [lbl2('Label'),nameI,lbl2('From'),fromI,lbl2('To'),toI,lbl2('Colour'),colSel,lbl2('Note'),noteI,saveB,cancelB].forEach(i=>g.appendChild(i));
+    form.appendChild(g);mgCard.appendChild(form);
+  };
+  buildMgGantt();
+  wrap.appendChild(mgCard);
+
+  // ── Row 4: Info card — what goes here ─────────────────────────────────────
+  const infoCard=el('div');infoCard.className='mgmt-card';
+  infoCard.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:10px;padding:16px';
+  const infoTitle=el('p');infoTitle.style.cssText='font-weight:700;color:#1F3864;margin-bottom:8px;font-size:13px';infoTitle.textContent='💡 What belongs in this tab';
+  const infoBody=el('p');infoBody.style.cssText='color:#334;font-size:12px;line-height:1.7';
+  infoBody.textContent='This tab is for back-office information that keeps the business running — not for creating additional field work. '+
+    'Use it to track: bid opportunities (Bid Board), safety compliance items (H&S), crew availability (Time Off Calendar), '+
+    'and office deadlines like permit renewals, COR audits, insurance renewals, and subcontractor onboarding (Office Schedule). '+
+    'Everything here is stored locally in your browser — no database required. '+
+    'If a field crew member is looking at this tab for more than 30 seconds, something is wrong.';
+  infoCard.appendChild(infoTitle);infoCard.appendChild(infoBody);
+  wrap.appendChild(infoCard);
+
   return wrap;
 }
 
