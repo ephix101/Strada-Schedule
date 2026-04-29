@@ -3651,8 +3651,12 @@ function buildManagement(){
   const tocCard=el('div');tocCard.className='mgmt-card';
   const tocHdr=el('div');tocHdr.className='mgmt-card-hdr';
   const tocTitle=el('div');tocTitle.className='mgmt-card-title';tocTitle.textContent='🗓 Time Off / Availability';
+  const tocBtns=el('div');tocBtns.style.cssText='display:flex;gap:6px;align-items:center';
   const tocAdd=el('button');tocAdd.className='btn-sm';tocAdd.style.fontSize='11px';tocAdd.textContent='+ Add Time Off';
-  tocHdr.appendChild(tocTitle);tocHdr.appendChild(tocAdd);tocCard.appendChild(tocHdr);
+  const tocImport=el('button');tocImport.className='btn-sm';tocImport.style.cssText='font-size:11px;background:#f0f4ff;border-color:#c5d0e8;color:#1F3864';
+  tocImport.textContent='📄 Import Corfix';tocImport.title='Import a time-off request from a Corfix HR PDF';
+  tocBtns.appendChild(tocAdd);tocBtns.appendChild(tocImport);
+  tocHdr.appendChild(tocTitle);tocHdr.appendChild(tocBtns);tocCard.appendChild(tocHdr);
 
   // Build a 5-week rolling calendar starting from current Monday
   function buildTOC(){
@@ -3739,6 +3743,181 @@ function buildManagement(){
     form.appendChild(g);tocCard.appendChild(form);
   };
   buildTOC();
+
+  // ── Corfix Time-Off PDF Import ────────────────────────────────────────────
+  // Reads a Corfix HR Time Off Request PDF using the same Claude API key
+  // already stored in Settings → Data → API Keys. Extracts employee name,
+  // dates, leave type, and notes, then pre-fills the add form for confirmation.
+  // The user reviews and clicks Add — nothing is saved without confirmation.
+
+  const CORFIX_PROMPT=`You are parsing a Corfix HR Time Off Request form from a construction company.
+Extract ONLY the following fields and return a single JSON object with no markdown, no explanation:
+{
+  "employee_name": "full name of the person requesting time off",
+  "from_date": "YYYY-MM-DD",
+  "to_date": "YYYY-MM-DD",
+  "leave_type": "vacation-short | vacation-long | appointment | other",
+  "note": "any additional details entered in the form, or empty string",
+  "status": "approved | denied | pending"
+}
+Rules:
+- leave_type mapping: "Vacation (less than one week)" → vacation-short, "Vacation (More than one week)" → vacation-long, "Appointment" → appointment, "Other" → other
+- status: look for the checked radio button in the Admin Only section (Approved/Denied/Pending review). Default to "pending" if unclear.
+- If a date field is blank or unreadable return null for that field.
+- Return ONLY the JSON object. No preamble, no backticks.`;
+
+  async function parseCorfixPDF(file){
+    const apiKey=await fetchApiKey();
+    if(!apiKey)throw new Error('No API key — add your Anthropic key in Settings → Data → API Keys first.');
+    const b64=await fileToBase64(file);
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-allow-browser':'true'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',max_tokens:512,
+        messages:[{role:'user',content:[
+          {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
+          {type:'text',text:CORFIX_PROMPT},
+        ]}],
+      }),
+    });
+    if(!resp.ok){
+      let msg='Claude API error '+resp.status;
+      try{const e=await resp.json();msg=e.error?.message||msg}catch{}
+      throw new Error(msg);
+    }
+    const data=await resp.json();
+    const raw=(data.content||[]).find(b=>b.type==='text')?.text||'';
+    const clean=raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    const parsed=JSON.parse(clean);
+    if(!parsed.employee_name||!parsed.from_date)
+      throw new Error('Could not extract employee name or dates from this PDF. Is this a Corfix Time Off Request form?');
+    return parsed;
+  }
+
+  function openCorfixResult(parsed){
+    // Remove any existing add/import form
+    tocCard.querySelectorAll('.toc-add-form,.toc-import-form').forEach(f=>f.remove());
+
+    const empNames=(S.employees||[]).filter(e=>e.active!==false).map(e=>e.name).sort();
+    const nameOpts=empNames.length?empNames:S.crews.map(c=>c.name);
+
+    // Try to fuzzy-match the extracted name against known employees
+    // Match on last name or full name (case-insensitive)
+    function matchEmployee(extracted){
+      if(!extracted)return'';
+      const norm=extracted.toLowerCase().trim();
+      // Exact match first
+      const exact=nameOpts.find(n=>n.toLowerCase()===norm);if(exact)return exact;
+      // Last name match
+      const lastName=norm.split(' ').pop();
+      const byLast=nameOpts.find(n=>n.toLowerCase().split(' ').pop()===lastName);if(byLast)return byLast;
+      // Partial contains
+      const partial=nameOpts.find(n=>n.toLowerCase().includes(norm)||norm.includes(n.toLowerCase()));
+      return partial||'';
+    }
+    const matchedName=matchEmployee(parsed.employee_name);
+
+    const LEAVE_LABELS={'vacation-short':'Vacation < 1 week','vacation-long':'Vacation > 1 week','appointment':'Appointment','other':'Other'};
+    const statusColour={'approved':'#dcfce7','denied':'#fee2e2','pending':'#fef3c7'};
+    const statusText={'approved':'✓ Approved','denied':'✗ Denied','pending':'⏳ Pending'};
+
+    const form=el('div');form.className='toc-import-form';
+    form.style.cssText='background:#f0f4ff;border:1.5px solid #1F3864;border-radius:8px;padding:12px;margin-top:8px';
+
+    // Header — shows what was parsed
+    const hdr=el('div');hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:10px';
+    const htitle=el('span');htitle.style.cssText='font-size:12px;font-weight:700;color:#1F3864';htitle.textContent='📄 Corfix Import — Review & Confirm';
+    const statusPill=el('span');
+    statusPill.style.cssText='font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:'+(statusColour[parsed.status]||'#f3f4f6');
+    statusPill.textContent=statusText[parsed.status]||parsed.status;
+    hdr.appendChild(htitle);hdr.appendChild(statusPill);form.appendChild(hdr);
+
+    // Warn if status is not approved
+    if(parsed.status!=='approved'){
+      const warn=el('div');warn.style.cssText='background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:6px 10px;font-size:11px;color:#92400e;margin-bottom:8px';
+      warn.textContent='⚠ This request is marked "'+statusText[parsed.status]+'" — confirm before adding to the calendar.';
+      form.appendChild(warn);
+    }
+
+    const g=el('div');g.style.cssText='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap';
+
+    // Employee — pre-matched, still editable
+    const empW=el('div');empW.appendChild(lbl2('Employee'));
+    const empSel=inp2(matchedName,()=>{},'select',nameOpts.map(n=>[n,n]));
+    empSel.style.cssText='width:140px;font-size:12px';
+    if(!matchedName){
+      // No match found — show extracted name as hint
+      const hint=el('div');hint.style.cssText='font-size:10px;color:#dc2626;margin-top:2px';
+      hint.textContent='Not matched: "'+parsed.employee_name+'"';empW.appendChild(hint);
+    }
+    empW.appendChild(empSel);g.appendChild(empW);
+
+    // Leave type badge
+    const ltW=el('div');ltW.appendChild(lbl2('Type'));
+    const ltBadge=el('div');ltBadge.style.cssText='font-size:11px;font-weight:600;color:#1F3864;padding:5px 8px;background:#dbeafe;border-radius:5px;border:1px solid #bfdbfe;white-space:nowrap';
+    ltBadge.textContent=LEAVE_LABELS[parsed.leave_type]||parsed.leave_type;ltW.appendChild(ltBadge);g.appendChild(ltW);
+
+    // From date
+    const fromW=el('div');fromW.appendChild(lbl2('From'));
+    const fromI=el('input');fromI.type='date';fromI.className='inp';fromI.style.width='130px';
+    fromI.value=parsed.from_date||TODAY;fromW.appendChild(fromI);g.appendChild(fromW);
+
+    // To date
+    const toW=el('div');toW.appendChild(lbl2('To'));
+    const toI=el('input');toI.type='date';toI.className='inp';toI.style.width='130px';
+    toI.value=parsed.to_date||parsed.from_date||TODAY;toW.appendChild(toI);g.appendChild(toW);
+
+    // Note — pre-filled from "additional details"
+    const noteW=el('div');noteW.style.flex='1';noteW.appendChild(lbl2('Note'));
+    const noteI=el('input');noteI.className='inp';noteI.placeholder='e.g. Off at noon';
+    noteI.value=parsed.note||'';noteI.style.cssText='width:100%;font-size:12px';noteW.appendChild(noteI);g.appendChild(noteW);
+
+    form.appendChild(g);
+
+    // Action buttons
+    const foot=el('div');foot.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:10px';
+    const cancelB=el('button');cancelB.className='btn-sec';cancelB.style.fontSize='11px';cancelB.textContent='Cancel';
+    cancelB.onclick=()=>form.remove();
+    const confirmB=el('button');confirmB.className='btn-primary';confirmB.style.fontSize='11px';
+    confirmB.textContent='✓ Add to Calendar';
+    confirmB.onclick=()=>{
+      if(!empSel.value){toast('Select an employee.','error');return}
+      if(!fromI.value||!toI.value){toast('Dates are required.','error');return}
+      if(!S.mgmt.timeOff)S.mgmt.timeOff=[];
+      S.mgmt.timeOff.push({
+        id:uid(),crew:empSel.value,
+        from:fromI.value,to:toI.value,
+        note:[LEAVE_LABELS[parsed.leave_type]||'',noteI.value.trim()].filter(Boolean).join(' · '),
+      });
+      saveMgmt();form.remove();buildTOC();
+      toast('✓ Time off added for '+empSel.value,'ok');
+    };
+    foot.appendChild(cancelB);foot.appendChild(confirmB);form.appendChild(foot);
+    tocCard.appendChild(form);
+  }
+
+  tocImport.onclick=async()=>{
+    // Hidden file input — triggers native file picker, accepts PDF only
+    const fi=el('input');fi.type='file';fi.accept='.pdf,application/pdf';fi.style.display='none';
+    document.body.appendChild(fi);
+    fi.onchange=async e=>{
+      document.body.removeChild(fi);
+      const file=e.target.files[0];if(!file)return;
+      // Show spinner state on button
+      tocImport.disabled=true;tocImport.textContent='⏳ Parsing…';
+      try{
+        const parsed=await parseCorfixPDF(file);
+        openCorfixResult(parsed);
+      }catch(err){
+        toast('⚠ Import failed: '+err.message,'error');
+      }finally{
+        tocImport.disabled=false;tocImport.textContent='📄 Import Corfix';
+      }
+    };
+    fi.click();
+  };
   wrap.appendChild(tocCard);
 
   // ── Row 3: Management Gantt ───────────────────────────────────────────────
