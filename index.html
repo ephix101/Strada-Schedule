@@ -326,6 +326,14 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .pha-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:5px;cursor:pointer;transition:box-shadow .12s;background:#fff}
 .pha-row:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
 .pha-status-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+/* ── Subcontractor Registry (M4) ─────────────────────────────────────────── */
+.sub-card{display:flex;align-items:flex-start;gap:10px;background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:7px;border:1px solid #e4e8f0;cursor:pointer;transition:box-shadow .12s}
+.sub-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.sub-av{width:34px;height:34px;border-radius:8px;background:#334155;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0;text-align:center;line-height:1.2}
+.sub-name{font-weight:700;color:#1a2b4a;font-size:13px}
+.sub-trade{font-size:11px;color:#6b7280}
+.sub-compliance-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+.sub-status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:2px}
 </style>
 </head>
 <body>
@@ -531,6 +539,7 @@ const S={
   employees:[],employeeCerts:[],  // M1: Employee & Certification Registry
   hsIncidents:[],hsActions:[],    // M2: H&S Incidents & WSIB
   hsMeetings:[],hsPhas:[],        // M3: JHSC Meetings & Pre-Job Hazard Assessments
+  subcontractors:[],              // M4: Subcontractor Compliance Registry
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
   mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[]},
@@ -938,7 +947,7 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp]=await withTimeout(
+    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp,sc]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
@@ -951,6 +960,7 @@ async function loadAll(){
         sb.from('hs_actions').select('*').order('due_date'),
         sb.from('hs_meetings').select('*').order('meeting_date',{ascending:false}),
         sb.from('hs_phas').select('*').order('pha_date',{ascending:false}),
+        sb.from('subcontractors').select('*').order('name'),
       ]),
       QUERY_TIMEOUT_MS
     );
@@ -965,6 +975,7 @@ async function loadAll(){
     if(!ha.error&&ha.data)S.hsActions=ha.data;
     if(!hm.error&&hm.data)S.hsMeetings=hm.data;
     if(!hp.error&&hp.data)S.hsPhas=hp.data;
+    if(!sc.error&&sc.data)S.subcontractors=sc.data;
     _projTaskCache=null;
     buildHolCache();  // rebuild immediately — workDays() must be correct before next render
     clearWdCache();   // invalidate memoization — holidays or tasks may have changed
@@ -1045,6 +1056,12 @@ function handleRealtimeEvent(table, payload){
         else S.hsPhas=[pha,...S.hsPhas];
         renderSafe();return;
       }
+      if(table==='subcontractors'){
+        const s=nw;
+        if(S.subcontractors.find(x=>x.id===s.id))S.subcontractors=S.subcontractors.map(x=>x.id===s.id?s:x);
+        else S.subcontractors=[...S.subcontractors,s].sort((a,b)=>a.name.localeCompare(b.name));
+        renderSafe();return;
+      }
     }
     if(eventType==='DELETE'){
       const id=(ol||{}).id;if(!id)throw new Error('no id');
@@ -1057,6 +1074,7 @@ function handleRealtimeEvent(table, payload){
       if(table==='hs_actions'){S.hsActions=S.hsActions.filter(x=>x.id!==id)}
       if(table==='hs_meetings'){S.hsMeetings=S.hsMeetings.filter(x=>x.id!==id)}
       if(table==='hs_phas'){S.hsPhas=S.hsPhas.filter(x=>x.id!==id)}
+      if(table==='subcontractors'){S.subcontractors=S.subcontractors.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
   }catch(e){
@@ -1076,6 +1094,7 @@ function startRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_actions'},p=>handleRealtimeEvent('hs_actions',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_meetings'},p=>handleRealtimeEvent('hs_meetings',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_phas'},p=>handleRealtimeEvent('hs_phas',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'subcontractors'},p=>handleRealtimeEvent('subcontractors',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
@@ -1241,6 +1260,31 @@ const upsertHsMeeting=m=>api(async()=>{const{error}=await sb.from('hs_meetings')
 const deleteHsMeeting=id=>api(async()=>{const{error}=await sb.from('hs_meetings').delete().eq('id',id);if(error)throw error});
 const upsertHsPha=pha=>api(async()=>{const{error}=await sb.from('hs_phas').upsert(hsPHAToDB(pha));if(error)throw error});
 const deleteHsPha=id=>api(async()=>{const{error}=await sb.from('hs_phas').delete().eq('id',id);if(error)throw error});
+// ── M4: Subcontractor Compliance data layer ──────────────────────────────────
+const SUB_TRADES=['Traffic Control','Asphalt','Concrete','Drainage','Landscaping',
+  'Electrical','Utilities','Fencing','Line Marking','Surveying','Other'];
+const SUB_STATUSES=['active','inactive','do-not-use'];
+function subcontractorToDB(s){
+  return{
+    id:s.id, name:s.name||'',
+    trade_type:s.trade_type||null,
+    contact_name:s.contact_name||null,
+    contact_phone:s.contact_phone||null,
+    contact_email:s.contact_email||null,
+    wsib_account:s.wsib_account||null,
+    wsib_clearance_expiry:s.wsib_clearance_expiry||null,
+    insurance_expiry:s.insurance_expiry||null,
+    insurance_amount_cents:s.insurance_amount_cents||null,
+    agreement_on_file:!!s.agreement_on_file,
+    agreement_date:s.agreement_date||null,
+    status:s.status||'active',
+    do_not_use_reason:s.do_not_use_reason||null,
+    notes:s.notes||null,
+    sort_order:s.sort_order||0,
+  };
+}
+const upsertSubcontractor=s=>api(async()=>{const{error}=await sb.from('subcontractors').upsert(subcontractorToDB(s));if(error)throw error});
+const deleteSubcontractor=id=>api(async()=>{const{error}=await sb.from('subcontractors').delete().eq('id',id);if(error)throw error});
 
 async function seedData(){
   if(!await confirmModal('Load all 41 default projects into the database? This cannot be undone.','Load Data',false))return;
@@ -1283,6 +1327,26 @@ function certStatus(cert){
 function activeEmployees(){
   return(S.employees||[]).filter(e=>e.active!==false)
     .sort((a,b)=>((a.sort_order||0)-(b.sort_order||0))||a.name.localeCompare(b.name));
+}
+// subComplianceStatus(sub) — returns worst compliance state for a subcontractor.
+// Returns {state:'ok'|'warn'|'expired', label, items:[{field,date,daysLeft}]}
+function subComplianceStatus(sub){
+  const today=new Date(TODAY+'T12:00:00');
+  const items=[];
+  const fields=[
+    {key:'wsib_clearance_expiry',  label:'WSIB Clearance'},
+    {key:'insurance_expiry',       label:'Insurance'},
+  ];
+  fields.forEach(({key,label})=>{
+    const date=sub[key];if(!date)return;
+    const daysLeft=Math.round((new Date(date+'T12:00:00')-today)/86400000);
+    items.push({field:label,date,daysLeft});
+  });
+  if(!sub.agreement_on_file)items.push({field:'Agreement',date:null,daysLeft:null,missing:true});
+  const expired=items.filter(i=>i.daysLeft!==null&&i.daysLeft<0);
+  const warn=items.filter(i=>i.daysLeft!==null&&i.daysLeft>=0&&i.daysLeft<=30);
+  const state=expired.length?'expired':warn.length?'warn':'ok';
+  return{state,items,expired,warn};
 }
 const d2s=d=>d?d.toISOString().slice(0,10):null;
 const s2d=s=>s?new Date(s+'T12:00:00'):null;
@@ -1488,6 +1552,7 @@ function openModal(){
   else if(S.modal.type==='hs-incident')buildHSIncidentModal(m);
   else if(S.modal.type==='jhsc-meeting')buildJHSCModal(m);
   else if(S.modal.type==='pha')buildPHAModal(m);
+  else if(S.modal.type==='subcontractor')buildSubcontractorModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
@@ -3634,6 +3699,19 @@ function buildManagement(){
       const names=missingPHA.slice(0,3).map(id=>{const p=S.projects.find(x=>x.id===id);return p?p.job_num:id});
       amberItems.push(missingPHA.length+' active project'+(missingPHA.length!==1?'s have':' has')+' no PHA: '+names.join(', ')+(missingPHA.length>3?' +more':''));
     }
+    // M4: Subcontractor WSIB / Insurance expiry
+    const today=new Date(TODAY+'T12:00:00');
+    (S.subcontractors||[]).filter(s=>s.status==='active').forEach(s=>{
+      [
+        {date:s.wsib_clearance_expiry, label:'WSIB clearance', sub:s.name},
+        {date:s.insurance_expiry,       label:'Insurance',      sub:s.name},
+      ].forEach(({date,label,sub})=>{
+        if(!date)return;
+        const d=Math.round((new Date(date+'T12:00:00')-today)/86400000);
+        if(d<0)redItems.push(label+' EXPIRED: '+sub+' ('+Math.abs(d)+'d ago)');
+        else if(d<=14)amberItems.push(label+' expires in '+d+'d: '+sub);
+      });
+    });
 
     const insertAfter=hsHdr;
     if(redItems.length){
@@ -4182,7 +4260,127 @@ Rules:
   buildMgGantt();
   wrap.appendChild(mgCard);
 
-  // ── Row 4: Info card — what goes here ─────────────────────────────────────
+  // ── Row 5: Subcontractor Compliance Registry (M4) ────────────────────────
+  const subCard=el('div');subCard.className='mgmt-card';
+  const subHdr=el('div');subHdr.className='mgmt-card-hdr';
+  const subTitle=el('div');subTitle.className='mgmt-card-title';subTitle.textContent='🤝 Subcontractor Compliance';
+  const subAddBtn=el('button');subAddBtn.className='btn-sm';subAddBtn.style.fontSize='11px';subAddBtn.textContent='+ Add Subcontractor';
+  subHdr.appendChild(subTitle);subHdr.appendChild(subAddBtn);subCard.appendChild(subHdr);
+
+  // Compliance summary strip — expired + expiring counts at a glance
+  function buildSubSummary(){
+    subCard.querySelectorAll('.sub-summary').forEach(e=>e.remove());
+    const active=(S.subcontractors||[]).filter(s=>s.status==='active');
+    const expired=active.filter(s=>subComplianceStatus(s).state==='expired').length;
+    const warn=active.filter(s=>subComplianceStatus(s).state==='warn').length;
+    if(!active.length)return;
+    const strip=el('div');strip.className='sub-summary';
+    strip.style.cssText='display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap';
+    const mkPill=(count,label,bg,col)=>{
+      const p=el('span');p.style.cssText='font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:'+bg+';color:'+col;
+      p.textContent=count+' '+label;return p;
+    };
+    strip.appendChild(mkPill(active.length,'active','#f0f4ff','#1F3864'));
+    if(expired)strip.appendChild(mkPill(expired,'expired','#fee2e2','#dc2626'));
+    if(warn)strip.appendChild(mkPill(warn,'expiring soon','#fef3c7','#92400e'));
+    if(!expired&&!warn)strip.appendChild(mkPill('✓','all compliant','#dcfce7','#166534'));
+    subCard.insertBefore(strip,subList);
+  }
+
+  const subList=el('div');subCard.appendChild(subList);
+
+  const SUB_STATUS_CFG={
+    active:       {dot:'#16a34a',label:'Active'},
+    inactive:     {dot:'#9ca3af',label:'Inactive'},
+    'do-not-use': {dot:'#dc2626',label:'Do Not Use'},
+  };
+
+  function renderSubList(){
+    subList.innerHTML='';
+    const subs=S.subcontractors||[];
+    if(!subs.length){
+      const emp=el('div');emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:20px 0';
+      emp.textContent='No subcontractors on record — click + Add Subcontractor to get started.';
+      subList.appendChild(emp);buildSubSummary();return;
+    }
+    // Sort: active first (expired then warn then ok), then inactive, then do-not-use
+    const sortOrder={expired:0,warn:1,ok:2};
+    const statusOrder={active:0,inactive:1,'do-not-use':2};
+    const sorted=[...subs].sort((a,b)=>{
+      const so=(statusOrder[a.status]||0)-(statusOrder[b.status]||0);
+      if(so!==0)return so;
+      const ca=subComplianceStatus(a).state,cb=subComplianceStatus(b).state;
+      return (sortOrder[ca]||0)-(sortOrder[cb]||0)||a.name.localeCompare(b.name);
+    });
+    sorted.forEach(sub=>{
+      const cst=subComplianceStatus(sub);
+      const stCfg=SUB_STATUS_CFG[sub.status]||SUB_STATUS_CFG.active;
+      const card=el('div');card.className='sub-card';
+      // Avatar initials
+      const av=el('div');av.className='sub-av';
+      av.textContent=(sub.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+      av.style.background=sub.status==='do-not-use'?'#dc2626':sub.status==='inactive'?'#9ca3af':'#334155';
+      card.appendChild(av);
+      // Info block
+      const info=el('div');info.style.cssText='flex:1;min-width:0';
+      const nameLine=el('div');nameLine.className='sub-name';
+      nameLine.textContent=sub.name;info.appendChild(nameLine);
+      const tradeLine=el('div');tradeLine.className='sub-trade';
+      const tradeParts=[sub.trade_type,sub.contact_name].filter(Boolean);
+      if(sub.contact_phone)tradeParts.push(sub.contact_phone);
+      tradeLine.textContent=tradeParts.join(' · ');info.appendChild(tradeLine);
+      // Compliance badges
+      const badges=el('div');badges.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-top:4px';
+      // WSIB
+      if(sub.wsib_clearance_expiry){
+        const d=Math.round((new Date(sub.wsib_clearance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+        const b=el('span');b.className='sub-compliance-badge';
+        b.style.cssText=d<0?'background:#fee2e2;color:#dc2626;border:1px solid #fca5a5':d<=30?'background:#fef3c7;color:#92400e;border:1px solid #fcd34d':'background:#f0f4ff;color:#1F3864;border:1px solid #c5d0e8';
+        b.textContent='WSIB: '+(d<0?'Exp.'+Math.abs(d)+'d':d+'d');b.title='WSIB clearance expires '+sub.wsib_clearance_expiry;
+        badges.appendChild(b);
+      }else{
+        const b=el('span');b.className='sub-compliance-badge';b.style.cssText='background:#f3f4f6;color:#9ca3af;border:1px solid #e5e7eb';b.textContent='WSIB: not set';badges.appendChild(b);
+      }
+      // Insurance
+      if(sub.insurance_expiry){
+        const d=Math.round((new Date(sub.insurance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+        const b=el('span');b.className='sub-compliance-badge';
+        b.style.cssText=d<0?'background:#fee2e2;color:#dc2626;border:1px solid #fca5a5':d<=30?'background:#fef3c7;color:#92400e;border:1px solid #fcd34d':'background:#f0f4ff;color:#1F3864;border:1px solid #c5d0e8';
+        b.textContent='Ins: '+(d<0?'Exp.'+Math.abs(d)+'d':d+'d');b.title='Insurance expires '+sub.insurance_expiry;
+        badges.appendChild(b);
+      }else{
+        const b=el('span');b.className='sub-compliance-badge';b.style.cssText='background:#f3f4f6;color:#9ca3af;border:1px solid #e5e7eb';b.textContent='Ins: not set';badges.appendChild(b);
+      }
+      // Agreement
+      const ab=el('span');ab.className='sub-compliance-badge';
+      ab.style.cssText=sub.agreement_on_file?'background:#dcfce7;color:#166534;border:1px solid #86efac':'background:#fef3c7;color:#92400e;border:1px solid #fcd34d';
+      ab.textContent=sub.agreement_on_file?'✓ Agreement':'⚠ No agreement';badges.appendChild(ab);
+      // Do-not-use reason
+      if(sub.status==='do-not-use'&&sub.do_not_use_reason){
+        const rb=el('span');rb.className='sub-compliance-badge';rb.style.cssText='background:#fee2e2;color:#dc2626;border:1px solid #fca5a5';rb.textContent='⛔ '+sub.do_not_use_reason.slice(0,30);badges.appendChild(rb);
+      }
+      info.appendChild(badges);card.appendChild(info);
+      // Status dot
+      const dot=el('div');dot.className='sub-status-dot';dot.style.background=stCfg.dot;dot.title=stCfg.label;card.appendChild(dot);
+      card.onclick=()=>{S.modal={type:'subcontractor',isNew:false,sub:{...sub}};openModal()};
+      subList.appendChild(card);
+    });
+    buildSubSummary();
+  }
+
+  subAddBtn.onclick=()=>{
+    S.modal={type:'subcontractor',isNew:true,sub:{
+      id:crypto.randomUUID(),name:'',trade_type:'',contact_name:'',
+      contact_phone:'',contact_email:'',wsib_account:'',
+      wsib_clearance_expiry:'',insurance_expiry:'',
+      insurance_amount_cents:null,agreement_on_file:false,
+      agreement_date:'',status:'active',do_not_use_reason:'',notes:'',sort_order:S.subcontractors.length,
+    }};openModal();
+  };
+  renderSubList();
+  wrap.appendChild(subCard);
+
+  // ── Row 6: Info card — what goes here ─────────────────────────────────────
   const infoCard=el('div');infoCard.className='mgmt-card';
   infoCard.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:10px;padding:16px';
   const infoTitle=el('p');infoTitle.style.cssText='font-weight:700;color:#1F3864;margin-bottom:8px;font-size:13px';infoTitle.textContent='💡 What belongs in this tab';
@@ -4431,6 +4629,113 @@ function buildEmployeesPanel(){
 // Builds the add/edit modal for a single employee including their certifications.
 // S.modal = {type:'employee', isNew, emp:{...}, pendingCerts:[]}
 // pendingCerts holds new certs added in this session before save.
+// ── SUBCONTRACTOR MODAL (M4) ──────────────────────────────────────────────────
+// S.modal = {type:'subcontractor', isNew:bool, sub:{...}}
+function buildSubcontractorModal(m){
+  const ms=S.modal;const sub=ms.sub;
+  mhdr(m,ms.isNew?'Add Subcontractor':'Edit: '+sub.name);
+
+  // ── Section 1: Company Details ────────────────────────────────────────────
+  const sec1=el('div');sec1.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s1l=el('p');s1l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s1l.textContent='Company Details';sec1.appendChild(s1l);
+  const g1=el('div');g1.className='fg';
+  const addF=(parent,labelTxt,key,full,type='text',opts=null,placeholder='')=>{
+    const w=el('div');if(full)w.className='fg-full';
+    w.appendChild(lbl2(labelTxt));
+    const i=opts?inp2(sub[key]||'',e=>{sub[key]=e.target.value},'select',opts)
+                :inp2(sub[key]||'',e=>{sub[key]=e.target.value||null},type);
+    if(placeholder&&i.tagName==='INPUT')i.placeholder=placeholder;
+    w.appendChild(i);parent.appendChild(w);
+  };
+  addF(g1,'Company Name','name',true,'text',null,'e.g. Ottawa Traffic Control Ltd.');
+  addF(g1,'Trade / Specialty','trade_type',false,'select',
+    [['','— Select —'],...SUB_TRADES.map(t=>[t,t])]);
+  addF(g1,'Status','status',false,'select',
+    [['active','Active'],['inactive','Inactive'],['do-not-use','Do Not Use']]);
+  addF(g1,'Contact Name','contact_name',false,'text',null,'Primary contact');
+  addF(g1,'Contact Phone','contact_phone',false,'text',null,'613-555-0000');
+  addF(g1,'Contact Email','contact_email',false,'text',null,'name@company.ca');
+  // Do-not-use reason (only relevant when status = do-not-use)
+  const dnuW=el('div');dnuW.className='fg-full';dnuW.appendChild(lbl2('Do-Not-Use Reason'));
+  const dnuI=inp2(sub.do_not_use_reason||'',e=>{sub.do_not_use_reason=e.target.value||null});
+  dnuI.placeholder='Reason this subcontractor should not be used…';dnuW.appendChild(dnuI);g1.appendChild(dnuW);
+  // Notes
+  const notesW=el('div');notesW.className='fg-full';notesW.appendChild(lbl2('Internal Notes'));
+  const notesI=el('textarea');notesI.className='inp';notesI.style.cssText='min-height:44px;resize:vertical';
+  notesI.placeholder='Performance notes, project history, anything useful…';
+  notesI.value=sub.notes||'';notesI.oninput=e=>{sub.notes=e.target.value||null};notesW.appendChild(notesI);g1.appendChild(notesW);
+  sec1.appendChild(g1);m.appendChild(sec1);
+
+  // ── Section 2: WSIB & Insurance ──────────────────────────────────────────
+  const sec2=el('div');sec2.style.cssText='background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s2l=el('p');s2l.style.cssText='font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s2l.textContent='WSIB & Insurance';sec2.appendChild(s2l);
+  const g2=el('div');g2.className='fg';
+  // WSIB
+  addF(g2,'WSIB Account Number','wsib_account',false,'text',null,'e.g. 1234567');
+  const wsibExpW=el('div');wsibExpW.appendChild(lbl2('WSIB Clearance Expiry'));
+  const wsibExpI=inp2(sub.wsib_clearance_expiry||'',e=>{sub.wsib_clearance_expiry=e.target.value||null},'date');
+  // Days remaining indicator
+  if(sub.wsib_clearance_expiry){
+    const d=Math.round((new Date(sub.wsib_clearance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+    const ind=el('div');ind.style.cssText='font-size:10px;font-weight:700;margin-top:3px;color:'+(d<0?'#dc2626':d<=30?'#d97706':'#166534');
+    ind.textContent=d<0?'Expired '+Math.abs(d)+' days ago':d+' days remaining';wsibExpW.appendChild(wsibExpI);wsibExpW.appendChild(ind);
+  }else{wsibExpW.appendChild(wsibExpI)}
+  g2.appendChild(wsibExpW);
+  // Insurance
+  const insExpW=el('div');insExpW.appendChild(lbl2('Insurance Expiry'));
+  const insExpI=inp2(sub.insurance_expiry||'',e=>{sub.insurance_expiry=e.target.value||null},'date');
+  if(sub.insurance_expiry){
+    const d=Math.round((new Date(sub.insurance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+    const ind=el('div');ind.style.cssText='font-size:10px;font-weight:700;margin-top:3px;color:'+(d<0?'#dc2626':d<=30?'#d97706':'#166534');
+    ind.textContent=d<0?'Expired '+Math.abs(d)+' days ago':d+' days remaining';insExpW.appendChild(insExpI);insExpW.appendChild(ind);
+  }else{insExpW.appendChild(insExpI)}
+  g2.appendChild(insExpW);
+  // Insurance amount
+  const insAmtW=el('div');insAmtW.appendChild(lbl2('Insurance Coverage ($ million)'));
+  const insAmtI=el('input');insAmtI.className='inp';insAmtI.type='number';insAmtI.step='0.5';insAmtI.min='0';
+  insAmtI.placeholder='e.g. 2';
+  insAmtI.value=sub.insurance_amount_cents?sub.insurance_amount_cents/100000000:'';
+  insAmtI.oninput=e=>{sub.insurance_amount_cents=e.target.value?Math.round(parseFloat(e.target.value)*100000000):null};
+  insAmtW.appendChild(insAmtI);g2.appendChild(insAmtW);
+  sec2.appendChild(g2);m.appendChild(sec2);
+
+  // ── Section 3: Agreement ─────────────────────────────────────────────────
+  const sec3=el('div');sec3.style.cssText='background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s3l=el('p');s3l.style.cssText='font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s3l.textContent='Subcontractor Agreement';sec3.appendChild(s3l);
+  const g3=el('div');g3.className='fg';
+  // Agreement on file toggle
+  const aggW=el('div');aggW.className='fg-full';
+  const aggLbl=el('label');aggLbl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444;margin-bottom:6px';
+  const aggCb=el('input');aggCb.type='checkbox';aggCb.checked=!!sub.agreement_on_file;
+  aggCb.onchange=e=>{sub.agreement_on_file=e.target.checked};
+  aggLbl.appendChild(aggCb);aggLbl.appendChild(document.createTextNode('Signed subcontractor agreement on file'));
+  aggW.appendChild(aggLbl);g3.appendChild(aggW);
+  addF(g3,'Agreement Date','agreement_date',false,'date');
+  sec3.appendChild(g3);m.appendChild(sec3);
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const delBtn=!ms.isNew?(()=>{
+    const b=el('button');b.className='btn-danger';b.textContent='Delete';
+    b.onclick=async()=>{
+      if(!await confirmModal('Delete "'+sub.name+'"? This cannot be undone.','Delete',true))return;
+      await deleteSubcontractor(sub.id);
+      S.subcontractors=S.subcontractors.filter(x=>x.id!==sub.id);
+      closeModal();render();
+    };return b;
+  })():null;
+
+  mkFooter(m,delBtn,async()=>{
+    if(!sub.name.trim()){toast('Please enter the company name.','error');return}
+    if(S.subcontractors.find(x=>x.id===sub.id))
+      S.subcontractors=S.subcontractors.map(x=>x.id===sub.id?sub:x);
+    else
+      S.subcontractors=[...S.subcontractors,sub].sort((a,b)=>a.name.localeCompare(b.name));
+    closeModal();render();
+    await upsertSubcontractor(sub);
+    await loadAll();render();
+  });
+}
+
 // ── JHSC MEETING MODAL (M3) ───────────────────────────────────────────────────
 // S.modal = {type:'jhsc-meeting', meeting:{...}, isNew:bool}
 function openJHSCModal(existing){
