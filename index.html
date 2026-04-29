@@ -317,6 +317,15 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .hs-status-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0}
 .hs-action-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;background:#f9fafb;border:1px solid #f0f2f5;margin-bottom:3px;font-size:12px}
 .hs-wsib-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;white-space:nowrap}
+/* ── JHSC / PHA (M3) ─────────────────────────────────────────────────────── */
+.jhsc-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:5px;cursor:pointer;transition:box-shadow .12s;background:#fff}
+.jhsc-row:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.jhsc-date{font-size:11px;font-weight:700;color:#1F3864;white-space:nowrap;flex-shrink:0}
+.jhsc-meta{flex:1;font-size:11px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jhsc-attendee-pill{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:#f0f4ff;border:1px solid #c5d0e8;color:#1F3864;white-space:nowrap;flex-shrink:0}
+.pha-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:5px;cursor:pointer;transition:box-shadow .12s;background:#fff}
+.pha-row:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.pha-status-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -521,6 +530,7 @@ const S={
   projects:[],tasks:[],crews:[],holidays:[],subtasks:[],
   employees:[],employeeCerts:[],  // M1: Employee & Certification Registry
   hsIncidents:[],hsActions:[],    // M2: H&S Incidents & WSIB
+  hsMeetings:[],hsPhas:[],        // M3: JHSC Meetings & Pre-Job Hazard Assessments
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
   mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[]},
@@ -928,7 +938,7 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl,st,emp,ec,hi,ha]=await withTimeout(
+    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
@@ -939,6 +949,8 @@ async function loadAll(){
         sb.from('employee_certifications').select('*').order('employee_id'),
         sb.from('hs_incidents').select('*').order('incident_date',{ascending:false}),
         sb.from('hs_actions').select('*').order('due_date'),
+        sb.from('hs_meetings').select('*').order('meeting_date',{ascending:false}),
+        sb.from('hs_phas').select('*').order('pha_date',{ascending:false}),
       ]),
       QUERY_TIMEOUT_MS
     );
@@ -951,6 +963,8 @@ async function loadAll(){
     if(!ec.error&&ec.data)S.employeeCerts=ec.data;
     if(!hi.error&&hi.data)S.hsIncidents=hi.data;
     if(!ha.error&&ha.data)S.hsActions=ha.data;
+    if(!hm.error&&hm.data)S.hsMeetings=hm.data;
+    if(!hp.error&&hp.data)S.hsPhas=hp.data;
     _projTaskCache=null;
     buildHolCache();  // rebuild immediately — workDays() must be correct before next render
     clearWdCache();   // invalidate memoization — holidays or tasks may have changed
@@ -1019,6 +1033,18 @@ function handleRealtimeEvent(table, payload){
         else S.hsActions=[...S.hsActions,a];
         renderSafe();return;
       }
+      if(table==='hs_meetings'){
+        const m=nw;
+        if(S.hsMeetings.find(x=>x.id===m.id))S.hsMeetings=S.hsMeetings.map(x=>x.id===m.id?m:x);
+        else S.hsMeetings=[m,...S.hsMeetings];
+        renderSafe();return;
+      }
+      if(table==='hs_phas'){
+        const pha=nw;
+        if(S.hsPhas.find(x=>x.id===pha.id))S.hsPhas=S.hsPhas.map(x=>x.id===pha.id?pha:x);
+        else S.hsPhas=[pha,...S.hsPhas];
+        renderSafe();return;
+      }
     }
     if(eventType==='DELETE'){
       const id=(ol||{}).id;if(!id)throw new Error('no id');
@@ -1029,6 +1055,8 @@ function handleRealtimeEvent(table, payload){
       if(table==='employee_certifications'){S.employeeCerts=S.employeeCerts.filter(x=>x.id!==id)}
       if(table==='hs_incidents'){S.hsIncidents=S.hsIncidents.filter(x=>x.id!==id);S.hsActions=S.hsActions.filter(x=>x.incident_id!==id)}
       if(table==='hs_actions'){S.hsActions=S.hsActions.filter(x=>x.id!==id)}
+      if(table==='hs_meetings'){S.hsMeetings=S.hsMeetings.filter(x=>x.id!==id)}
+      if(table==='hs_phas'){S.hsPhas=S.hsPhas.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
   }catch(e){
@@ -1046,6 +1074,8 @@ function startRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'employee_certifications'},p=>handleRealtimeEvent('employee_certifications',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_incidents'},p=>handleRealtimeEvent('hs_incidents',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_actions'},p=>handleRealtimeEvent('hs_actions',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'hs_meetings'},p=>handleRealtimeEvent('hs_meetings',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'hs_phas'},p=>handleRealtimeEvent('hs_phas',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
@@ -1182,6 +1212,35 @@ const upsertHsIncident=inc=>api(async()=>{const{error}=await sb.from('hs_inciden
 const deleteHsIncident=id=>api(async()=>{const{error}=await sb.from('hs_incidents').delete().eq('id',id);if(error)throw error});
 const upsertHsAction=a=>api(async()=>{const{error}=await sb.from('hs_actions').upsert(hsActionToDB(a));if(error)throw error});
 const deleteHsAction=id=>api(async()=>{const{error}=await sb.from('hs_actions').delete().eq('id',id);if(error)throw error});
+// ── M3: JHSC Meetings & PHA data layer ──────────────────────────────────────
+function hsMeetingToDB(m){
+  return{
+    id:m.id,
+    meeting_date:m.meeting_date||TODAY,
+    meeting_type:m.meeting_type||'jhsc',
+    attendee_ids:m.attendee_ids||[],
+    topics:m.topics||null,
+    action_items:m.action_items||null,
+    next_meeting_date:m.next_meeting_date||null,
+    filed_by_employee_id:m.filed_by_employee_id||null,
+  };
+}
+function hsPHAToDB(pha){
+  return{
+    id:pha.id,
+    project_id:pha.project_id||null,
+    pha_date:pha.pha_date||TODAY,
+    supervisor_employee_id:pha.supervisor_employee_id||null,
+    hazards_identified:pha.hazards_identified||null,
+    controls:pha.controls||null,
+    crew_ids:pha.crew_ids||[],
+    status:pha.status||'draft',
+  };
+}
+const upsertHsMeeting=m=>api(async()=>{const{error}=await sb.from('hs_meetings').upsert(hsMeetingToDB(m));if(error)throw error});
+const deleteHsMeeting=id=>api(async()=>{const{error}=await sb.from('hs_meetings').delete().eq('id',id);if(error)throw error});
+const upsertHsPha=pha=>api(async()=>{const{error}=await sb.from('hs_phas').upsert(hsPHAToDB(pha));if(error)throw error});
+const deleteHsPha=id=>api(async()=>{const{error}=await sb.from('hs_phas').delete().eq('id',id);if(error)throw error});
 
 async function seedData(){
   if(!await confirmModal('Load all 41 default projects into the database? This cannot be undone.','Load Data',false))return;
@@ -1427,6 +1486,8 @@ function openModal(){
   else if(S.modal.type==='crew')buildCrewModal(m);
   else if(S.modal.type==='employee')buildEmployeeModal(m);
   else if(S.modal.type==='hs-incident')buildHSIncidentModal(m);
+  else if(S.modal.type==='jhsc-meeting')buildJHSCModal(m);
+  else if(S.modal.type==='pha')buildPHAModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
@@ -3551,6 +3612,28 @@ function buildManagement(){
       const age=Math.round((new Date(TODAY+'T12:00:00')-new Date(i.incident_date+'T12:00:00'))/86400000);
       if(age>14)redItems.push('Open >14d: '+i.description.slice(0,40));
     });
+    // JHSC — warn if no meeting in last 30 days or next meeting overdue
+    const meetings=S.hsMeetings||[];
+    const lastJHSC=meetings.filter(m=>m.meeting_type==='jhsc').sort((a,b)=>b.meeting_date.localeCompare(a.meeting_date))[0];
+    if(!lastJHSC){
+      amberItems.push('No JHSC meeting on record — schedule the first meeting');
+    }else{
+      const daysSince=Math.round((new Date(TODAY+'T12:00:00')-new Date(lastJHSC.meeting_date+'T12:00:00'))/86400000);
+      if(daysSince>30)amberItems.push('JHSC meeting overdue — last held '+daysSince+'d ago');
+      if(lastJHSC.next_meeting_date){
+        const daysUntil=Math.round((new Date(lastJHSC.next_meeting_date+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+        if(daysUntil<0)redItems.push('JHSC meeting missed — was scheduled '+fmtDate(lastJHSC.next_meeting_date));
+        else if(daysUntil<=7)amberItems.push('JHSC meeting in '+daysUntil+'d — '+fmtDate(lastJHSC.next_meeting_date));
+      }
+    }
+    // PHAs — warn if any active project has no PHA
+    const activeProjIds=S.projects.filter(p=>!p.archived&&p.status!=='Complete').map(p=>p.id);
+    const phaProjectIds=new Set((S.hsPhas||[]).map(pha=>pha.project_id));
+    const missingPHA=activeProjIds.filter(id=>!phaProjectIds.has(id));
+    if(missingPHA.length>0){
+      const names=missingPHA.slice(0,3).map(id=>{const p=S.projects.find(x=>x.id===id);return p?p.job_num:id});
+      amberItems.push(missingPHA.length+' active project'+(missingPHA.length!==1?'s have':' has')+' no PHA: '+names.join(', ')+(missingPHA.length>3?' +more':''));
+    }
 
     const insertAfter=hsHdr;
     if(redItems.length){
@@ -3644,6 +3727,93 @@ function buildManagement(){
   }
 
   buildHSBanner();renderHSList();
+
+  // ── JHSC Meeting Log ─────────────────────────────────────────────────────
+  const jhscSep=el('div');jhscSep.style.cssText='border-top:1px solid #f0f2f5;margin:12px 0 10px';hsCard.appendChild(jhscSep);
+  const jhscHdr=el('div');jhscHdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  const jhscLbl=el('span');jhscLbl.style.cssText='font-size:11px;font-weight:700;color:#1F3864';jhscLbl.textContent='📋 JHSC Meetings';
+  const jhscAddBtn=el('button');jhscAddBtn.className='btn-sm';jhscAddBtn.style.fontSize='11px';jhscAddBtn.textContent='+ Log Meeting';
+  jhscHdr.appendChild(jhscLbl);jhscHdr.appendChild(jhscAddBtn);hsCard.appendChild(jhscHdr);
+  const jhscList=el('div');hsCard.appendChild(jhscList);
+
+  const MEETING_TYPES={jhsc:'JHSC',safety:'Safety Mtg',toolbox:'Toolbox Talk'};
+
+  function renderJHSCList(){
+    jhscList.innerHTML='';
+    const meetings=(S.hsMeetings||[]).slice(0,5); // show 5 most recent
+    if(!meetings.length){
+      const e=el('div');e.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:12px 0';
+      e.textContent='No meetings logged yet.';jhscList.appendChild(e);return;
+    }
+    meetings.forEach(m=>{
+      const row=el('div');row.className='jhsc-row';
+      const typeBadge=el('span');typeBadge.style.cssText='font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;background:#f0f4ff;color:#1F3864;border:1px solid #c5d0e8;flex-shrink:0';
+      typeBadge.textContent=MEETING_TYPES[m.meeting_type]||m.meeting_type;row.appendChild(typeBadge);
+      const dateSpan=el('span');dateSpan.className='jhsc-date';dateSpan.textContent=fmtDate(m.meeting_date);row.appendChild(dateSpan);
+      const meta=el('div');meta.className='jhsc-meta';
+      const attendeeCount=(m.attendee_ids||[]).length;
+      const filer=S.employees.find(e=>e.id===m.filed_by_employee_id);
+      const parts=[];
+      if(attendeeCount)parts.push(attendeeCount+' attendee'+(attendeeCount!==1?'s':''));
+      if(filer)parts.push('Filed by '+filer.name.split(' ')[0]);
+      if(m.next_meeting_date)parts.push('Next: '+fmtDate(m.next_meeting_date));
+      meta.textContent=parts.join(' · ')||(m.topics||'').slice(0,60);
+      row.appendChild(meta);
+      row.onclick=()=>openJHSCModal(m);
+      jhscList.appendChild(row);
+    });
+    if((S.hsMeetings||[]).length>5){
+      const more=el('div');more.style.cssText='font-size:11px;color:#9ca3af;text-align:center;padding:4px 0;cursor:pointer';
+      more.textContent='View all '+(S.hsMeetings||[]).length+' meetings →';
+      more.onclick=()=>openJHSCModal(null,'list');
+      jhscList.appendChild(more);
+    }
+  }
+  jhscAddBtn.onclick=()=>openJHSCModal(null);
+  renderJHSCList();
+
+  // ── PHA (Pre-Job Hazard Assessments) ─────────────────────────────────────
+  const phaSep=el('div');phaSep.style.cssText='border-top:1px solid #f0f2f5;margin:12px 0 10px';hsCard.appendChild(phaSep);
+  const phaHdr=el('div');phaHdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  const phaLbl=el('span');phaLbl.style.cssText='font-size:11px;font-weight:700;color:#1F3864';phaLbl.textContent='⚠ Pre-Job Hazard Assessments (PHA)';
+  const phaAddBtn=el('button');phaAddBtn.className='btn-sm';phaAddBtn.style.fontSize='11px';phaAddBtn.textContent='+ New PHA';
+  phaHdr.appendChild(phaLbl);phaHdr.appendChild(phaAddBtn);hsCard.appendChild(phaHdr);
+  const phaList=el('div');hsCard.appendChild(phaList);
+
+  const PHA_STATUS={
+    draft:    {label:'Draft',    bg:'#fef3c7',col:'#92400e'},
+    complete: {label:'Complete', bg:'#dcfce7',col:'#166534'},
+  };
+
+  function renderPHAList(){
+    phaList.innerHTML='';
+    const phas=(S.hsPhas||[]).slice(0,6);
+    if(!phas.length){
+      const e=el('div');e.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:12px 0';
+      e.textContent='No PHAs on record — a PHA is auto-created when you add a new project.';phaList.appendChild(e);return;
+    }
+    phas.forEach(pha=>{
+      const proj=S.projects.find(p=>p.id===pha.project_id);
+      const sup=S.employees.find(e=>e.id===pha.supervisor_employee_id);
+      const st=PHA_STATUS[pha.status]||PHA_STATUS.draft;
+      const row=el('div');row.className='pha-row';
+      const stBadge=el('span');stBadge.className='pha-status-badge';
+      stBadge.style.cssText='background:'+st.bg+';color:'+st.col;stBadge.textContent=st.label;row.appendChild(stBadge);
+      const projName=el('span');projName.style.cssText='font-size:12px;font-weight:600;color:#1a2b4a;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      projName.textContent=proj?(proj.job_num+' — '+proj.client):'(No project linked)';row.appendChild(projName);
+      const meta=el('span');meta.style.cssText='font-size:10px;color:#6b7280;flex-shrink:0';
+      meta.textContent=[fmtDate(pha.pha_date),sup?sup.name.split(' ')[0]:''].filter(Boolean).join(' · ');row.appendChild(meta);
+      row.onclick=()=>openPHAModal(pha);
+      phaList.appendChild(row);
+    });
+    if((S.hsPhas||[]).length>6){
+      const more=el('div');more.style.cssText='font-size:11px;color:#9ca3af;text-align:center;padding:4px 0';
+      more.textContent='+'+(S.hsPhas.length-6)+' more PHAs';phaList.appendChild(more);
+    }
+  }
+  phaAddBtn.onclick=()=>openPHAModal(null);
+  renderPHAList();
+
   row1.appendChild(hsCard);
   wrap.appendChild(row1);
 
@@ -4261,6 +4431,185 @@ function buildEmployeesPanel(){
 // Builds the add/edit modal for a single employee including their certifications.
 // S.modal = {type:'employee', isNew, emp:{...}, pendingCerts:[]}
 // pendingCerts holds new certs added in this session before save.
+// ── JHSC MEETING MODAL (M3) ───────────────────────────────────────────────────
+// S.modal = {type:'jhsc-meeting', meeting:{...}, isNew:bool}
+function openJHSCModal(existing){
+  const isNew=!existing;
+  S.modal={type:'jhsc-meeting',isNew,meeting:existing?{...existing,attendee_ids:[...(existing.attendee_ids||[])]}:{
+    id:crypto.randomUUID(),meeting_date:TODAY,meeting_type:'jhsc',
+    attendee_ids:[],topics:'',action_items:'',
+    next_meeting_date:'',filed_by_employee_id:null,
+  }};
+  openModal();
+}
+function buildJHSCModal(m){
+  const ms=S.modal;const mtg=ms.meeting;
+  const MTYPES=[['jhsc','JHSC'],['safety','Safety Meeting'],['toolbox','Toolbox Talk']];
+  mhdr(m,ms.isNew?'Log Meeting':'Edit Meeting Record');
+
+  // Details section
+  const sec=el('div');sec.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const g=el('div');g.className='fg';
+  // Date + Type
+  const dw=el('div');dw.appendChild(lbl2('Meeting Date'));
+  dw.appendChild(inp2(mtg.meeting_date||TODAY,e=>{mtg.meeting_date=e.target.value},'date'));g.appendChild(dw);
+  const tw=el('div');tw.appendChild(lbl2('Meeting Type'));
+  tw.appendChild(inp2(mtg.meeting_type,e=>{mtg.meeting_type=e.target.value},'select',MTYPES));g.appendChild(tw);
+  // Filed by
+  const fw=el('div');fw.appendChild(lbl2('Filed By'));
+  fw.appendChild(inp2(mtg.filed_by_employee_id||'',e=>{mtg.filed_by_employee_id=e.target.value||null},'select',
+    [['','— Select —'],...(S.employees||[]).filter(e=>e.active!==false).map(e=>[e.id,e.name])]));g.appendChild(fw);
+  // Next meeting date
+  const nw=el('div');nw.appendChild(lbl2('Next Meeting Date'));
+  nw.appendChild(inp2(mtg.next_meeting_date||'',e=>{mtg.next_meeting_date=e.target.value||null},'date'));g.appendChild(nw);
+  sec.appendChild(g);
+
+  // Topics
+  const topW=el('div');topW.style.marginTop='10px';topW.appendChild(lbl2('Topics Discussed'));
+  const topI=el('textarea');topI.className='inp';topI.style.cssText='min-height:64px;resize:vertical';
+  topI.placeholder='List the topics covered in this meeting…';topI.value=mtg.topics||'';
+  topI.oninput=e=>{mtg.topics=e.target.value};topW.appendChild(topI);sec.appendChild(topW);
+
+  // Action items
+  const actW=el('div');actW.style.marginTop='8px';actW.appendChild(lbl2('Action Items & Decisions'));
+  const actI=el('textarea');actI.className='inp';actI.style.cssText='min-height:52px;resize:vertical';
+  actI.placeholder='List any action items, assigned to whom, and due dates…';actI.value=mtg.action_items||'';
+  actI.oninput=e=>{mtg.action_items=e.target.value};actW.appendChild(actI);sec.appendChild(actW);
+  m.appendChild(sec);
+
+  // Attendees section
+  const attSec=el('div');attSec.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:7px;padding:12px;margin-bottom:12px';
+  const attHdr=el('div');attHdr.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+  attHdr.textContent='Attendees';attSec.appendChild(attHdr);
+  const empList=el('div');empList.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+  (S.employees||[]).filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).forEach(emp=>{
+    const checked=mtg.attendee_ids.includes(emp.id);
+    const chip=el('label');chip.style.cssText='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid;'+(checked?'background:#1F3864;color:#fff;border-color:#1F3864':'background:#f8f9fc;color:#374151;border-color:#d1d5db');
+    const cb=el('input');cb.type='checkbox';cb.checked=checked;cb.style.display='none';
+    cb.onchange=e=>{
+      if(e.target.checked){if(!mtg.attendee_ids.includes(emp.id))mtg.attendee_ids.push(emp.id)}
+      else{mtg.attendee_ids=mtg.attendee_ids.filter(id=>id!==emp.id)}
+      // Toggle chip style
+      chip.style.background=e.target.checked?'#1F3864':'#f8f9fc';
+      chip.style.color=e.target.checked?'#fff':'#374151';
+      chip.style.borderColor=e.target.checked?'#1F3864':'#d1d5db';
+    };
+    chip.appendChild(cb);chip.appendChild(document.createTextNode(emp.name.split(' ')[0]));
+    empList.appendChild(chip);
+  });
+  if(!(S.employees||[]).filter(e=>e.active!==false).length){
+    const note=el('span');note.style.cssText='font-size:11px;color:#9ca3af';note.textContent='Add employees in Settings → Employees to track attendance.';empList.appendChild(note);
+  }
+  attSec.appendChild(empList);m.appendChild(attSec);
+
+  // Footer
+  const delBtn=!ms.isNew?(()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete Record';
+    b.onclick=async()=>{
+      if(!await confirmModal('Delete this meeting record?','Delete',true))return;
+      await deleteHsMeeting(mtg.id);
+      S.hsMeetings=S.hsMeetings.filter(x=>x.id!==mtg.id);
+      closeModal();render();
+    };return b;
+  })():null;
+  mkFooter(m,delBtn,async()=>{
+    if(S.hsMeetings.find(x=>x.id===mtg.id))S.hsMeetings=S.hsMeetings.map(x=>x.id===mtg.id?mtg:x);
+    else S.hsMeetings=[mtg,...S.hsMeetings];
+    closeModal();render();
+    await upsertHsMeeting(mtg);
+    await loadAll();render();
+  });
+}
+
+// ── PHA MODAL (M3) ────────────────────────────────────────────────────────────
+// S.modal = {type:'pha', pha:{...}, isNew:bool}
+function openPHAModal(existing){
+  const isNew=!existing;
+  S.modal={type:'pha',isNew,pha:existing?{...existing,crew_ids:[...(existing.crew_ids||[])]}:{
+    id:crypto.randomUUID(),project_id:null,pha_date:TODAY,
+    supervisor_employee_id:null,hazards_identified:'',
+    controls:'',crew_ids:[],status:'draft',
+  }};
+  openModal();
+}
+function buildPHAModal(m){
+  const ms=S.modal;const pha=ms.pha;
+  mhdr(m,ms.isNew?'New Pre-Job Hazard Assessment':'Edit PHA');
+
+  // Project + Supervisor + Date + Status
+  const sec1=el('div');sec1.style.cssText='background:#fff8ed;border:1px solid #fcd34d;border-radius:7px;padding:12px;margin-bottom:12px';
+  const g1=el('div');g1.className='fg';
+  // Project
+  const projW=el('div');projW.className='fg-full';projW.appendChild(lbl2('Project'));
+  projW.appendChild(inp2(pha.project_id||'',e=>{pha.project_id=e.target.value||null},'select',
+    [['','— No project —'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]));g1.appendChild(projW);
+  // Supervisor
+  const supW=el('div');supW.appendChild(lbl2('Site Supervisor'));
+  supW.appendChild(inp2(pha.supervisor_employee_id||'',e=>{pha.supervisor_employee_id=e.target.value||null},'select',
+    [['','— Select —'],...(S.employees||[]).filter(e=>e.active!==false).map(e=>[e.id,e.name])]));g1.appendChild(supW);
+  // Date + Status
+  const dw=el('div');dw.appendChild(lbl2('PHA Date'));
+  dw.appendChild(inp2(pha.pha_date||TODAY,e=>{pha.pha_date=e.target.value},'date'));g1.appendChild(dw);
+  const stW=el('div');stW.appendChild(lbl2('Status'));
+  stW.appendChild(inp2(pha.status||'draft',e=>{pha.status=e.target.value},'select',
+    [['draft','Draft'],['complete','Complete']]));g1.appendChild(stW);
+  sec1.appendChild(g1);m.appendChild(sec1);
+
+  // Hazards section
+  const sec2=el('div');sec2.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const hazW=el('div');hazW.appendChild(lbl2('Hazards Identified'));
+  const hazI=el('textarea');hazI.className='inp';hazI.style.cssText='min-height:80px;resize:vertical';
+  hazI.placeholder='List all identified hazards on this job site (ground conditions, traffic, utilities, weather, equipment, etc.)…';
+  hazI.value=pha.hazards_identified||'';hazI.oninput=e=>{pha.hazards_identified=e.target.value};hazW.appendChild(hazI);sec2.appendChild(hazW);
+  const ctrlW=el('div');ctrlW.style.marginTop='8px';ctrlW.appendChild(lbl2('Controls / Mitigations'));
+  const ctrlI=el('textarea');ctrlI.className='inp';ctrlI.style.cssText='min-height:64px;resize:vertical';
+  ctrlI.placeholder='Describe the controls in place for each hazard (PPE, signage, barriers, spotter, etc.)…';
+  ctrlI.value=pha.controls||'';ctrlI.oninput=e=>{pha.controls=e.target.value};ctrlW.appendChild(ctrlI);sec2.appendChild(ctrlW);
+  m.appendChild(sec2);
+
+  // Crew acknowledgement — who received this PHA
+  const sec3=el('div');sec3.style.cssText='background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:12px;margin-bottom:12px';
+  const crewHdr=el('div');crewHdr.style.cssText='font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+  crewHdr.textContent='Crew Acknowledgement — who received this PHA';sec3.appendChild(crewHdr);
+  const crewGrid=el('div');crewGrid.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+  (S.employees||[]).filter(e=>e.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).forEach(emp=>{
+    const checked=pha.crew_ids.includes(emp.id);
+    const chip=el('label');chip.style.cssText='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid;'+(checked?'background:#166534;color:#fff;border-color:#166534':'background:#f0fdf4;color:#374151;border-color:#d1d5db');
+    const cb=el('input');cb.type='checkbox';cb.checked=checked;cb.style.display='none';
+    cb.onchange=e=>{
+      if(e.target.checked){if(!pha.crew_ids.includes(emp.id))pha.crew_ids.push(emp.id)}
+      else{pha.crew_ids=pha.crew_ids.filter(id=>id!==emp.id)}
+      chip.style.background=e.target.checked?'#166534':'#f0fdf4';
+      chip.style.color=e.target.checked?'#fff':'#374151';
+      chip.style.borderColor=e.target.checked?'#166534':'#d1d5db';
+    };
+    chip.appendChild(cb);chip.appendChild(document.createTextNode(emp.name.split(' ')[0]));
+    crewGrid.appendChild(chip);
+  });
+  if(!(S.employees||[]).filter(e=>e.active!==false).length){
+    const note=el('span');note.style.cssText='font-size:11px;color:#6b7280';
+    note.textContent='Add employees in Settings → Employees to track crew acknowledgement.';crewGrid.appendChild(note);
+  }
+  sec3.appendChild(crewGrid);m.appendChild(sec3);
+
+  // Footer
+  const delBtn=!ms.isNew?(()=>{const b=el('button');b.className='btn-danger';b.textContent='Delete PHA';
+    b.onclick=async()=>{
+      if(!await confirmModal('Delete this PHA record?','Delete',true))return;
+      await deleteHsPha(pha.id);
+      S.hsPhas=S.hsPhas.filter(x=>x.id!==pha.id);
+      closeModal();render();
+    };return b;
+  })():null;
+  mkFooter(m,delBtn,async()=>{
+    if(!pha.project_id&&!pha.hazards_identified){toast('Add a project or hazards before saving.','error');return}
+    if(S.hsPhas.find(x=>x.id===pha.id))S.hsPhas=S.hsPhas.map(x=>x.id===pha.id?pha:x);
+    else S.hsPhas=[pha,...S.hsPhas];
+    closeModal();render();
+    await upsertHsPha(pha);
+    await loadAll();render();
+  });
+}
+
 // ── H&S INCIDENT MODAL (M2) ───────────────────────────────────────────────────
 // S.modal = {type:'hs-incident', inc:{...}, isNew:bool, localActions:[...]}
 function buildHSIncidentModal(m){
@@ -5232,6 +5581,16 @@ function buildProjModal(m){
       for(const id of deletedTaskIds)await deleteTask(id);
       await upsertProject(p);
       for(const t of tasks)await upsertTask(t);
+      // M3: auto-create a draft PHA for every new project so it never starts without one
+      if(S.modal&&S.modal.isNew){
+        const draftPha={
+          id:crypto.randomUUID(),project_id:p.id,pha_date:TODAY,
+          supervisor_employee_id:null,hazards_identified:'',
+          controls:'',crew_ids:[],status:'draft',
+        };
+        S.hsPhas=[draftPha,...S.hsPhas];
+        await upsertHsPha(draftPha);
+      }
       await loadAll();render(); // final refresh with confirmed server state
     }catch(e){
       // Save failed — reload from server to restore consistent state
