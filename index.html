@@ -4863,7 +4863,15 @@ function buildTaskSubtaskSection(t){
       }
       const chkBtn=el('button');chkBtn.style.cssText='background:none;border:1.5px solid '+(sub.complete?'#16a34a':'#d1d5db')+';color:'+(sub.complete?'#16a34a':'#9ca3af')+';border-radius:4px;width:22px;height:22px;cursor:pointer;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center';
       chkBtn.textContent=sub.complete?'✓':'○';chkBtn.title=sub.complete?'Mark incomplete':'Mark complete';
-      chkBtn.onclick=async()=>{localSubs[si].complete=!localSubs[si].complete;renderSubtasks();await upsertSubtask(localSubs[si])};
+      chkBtn.onclick=async()=>{
+        localSubs[si].complete=!localSubs[si].complete;
+        // Sync to S.subtasks immediately so the Gantt re-renders correctly when
+        // the modal closes. Without this, render() reads the stale S.subtasks
+        // array and the Gantt still shows the old complete state.
+        S.subtasks=S.subtasks.map(x=>x.id===localSubs[si].id?{...x,complete:localSubs[si].complete}:x);
+        renderSubtasks();
+        await upsertSubtask(localSubs[si]);
+      };
       row.appendChild(chkBtn);
       const delBtn2=el('button');delBtn2.style.cssText='background:none;border:none;color:#dc3545;cursor:pointer;font-size:15px;padding:0 2px;flex-shrink:0';
       delBtn2.textContent='×';delBtn2.title='Remove this item';
