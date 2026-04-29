@@ -291,6 +291,18 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .mg-lc{width:180px;flex-shrink:0;padding:0 8px;font-size:11px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:2px solid #e4e8f0;height:100%;display:flex;align-items:center}
 .mg-gc{position:relative;flex:1;height:100%;background:repeating-linear-gradient(to right,transparent,transparent 23px,#f0f2f5 23px,#f0f2f5 24px)}
 .mg-bar{position:absolute;height:12px;top:50%;transform:translateY(-50%);border-radius:3px;font-size:8px;color:#fff;font-weight:700;display:flex;align-items:center;padding:0 4px;white-space:nowrap;overflow:hidden}
+/* ── Employee Registry ───────────────────────────────────────────────────── */
+.emp-card{display:flex;align-items:center;gap:10px;background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:7px;border:1px solid #e4e8f0}
+.emp-av{width:34px;height:34px;border-radius:50%;background:#1F3864;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0}
+.emp-av.inactive{background:#9ca3af}
+.emp-name{font-weight:700;color:#1a2b4a;font-size:13px}
+.emp-role{font-size:11px;color:#6b7280}
+.emp-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+.cert-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;background:#f8f9fb;border:1px solid #e4e8f0;margin-bottom:4px;font-size:12px}
+.cert-expiry{font-size:10px;font-weight:700;flex-shrink:0}
+.cert-expiry.ok{color:#166534}
+.cert-expiry.warn{color:#d97706}
+.cert-expiry.overdue{color:#dc2626}
 </style>
 </head>
 <body>
@@ -390,6 +402,22 @@ const TYPE_PIN_COLORS={
 };
 // SVG_TYPE_ABBR: single-letter abbreviations for SVG/PDF export (emoji don't render in SVG text)
 const SVG_TYPE_ABBR={equipment:'E',delivery:'D',dependency:'L',note:'N'};
+// ── Employee registry constants ───────────────────────────────────────────────
+const EMP_ROLES=['Paving Operator','Concrete Finisher','Labourer','Foreman',
+  'Supervisor','Estimator','Project Manager','Admin','Equipment Operator','Other'];
+const EMP_TYPES=['full-time','part-time','seasonal','subcontractor','office'];
+const CERT_TYPES=[
+  'First Aid/CPR (Standard)','First Aid/CPR (Emergency)',
+  'WHMIS 2015','Working at Heights','Traffic Control Person (TCP)',
+  'Confined Space Entry','Ground Disturbance Level 1','Ground Disturbance Level 2',
+  'Chainsaw','DZ Licence','AZ Licence','CZ Licence','G Licence',
+  'Equipment — Excavator','Equipment — Grader','Equipment — Paver',
+  'Equipment — Roller','Equipment — Skid Steer','Equipment — Backhoe',
+  'COR Internal Auditor','Supervisor Safety Awareness',
+  'JHSC Certification Part 1','JHSC Certification Part 2',
+  'Driving Abstract Review','Fall Protection','Asphalt Quality Inspector',
+  'Concrete Testing','Other',
+];
 const WDAY_IDXS=ALL_DATES.reduce((a,d,i)=>{if(d.getDay()===0||d.getDay()===6)a.push(i);return a},[]);
 const MONTH_BANDS=(()=>{let o=0;return MONTH_CFG.map(m=>{const b={...m,o};o+=m.days;return b})})();
 const CFG_KEY='strada_cfg_v2';
@@ -477,6 +505,7 @@ const S={
   // ganttGrid loaded from config — persisted so it survives page reload
   ganttGrid:(()=>{try{return JSON.parse(localStorage.getItem(CFG_KEY)||'{}').ganttGrid||false}catch{return false}})(),
   projects:[],tasks:[],crews:[],holidays:[],subtasks:[],
+  employees:[],employeeCerts:[],  // M1: Employee & Certification Registry
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
   mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[]},
@@ -884,13 +913,15 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl,st]=await withTimeout(
+    const[pr,tk,cr,hl,st,emp,ec]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
         sb.from('crews').select('*').order('sort_order'),
         sb.from('holidays').select('*').order('date'),
-        sb.from('subtasks').select('*').order('task_id').order('sort_order')
+        sb.from('subtasks').select('*').order('task_id').order('sort_order'),
+        sb.from('employees').select('*').order('sort_order'),
+        sb.from('employee_certifications').select('*').order('employee_id'),
       ]),
       QUERY_TIMEOUT_MS
     );
@@ -899,6 +930,8 @@ async function loadAll(){
     if(!cr.error&&cr.data)S.crews=cr.data;
     if(!hl.error&&hl.data)S.holidays=hl.data;
     if(!st.error&&st.data)S.subtasks=st.data;
+    if(!emp.error&&emp.data)S.employees=emp.data;
+    if(!ec.error&&ec.data)S.employeeCerts=ec.data;
     _projTaskCache=null;
     buildHolCache();  // rebuild immediately — workDays() must be correct before next render
     clearWdCache();   // invalidate memoization — holidays or tasks may have changed
@@ -943,12 +976,26 @@ function handleRealtimeEvent(table, payload){
         else S.subtasks=[...S.subtasks,st];
         renderSafe();return;
       }
+      if(table==='employees'){
+        const emp=nw;
+        if(S.employees.find(x=>x.id===emp.id))S.employees=S.employees.map(x=>x.id===emp.id?emp:x);
+        else S.employees=[...S.employees,emp].sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+        renderSafe();return;
+      }
+      if(table==='employee_certifications'){
+        const ec=nw;
+        if(S.employeeCerts.find(x=>x.id===ec.id))S.employeeCerts=S.employeeCerts.map(x=>x.id===ec.id?ec:x);
+        else S.employeeCerts=[...S.employeeCerts,ec];
+        renderSafe();return;
+      }
     }
     if(eventType==='DELETE'){
       const id=(ol||{}).id;if(!id)throw new Error('no id');
       if(table==='projects'){S.projects=S.projects.filter(x=>x.id!==id);S.tasks=S.tasks.filter(x=>x.project_id!==id);S.subtasks=S.subtasks.filter(x=>x.project_id!==id)}
       if(table==='tasks'){S.tasks=S.tasks.filter(x=>x.id!==id);S.subtasks=S.subtasks.filter(x=>x.task_id!==id)}
       if(table==='subtasks'){S.subtasks=S.subtasks.filter(x=>x.id!==id)}
+      if(table==='employees'){S.employees=S.employees.filter(x=>x.id!==id);S.employeeCerts=S.employeeCerts.filter(x=>x.employee_id!==id)}
+      if(table==='employee_certifications'){S.employeeCerts=S.employeeCerts.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
   }catch(e){
@@ -962,6 +1009,8 @@ function startRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'projects'},p=>handleRealtimeEvent('projects',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},p=>handleRealtimeEvent('tasks',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'subtasks'},p=>handleRealtimeEvent('subtasks',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'employees'},p=>handleRealtimeEvent('employees',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'employee_certifications'},p=>handleRealtimeEvent('employee_certifications',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
@@ -1032,6 +1081,34 @@ const upsertCrew=c=>api(async()=>{const{error}=await sb.from('crews').upsert(c);
 const deleteCrew=id=>api(async()=>{const{error}=await sb.from('crews').delete().eq('id',id);if(error)throw error});
 const upsertHol=h=>api(async()=>{const{error}=await sb.from('holidays').upsert(h);if(error)throw error});
 const deleteHol=id=>api(async()=>{const{error}=await sb.from('holidays').delete().eq('id',id);if(error)throw error});
+// ── M1: Employee & Certification data layer ──────────────────────────────────
+// Column whitelist — prevents schema-cache crashes when new fields are added
+// before a matching DB migration runs (same pattern as projectToDB).
+function employeeToDB(e){
+  return{
+    id:e.id, name:e.name||'', role:e.role||null,
+    employment_type:e.employment_type||'full-time',
+    start_date:e.start_date||null, end_date:e.end_date||null,
+    emergency_contact:e.emergency_contact||null,
+    emergency_phone:e.emergency_phone||null,
+    licence_class:e.licence_class||null, licence_expiry:e.licence_expiry||null,
+    wage_rate_cents:e.wage_rate_cents||null,
+    crew_id:e.crew_id||null, notes:e.notes||null,
+    active:e.active!==false, sort_order:e.sort_order||0,
+  };
+}
+function certToDB(c){
+  return{
+    id:c.id, employee_id:c.employee_id,
+    cert_type:c.cert_type||'Other', issuer:c.issuer||null,
+    issued_date:c.issued_date||null, expiry_date:c.expiry_date||null,
+    notes:c.notes||null,
+  };
+}
+const upsertEmployee=e=>api(async()=>{const{error}=await sb.from('employees').upsert(employeeToDB(e));if(error)throw error});
+const deleteEmployee=id=>api(async()=>{const{error}=await sb.from('employees').delete().eq('id',id);if(error)throw error});
+const upsertCert=c=>api(async()=>{const{error}=await sb.from('employee_certifications').upsert(certToDB(c));if(error)throw error});
+const deleteCert=id=>api(async()=>{const{error}=await sb.from('employee_certifications').delete().eq('id',id);if(error)throw error});
 
 async function seedData(){
   if(!await confirmModal('Load all 41 default projects into the database? This cannot be undone.','Load Data',false))return;
@@ -1050,6 +1127,31 @@ async function seedData(){
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
+// ── M1 employee helpers ───────────────────────────────────────────────────────
+// empCerts(employeeId) — returns all certs for one employee, sorted by expiry date.
+function empCerts(employeeId){
+  return(S.employeeCerts||[]).filter(c=>c.employee_id===employeeId)
+    .sort((a,b)=>(a.expiry_date||'9999').localeCompare(b.expiry_date||'9999'));
+}
+// certDaysLeft(cert) — returns integer days until expiry. Negative = expired.
+// Returns null if cert has no expiry date.
+function certDaysLeft(cert){
+  if(!cert.expiry_date)return null;
+  return Math.round((new Date(cert.expiry_date+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+}
+// certStatus(cert) — returns 'ok' | 'warn' | 'overdue' for CSS class + colour logic.
+function certStatus(cert){
+  const d=certDaysLeft(cert);
+  if(d===null)return'ok';
+  if(d<0)return'overdue';
+  if(d<=30)return'warn';
+  return'ok';
+}
+// activeEmployees() — returns only active employees, sorted by sort_order then name.
+function activeEmployees(){
+  return(S.employees||[]).filter(e=>e.active!==false)
+    .sort((a,b)=>((a.sort_order||0)-(b.sort_order||0))||a.name.localeCompare(b.name));
+}
 const d2s=d=>d?d.toISOString().slice(0,10):null;
 const s2d=s=>s?new Date(s+'T12:00:00'):null;
 const dayOff=s=>{if(!s)return-1;return Math.round((s2d(s)-GS)/86400000)};
@@ -1250,6 +1352,7 @@ function openModal(){
   if(S.modal.type==='proj')buildProjModal(m);
   else if(S.modal.type==='task')buildTaskModal(m);
   else if(S.modal.type==='crew')buildCrewModal(m);
+  else if(S.modal.type==='employee')buildEmployeeModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
@@ -3174,6 +3277,54 @@ function buildGantt(){
 function buildManagement(){
   const wrap=el('div');wrap.className='mgmt-wrap';
 
+  // ── Employee summary panel ── shown at top when employees exist ──────────
+  const emps=S.employees||[];
+  if(emps.length>0){
+    const empPanel=el('div');empPanel.className='mgmt-card';empPanel.style.marginBottom='0';
+    const epHdr=el('div');epHdr.className='mgmt-card-hdr';
+    const epTitle=el('div');epTitle.className='mgmt-card-title';epTitle.textContent='👷 Team';
+    const goEmp=el('button');goEmp.className='btn-sm';goEmp.style.fontSize='11px';goEmp.textContent='Manage Employees';
+    goEmp.onclick=()=>{S.view='settings';S.settingsTab='employees';render()};
+    epHdr.appendChild(epTitle);epHdr.appendChild(goEmp);empPanel.appendChild(epHdr);
+
+    // Cert alert summary
+    const alertedEmps=emps.filter(e=>{
+      if(e.active===false)return false;
+      return empCerts(e.id).some(c=>{const d=certDaysLeft(c);return d!==null&&d<=30});
+    });
+    if(alertedEmps.length){
+      const alertBanner=el('div');
+      alertBanner.style.cssText='background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:10px;display:flex;align-items:center;gap:8px';
+      alertBanner.innerHTML='';
+      const ico=el('span');ico.textContent='⚠';alertBanner.appendChild(ico);
+      const txt=el('span');txt.textContent=alertedEmps.length+' employee'+(alertedEmps.length!==1?'s have':' has')+' certifications expiring within 30 days: '+alertedEmps.map(e=>e.name).join(', ');
+      alertBanner.appendChild(txt);
+      empPanel.appendChild(alertBanner);
+    }
+
+    // Compact employee chips
+    const chipWrap=el('div');chipWrap.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+    emps.filter(e=>e.active!==false).slice(0,16).forEach(emp=>{
+      const certs=empCerts(emp.id);
+      const hasIssue=certs.some(c=>{const d=certDaysLeft(c);return d!==null&&d<=30});
+      const chip=el('div');
+      chip.style.cssText='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;background:'+(hasIssue?'#fef3c7':'#f0f4ff')+';border:1px solid '+(hasIssue?'#fcd34d':'#c5d0e8')+';color:'+(hasIssue?'#92400e':'#1F3864');
+      const av=el('span');av.style.cssText='width:18px;height:18px;border-radius:50%;background:#1F3864;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0';
+      av.textContent=(emp.name||'?').slice(0,2).toUpperCase();chip.appendChild(av);
+      const nm=el('span');nm.textContent=emp.name.split(' ')[0];chip.appendChild(nm);
+      if(hasIssue){const w=el('span');w.textContent='⚠';w.style.fontSize='10px';chip.appendChild(w)}
+      chip.title=emp.name+(emp.role?' — '+emp.role:'');
+      chip.onclick=()=>{S.modal={type:'employee',isNew:false,emp:{...emp},pendingCerts:[]};openModal()};
+      chipWrap.appendChild(chip);
+    });
+    if(emps.filter(e=>e.active!==false).length>16){
+      const more=el('span');more.style.cssText='font-size:11px;color:#9ca3af;align-self:center';
+      more.textContent='+'+(emps.filter(e=>e.active!==false).length-16)+' more';chipWrap.appendChild(more);
+    }
+    empPanel.appendChild(chipWrap);
+    wrap.appendChild(empPanel);
+  }
+
   // ── Row 1: Bid Board + H&S Tracker ───────────────────────────────────────
   const row1=el('div');row1.className='mgmt-grid';
 
@@ -3370,9 +3521,11 @@ function buildManagement(){
       const dayNum=el('span');dayNum.textContent=d.getDate();cell.appendChild(dayNum);
       if(i===0||d.getDate()===1){const mLbl=el('div');mLbl.style.cssText='font-size:8px;color:#9ca3af;line-height:1';mLbl.textContent=d.toLocaleString('en-CA',{month:'short'});cell.appendChild(mLbl)}
       offs.forEach(t=>{
-        const cr=S.crews.find(c=>c.name===t.crew);
+        // Resolve colour: check employee's linked crew first, then direct crew name match
+        const linkedEmp=(S.employees||[]).find(e=>e.name===t.crew&&e.crew_id);
+        const cr=linkedEmp?S.crews.find(c=>c.id===linkedEmp.crew_id):S.crews.find(c=>c.name===t.crew);
         const pip=el('span');pip.className='toc-pip';
-        pip.style.background=cr?cr.color:'#9ca3af';
+        pip.style.background=cr?cr.color:'#6b7280';
         pip.title=t.crew+(t.note?' — '+t.note:'');
         cell.appendChild(pip);
       });
@@ -3396,14 +3549,18 @@ function buildManagement(){
   }
 
   tocAdd.onclick=()=>{
-    const crewNames=S.crews.map(c=>c.name);
-    if(!crewNames.length){toast('Add crew members first in Settings.','error');return}
+    // Use full employee list if available; fall back to crew names
+    const empNames=(S.employees||[]).filter(e=>e.active!==false).map(e=>e.name).sort();
+    const nameOpts=empNames.length
+      ? empNames
+      : S.crews.map(c=>c.name);
+    if(!nameOpts.length){toast('Add employees or crew members first.','error');return}
     // Quick-add form
     const existing=tocCard.querySelector('.toc-add-form');if(existing)existing.remove();
     const form=el('div');form.className='toc-add-form';
     form.style.cssText='background:#f8f9fc;border:1px solid #c5d0e8;border-radius:8px;padding:10px;margin-top:8px';
     const g=el('div');g.style.cssText='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap';
-    const crewSel=inp2('',()=>{},'select',crewNames.map(n=>[n,n]));crewSel.style.width='120px';
+    const crewSel=inp2('',()=>{},'select',nameOpts.map(n=>[n,n]));crewSel.style.width='120px';
     const fromI=el('input');fromI.type='date';fromI.className='inp';fromI.style.width='120px';fromI.value=TODAY;
     const toI=el('input');toI.type='date';toI.className='inp';toI.style.width='120px';toI.value=TODAY;
     const noteI=el('input');noteI.className='inp';noteI.placeholder='Note (optional)';noteI.style.flex='1';
@@ -3626,13 +3783,14 @@ function buildBoardCard(p,cm){
 function buildSettings(){
   const wrap=el('div');wrap.className='settings-wrap';
   const stabs=el('div');stabs.className='settings-tabs';
-  [['crews','👷 Crews'],['holidays','📅 Holidays'],['team','👤 Team'],['data','💾 Data'],['display','🖥 Display']].forEach(([t,l])=>{
+  [['crews','👷 Crews'],['employees','🪪 Employees'],['holidays','📅 Holidays'],['team','👤 Team'],['data','💾 Data'],['display','🖥 Display']].forEach(([t,l])=>{
     const b=el('button');b.className='settings-tab';
     b.style.cssText='background:'+(S.settingsTab===t?'#1F3864':'#fff')+';color:'+(S.settingsTab===t?'#fff':'#333');
     b.textContent=l;b.onclick=()=>{S.settingsTab=t;render()};stabs.appendChild(b);
   });
   wrap.appendChild(stabs);
   if(S.settingsTab==='crews')wrap.appendChild(buildCrewsPanel());
+  else if(S.settingsTab==='employees')wrap.appendChild(buildEmployeesPanel());
   else if(S.settingsTab==='holidays')wrap.appendChild(buildHolsPanel());
   else if(S.settingsTab==='team')wrap.appendChild(buildTeamPanel());
   else if(S.settingsTab==='display')wrap.appendChild(buildDisplayPanel());
@@ -3668,6 +3826,245 @@ function buildDisplayPanel(){
   note.innerHTML='<strong>Grid lines</strong> — task rows always show subtle day separators. Enabling this option adds the same lines to project rows for a denser grid appearance.';
   d.appendChild(note);
   return d;
+}
+
+// ── EMPLOYEE REGISTRY (M1) ────────────────────────────────────────────────────
+function buildEmployeesPanel(){
+  const d=el('div');
+  // Header
+  const hdr=el('div');hdr.className='panel-hdr';
+  const h=el('h3');h.style.cssText='font-size:15px;color:#1F3864;font-weight:700';h.textContent='Employee Registry';
+  hdr.appendChild(h);
+  const ab=el('button');ab.className='btn-primary';ab.style.fontSize='12px';ab.textContent='+ Add Employee';
+  ab.onclick=()=>{
+    S.modal={type:'employee',isNew:true,emp:{
+      id:crypto.randomUUID(),name:'',role:'',employment_type:'full-time',
+      start_date:'',end_date:'',emergency_contact:'',emergency_phone:'',
+      licence_class:'',licence_expiry:'',wage_rate_cents:null,
+      crew_id:'',notes:'',active:true,sort_order:S.employees.length,
+    },pendingCerts:[]};
+    openModal();
+  };
+  hdr.appendChild(ab);d.appendChild(hdr);
+
+  // Filter row — active / all
+  const frow=el('div');frow.style.cssText='display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap';
+  const showAll=el('label');showAll.style.cssText='display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer';
+  const showAllCb=el('input');showAllCb.type='checkbox';
+  let _showInactive=false;
+  showAllCb.onchange=e=>{_showInactive=e.target.checked;rebuildList()};
+  showAll.appendChild(showAllCb);showAll.appendChild(document.createTextNode('Show inactive'));
+  frow.appendChild(showAll);
+  const countSp=el('span');countSp.style.cssText='font-size:11px;color:#9ca3af;margin-left:auto';
+  frow.appendChild(countSp);d.appendChild(frow);
+
+  const list=el('div');d.appendChild(list);
+
+  function rebuildList(){
+    list.innerHTML='';
+    const emps=(S.employees||[])
+      .filter(e=>_showInactive||(e.active!==false))
+      .sort((a,b)=>((a.sort_order||0)-(b.sort_order||0))||a.name.localeCompare(b.name));
+    const total=(S.employees||[]).length;
+    const active=(S.employees||[]).filter(e=>e.active!==false).length;
+    countSp.textContent=active+' active'+(_showInactive?' / '+total+' total':'');
+
+    if(emps.length===0){
+      const emp2=el('div');emp2.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:30px 0';
+      emp2.textContent='No employees yet — click + Add Employee to get started.';list.appendChild(emp2);return;
+    }
+    emps.forEach(emp=>{
+      const card=el('div');card.className='emp-card';
+      // Avatar
+      const av=el('div');av.className='emp-av'+(emp.active===false?' inactive':'');
+      av.textContent=(emp.name||'?').slice(0,2).toUpperCase();card.appendChild(av);
+      // Info block
+      const info=el('div');info.style.cssText='flex:1;min-width:0';
+      const nameLine=el('div');nameLine.className='emp-name';
+      nameLine.textContent=emp.name+(emp.active===false?' (inactive)':'');info.appendChild(nameLine);
+      const roleLine=el('div');roleLine.className='emp-role';
+      roleLine.textContent=[emp.role,emp.employment_type].filter(Boolean).join(' · ');info.appendChild(roleLine);
+      card.appendChild(info);
+      // Cert expiry summary
+      const certs=empCerts(emp.id);
+      const expiring=certs.filter(c=>{const d=certDaysLeft(c);return d!==null&&d<=30});
+      const expired=certs.filter(c=>{const d=certDaysLeft(c);return d!==null&&d<0});
+      if(expired.length){
+        const b=el('span');b.className='emp-badge';
+        b.style.cssText='background:#fee2e2;color:#dc2626;border:1px solid #fca5a5';
+        b.textContent='⚠ '+expired.length+' expired';b.title=expired.map(c=>c.cert_type).join(', ');
+        card.appendChild(b);
+      }else if(expiring.length){
+        const b=el('span');b.className='emp-badge';
+        b.style.cssText='background:#fef3c7;color:#92400e;border:1px solid #fcd34d';
+        b.textContent='⏰ '+expiring.length+' expiring';b.title=expiring.map(c=>c.cert_type).join(', ');
+        card.appendChild(b);
+      }else if(certs.length){
+        const b=el('span');b.className='emp-badge';
+        b.style.cssText='background:#dcfce7;color:#166534;border:1px solid #86efac';
+        b.textContent='✓ '+certs.length+' certs';card.appendChild(b);
+      }
+      // Edit button
+      const eb=el('button');eb.className='btn-sm';eb.textContent='Edit';
+      eb.onclick=()=>{
+        S.modal={type:'employee',isNew:false,emp:{...emp},pendingCerts:[]};openModal();
+      };card.appendChild(eb);
+      list.appendChild(card);
+    });
+  }
+  rebuildList();
+  return d;
+}
+
+// ── EMPLOYEE MODAL ─────────────────────────────────────────────────────────────
+// Builds the add/edit modal for a single employee including their certifications.
+// S.modal = {type:'employee', isNew, emp:{...}, pendingCerts:[]}
+// pendingCerts holds new certs added in this session before save.
+function buildEmployeeModal(m){
+  const ms=S.modal;const emp=ms.emp;
+  mhdr(m,ms.isNew?'Add Employee':'Edit: '+emp.name);
+
+  // ── Section 1: Personal details ──────────────────────────────────────────
+  const sec1=el('div');sec1.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s1lbl=el('p');s1lbl.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s1lbl.textContent='Personal Details';sec1.appendChild(s1lbl);
+  const g1=el('div');g1.className='fg';
+  const addF=(parent,labelTxt,key,full,type='text',opts=null,placeholder='')=>{
+    const w=el('div');if(full)w.className='fg-full';
+    w.appendChild(lbl2(labelTxt));
+    const i=opts
+      ?inp2(emp[key]||'',e=>{emp[key]=e.target.value},'select',opts)
+      :inp2(emp[key]||'',e=>{emp[key]=e.target.value},type);
+    if(placeholder)i.placeholder=placeholder;
+    w.appendChild(i);parent.appendChild(w);
+  };
+  addF(g1,'Full Name','name',true,'text',null,'e.g. Jean Tremblay');
+  addF(g1,'Role','role',false,'select',[['','— Select role —'],...EMP_ROLES.map(r=>[r,r])]);
+  addF(g1,'Employment Type','employment_type',false,'select',EMP_TYPES.map(t=>[t,t.charAt(0).toUpperCase()+t.slice(1)]));
+  addF(g1,'Start Date','start_date',false,'date');
+  addF(g1,'Emergency Contact','emergency_contact',false,'text',null,'Name');
+  addF(g1,'Emergency Phone','emergency_phone',false,'text',null,'613-555-0000');
+  sec1.appendChild(g1);
+
+  // Active toggle
+  const activeW=el('div');activeW.className='fg-full';activeW.style.marginTop='8px';
+  const activeLbl=el('label');activeLbl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444';
+  const activeCb=el('input');activeCb.type='checkbox';activeCb.checked=emp.active!==false;
+  activeCb.onchange=e=>{emp.active=e.target.checked};
+  activeLbl.appendChild(activeCb);activeLbl.appendChild(document.createTextNode('Active employee (uncheck to deactivate)'));
+  activeW.appendChild(activeLbl);g1.appendChild(activeW);
+  m.appendChild(sec1);
+
+  // ── Section 2: Licence & Crew link ───────────────────────────────────────
+  const sec2=el('div');sec2.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s2lbl=el('p');s2lbl.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s2lbl.textContent='Licence & Scheduling';sec2.appendChild(s2lbl);
+  const g2=el('div');g2.className='fg';
+  addF(g2,'Driver Licence Class','licence_class',false,'select',[
+    ['','— None —'],['G','G'],['G2','G2'],['DZ','DZ'],['AZ','AZ'],['CZ','CZ'],['M','M'],
+  ]);
+  const licExpW=el('div');licExpW.appendChild(lbl2('Licence Expiry'));
+  const licExpI=inp2(emp.licence_expiry||'',e=>{emp.licence_expiry=e.target.value||null},'date');
+  licExpW.appendChild(licExpI);g2.appendChild(licExpW);
+  // Crew link — links employee to a crew lead entry for Gantt display
+  const crewW=el('div');crewW.appendChild(lbl2('Linked Crew Lead (Gantt)'));
+  const crewSel=inp2(emp.crew_id||'',e=>{emp.crew_id=e.target.value||null},'select',
+    [['','— Not a crew lead —'],...S.crews.map(c=>[c.id,c.name])]);
+  crewW.appendChild(crewSel);g2.appendChild(crewW);
+  sec2.appendChild(g2);m.appendChild(sec2);
+
+  // ── Section 3: Certifications ────────────────────────────────────────────
+  const sec3=el('div');sec3.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s3hdr=el('div');s3hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  const s3lbl=el('p');s3lbl.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin:0';s3lbl.textContent='Certifications';
+  const addCertBtn=el('button');addCertBtn.className='btn-sm';addCertBtn.style.fontSize='11px';addCertBtn.textContent='+ Add Cert';
+  s3hdr.appendChild(s3lbl);s3hdr.appendChild(addCertBtn);sec3.appendChild(s3hdr);
+  const certList=el('div');sec3.appendChild(certList);
+  m.appendChild(sec3);
+
+  // Combine saved certs + pending new certs for display
+  const savedCerts=empCerts(emp.id);
+
+  function renderCerts(){
+    certList.innerHTML='';
+    const all=[...savedCerts,...(ms.pendingCerts||[])];
+    if(!all.length){
+      const none=el('div');none.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:10px 0';
+      none.textContent='No certifications recorded yet.';certList.appendChild(none);return;
+    }
+    all.forEach((cert,ci)=>{
+      const isNew=ci>=savedCerts.length;
+      const d=certDaysLeft(cert);const st=certStatus(cert);
+      const row=el('div');row.className='cert-row';
+      // Type
+      const typeSel=inp2(cert.cert_type||'',e=>{cert.cert_type=e.target.value},'select',
+        CERT_TYPES.map(t=>[t,t]));
+      typeSel.style.cssText='flex:1;font-size:11px;padding:2px 4px';
+      row.appendChild(typeSel);
+      // Expiry
+      const expI=el('input');expI.type='date';expI.className='inp cert-expiry '+st;
+      expI.style.cssText='width:120px;font-size:11px;padding:2px 5px';
+      expI.value=cert.expiry_date||'';
+      expI.title=d===null?'No expiry':d<0?'Expired '+(Math.abs(d))+' days ago':d+' days remaining';
+      expI.onchange=e=>{cert.expiry_date=e.target.value||null;renderCerts()};
+      row.appendChild(expI);
+      // Days indicator
+      if(d!==null){
+        const dSp=el('span');dSp.className='cert-expiry '+st;dSp.style.cssText='font-size:10px;font-weight:700;min-width:55px;text-align:right';
+        dSp.textContent=d<0?'Exp.'+Math.abs(d)+'d':d+'d left';row.appendChild(dSp);
+      }
+      // Delete
+      const delBtn=el('button');delBtn.style.cssText='background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px;padding:0 2px';
+      delBtn.textContent='×';
+      delBtn.onclick=async()=>{
+        if(isNew){ms.pendingCerts.splice(ci-savedCerts.length,1);renderCerts();return}
+        if(!await confirmModal('Remove "'+cert.cert_type+'" certification?','Remove',true))return;
+        await deleteCert(cert.id);
+        S.employeeCerts=S.employeeCerts.filter(x=>x.id!==cert.id);
+        renderCerts();
+      };
+      row.appendChild(delBtn);
+      certList.appendChild(row);
+    });
+  }
+  renderCerts();
+  addCertBtn.onclick=()=>{
+    if(!ms.pendingCerts)ms.pendingCerts=[];
+    ms.pendingCerts.push({id:crypto.randomUUID(),employee_id:emp.id,cert_type:'WHMIS 2015',issuer:'',issued_date:'',expiry_date:'',notes:''});
+    renderCerts();
+  };
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const delBtn2=!ms.isNew?(()=>{
+    const b=el('button');b.className='btn-danger';b.textContent='Delete Employee';
+    b.onclick=async()=>{
+      if(!await confirmModal('Permanently delete '+emp.name+'? All their certifications will also be deleted.','Delete',true))return;
+      await deleteEmployee(emp.id);
+      S.employees=S.employees.filter(x=>x.id!==emp.id);
+      S.employeeCerts=S.employeeCerts.filter(x=>x.employee_id!==emp.id);
+      closeModal();render();
+    };return b;
+  })():null;
+
+  mkFooter(m,delBtn2,async()=>{
+    if(!emp.name.trim()){toast('Please enter the employee\'s name.','error');return}
+    // Save employee
+    if(!ms.isNew&&!S.employees.find(x=>x.id===emp.id)){
+      // New employee being saved for first time
+      S.employees=[...S.employees,emp];
+    }else if(!ms.isNew){
+      S.employees=S.employees.map(x=>x.id===emp.id?emp:x);
+    }else{
+      S.employees=[...S.employees,emp];
+    }
+    closeModal();render();
+    await upsertEmployee(emp);
+    // Save any pending new certifications
+    for(const c of(ms.pendingCerts||[])){
+      c.employee_id=emp.id;
+      S.employeeCerts=[...S.employeeCerts,c];
+      await upsertCert(c);
+    }
+    await loadAll();render();
+  });
 }
 
 function buildCrewsPanel(){
