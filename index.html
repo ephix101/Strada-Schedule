@@ -303,6 +303,20 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .cert-expiry.ok{color:#166534}
 .cert-expiry.warn{color:#d97706}
 .cert-expiry.overdue{color:#dc2626}
+/* ── H&S Module (M2) ─────────────────────────────────────────────────────── */
+.hs-banner{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:7px;margin-bottom:8px;font-size:12px;line-height:1.5}
+.hs-banner.red{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b}
+.hs-banner.amber{background:#fef3c7;border:1px solid #fcd34d;color:#92400e}
+.hs-banner.green{background:#dcfce7;border:1px solid #86efac;color:#166534}
+.hs-inc-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:7px;border:1px solid #e4e8f0;margin-bottom:5px;cursor:pointer;transition:box-shadow .12s;background:#fff}
+.hs-inc-row:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.hs-inc-type{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0;margin-top:1px}
+.hs-inc-main{flex:1;min-width:0}
+.hs-inc-title{font-size:12px;font-weight:600;color:#1a2b4a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-inc-meta{font-size:10px;color:#6b7280;margin-top:2px}
+.hs-status-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+.hs-action-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;background:#f9fafb;border:1px solid #f0f2f5;margin-bottom:3px;font-size:12px}
+.hs-wsib-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -506,6 +520,7 @@ const S={
   ganttGrid:(()=>{try{return JSON.parse(localStorage.getItem(CFG_KEY)||'{}').ganttGrid||false}catch{return false}})(),
   projects:[],tasks:[],crews:[],holidays:[],subtasks:[],
   employees:[],employeeCerts:[],  // M1: Employee & Certification Registry
+  hsIncidents:[],hsActions:[],    // M2: H&S Incidents & WSIB
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
   mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[]},
@@ -913,7 +928,7 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl,st,emp,ec]=await withTimeout(
+    const[pr,tk,cr,hl,st,emp,ec,hi,ha]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
@@ -922,6 +937,8 @@ async function loadAll(){
         sb.from('subtasks').select('*').order('task_id').order('sort_order'),
         sb.from('employees').select('*').order('sort_order'),
         sb.from('employee_certifications').select('*').order('employee_id'),
+        sb.from('hs_incidents').select('*').order('incident_date',{ascending:false}),
+        sb.from('hs_actions').select('*').order('due_date'),
       ]),
       QUERY_TIMEOUT_MS
     );
@@ -932,6 +949,8 @@ async function loadAll(){
     if(!st.error&&st.data)S.subtasks=st.data;
     if(!emp.error&&emp.data)S.employees=emp.data;
     if(!ec.error&&ec.data)S.employeeCerts=ec.data;
+    if(!hi.error&&hi.data)S.hsIncidents=hi.data;
+    if(!ha.error&&ha.data)S.hsActions=ha.data;
     _projTaskCache=null;
     buildHolCache();  // rebuild immediately — workDays() must be correct before next render
     clearWdCache();   // invalidate memoization — holidays or tasks may have changed
@@ -988,6 +1007,18 @@ function handleRealtimeEvent(table, payload){
         else S.employeeCerts=[...S.employeeCerts,ec];
         renderSafe();return;
       }
+      if(table==='hs_incidents'){
+        const inc=nw;
+        if(S.hsIncidents.find(x=>x.id===inc.id))S.hsIncidents=S.hsIncidents.map(x=>x.id===inc.id?inc:x);
+        else S.hsIncidents=[inc,...S.hsIncidents];
+        renderSafe();return;
+      }
+      if(table==='hs_actions'){
+        const a=nw;
+        if(S.hsActions.find(x=>x.id===a.id))S.hsActions=S.hsActions.map(x=>x.id===a.id?a:x);
+        else S.hsActions=[...S.hsActions,a];
+        renderSafe();return;
+      }
     }
     if(eventType==='DELETE'){
       const id=(ol||{}).id;if(!id)throw new Error('no id');
@@ -996,6 +1027,8 @@ function handleRealtimeEvent(table, payload){
       if(table==='subtasks'){S.subtasks=S.subtasks.filter(x=>x.id!==id)}
       if(table==='employees'){S.employees=S.employees.filter(x=>x.id!==id);S.employeeCerts=S.employeeCerts.filter(x=>x.employee_id!==id)}
       if(table==='employee_certifications'){S.employeeCerts=S.employeeCerts.filter(x=>x.id!==id)}
+      if(table==='hs_incidents'){S.hsIncidents=S.hsIncidents.filter(x=>x.id!==id);S.hsActions=S.hsActions.filter(x=>x.incident_id!==id)}
+      if(table==='hs_actions'){S.hsActions=S.hsActions.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
   }catch(e){
@@ -1011,6 +1044,8 @@ function startRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'subtasks'},p=>handleRealtimeEvent('subtasks',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'employees'},p=>handleRealtimeEvent('employees',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'employee_certifications'},p=>handleRealtimeEvent('employee_certifications',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'hs_incidents'},p=>handleRealtimeEvent('hs_incidents',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'hs_actions'},p=>handleRealtimeEvent('hs_actions',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
@@ -1109,6 +1144,44 @@ const upsertEmployee=e=>api(async()=>{const{error}=await sb.from('employees').up
 const deleteEmployee=id=>api(async()=>{const{error}=await sb.from('employees').delete().eq('id',id);if(error)throw error});
 const upsertCert=c=>api(async()=>{const{error}=await sb.from('employee_certifications').upsert(certToDB(c));if(error)throw error});
 const deleteCert=id=>api(async()=>{const{error}=await sb.from('employee_certifications').delete().eq('id',id);if(error)throw error});
+// ── M2: H&S Incident & WSIB data layer ──────────────────────────────────────
+// addBusinessDays: walks forward/backward skipping Sat/Sun. Used for WSIB deadlines.
+function addBusinessDays(dateStr,n){
+  const d=new Date(dateStr+'T12:00:00');
+  let count=0;const dir=n<0?-1:1;
+  while(count<Math.abs(n)){d.setDate(d.getDate()+dir);if(d.getDay()!==0&&d.getDay()!==6)count++}
+  return d.toISOString().slice(0,10);
+}
+function hsIncidentToDB(inc){
+  return{
+    id:inc.id, incident_date:inc.incident_date||TODAY,
+    incident_type:inc.incident_type||'near-miss',
+    description:inc.description||'',
+    location:inc.location||null,
+    project_id:inc.project_id||null,
+    injured_employee_id:inc.injured_employee_id||null,
+    root_cause:inc.root_cause||null,
+    wsib_required:!!inc.wsib_required,
+    wsib_form7_due:inc.wsib_form7_due||null,
+    wsib_form7_filed:inc.wsib_form7_filed||null,
+    rtw_plan:inc.rtw_plan||null,
+    status:inc.status||'open',
+  };
+}
+function hsActionToDB(a){
+  return{
+    id:a.id, incident_id:a.incident_id,
+    description:a.description||'',
+    assigned_to_employee_id:a.assigned_to_employee_id||null,
+    due_date:a.due_date||null,
+    completed_date:a.completed_date||null,
+    status:a.status||'open',
+  };
+}
+const upsertHsIncident=inc=>api(async()=>{const{error}=await sb.from('hs_incidents').upsert(hsIncidentToDB(inc));if(error)throw error});
+const deleteHsIncident=id=>api(async()=>{const{error}=await sb.from('hs_incidents').delete().eq('id',id);if(error)throw error});
+const upsertHsAction=a=>api(async()=>{const{error}=await sb.from('hs_actions').upsert(hsActionToDB(a));if(error)throw error});
+const deleteHsAction=id=>api(async()=>{const{error}=await sb.from('hs_actions').delete().eq('id',id);if(error)throw error});
 
 async function seedData(){
   if(!await confirmModal('Load all 41 default projects into the database? This cannot be undone.','Load Data',false))return;
@@ -1353,6 +1426,7 @@ function openModal(){
   else if(S.modal.type==='task')buildTaskModal(m);
   else if(S.modal.type==='crew')buildCrewModal(m);
   else if(S.modal.type==='employee')buildEmployeeModal(m);
+  else if(S.modal.type==='hs-incident')buildHSIncidentModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
@@ -3430,58 +3504,146 @@ function buildManagement(){
   renderBids();
   row1.appendChild(bidCard);
 
-  // ── HEALTH & SAFETY TRACKER ───────────────────────────────────────────────
+  // ── HEALTH & SAFETY (M2) ─────────────────────────────────────────────────
+  // Full incident log + WSIB tracking. Replaces the placeholder checklist.
   const hsCard=el('div');hsCard.className='mgmt-card';
   const hsHdr=el('div');hsHdr.className='mgmt-card-hdr';
   const hsTitle=el('div');hsTitle.className='mgmt-card-title';hsTitle.textContent='🦺 Health & Safety';
-  const hsAdd=el('button');hsAdd.className='btn-sm';hsAdd.style.fontSize='11px';hsAdd.textContent='+ Add Item';
-  hsHdr.appendChild(hsTitle);hsHdr.appendChild(hsAdd);hsCard.appendChild(hsHdr);
+  const hsAddBtn=el('button');hsAddBtn.className='btn-sm';hsAddBtn.style.fontSize='11px';hsAddBtn.textContent='+ Log Incident';
+  hsHdr.appendChild(hsTitle);hsHdr.appendChild(hsAddBtn);hsCard.appendChild(hsHdr);
 
-  const HS_DEFAULTS=[
-    'WSIB clearance certificates on file',
-    'Toolbox talks — current week',
-    'First aid kits checked',
-    'PPE inventory adequate',
-    'Near-miss / incident log reviewed',
-    'Site safety signage in place',
-    'Equipment inspection records current',
-  ];
-  const HS_STATUS={ok:{dot:'#16a34a',label:'OK'},warn:{dot:'#d97706',label:'Due soon'},overdue:{dot:'#dc2626',label:'Overdue'}};
+  // ── Incident type config ─────────────────────────────────────────────────
+  const INC_TYPES={
+    'near-miss':  {label:'Near Miss',   bg:'#fef3c7',col:'#92400e'},
+    'first-aid':  {label:'First Aid',   bg:'#dbeafe',col:'#1e40af'},
+    'recordable': {label:'Recordable',  bg:'#fee2e2',col:'#991b1b'},
+    'critical':   {label:'Critical',    bg:'#fdf2f8',col:'#86198f'},
+  };
+  const INC_STATUS={
+    open:        {label:'Open',        bg:'#fee2e2',col:'#991b1b'},
+    'in-progress':{label:'In Progress',bg:'#fef3c7',col:'#92400e'},
+    closed:      {label:'Closed',      bg:'#dcfce7',col:'#166534'},
+  };
 
-  function renderHS(){
-    [...hsCard.querySelectorAll('.hs-row')].forEach(r=>r.remove());
-    const items=S.mgmt.hsItems||[];
-    if(items.length===0){
-      // Seed defaults on first use
-      S.mgmt.hsItems=HS_DEFAULTS.map((label,i)=>({id:uid(),label,status:'ok',dueDate:'',notes:''}));
-      saveMgmt();renderHS();return;
+  // ── Dashboard banner ─────────────────────────────────────────────────────
+  function buildHSBanner(){
+    hsCard.querySelectorAll('.hs-banner').forEach(b=>b.remove());
+    const incidents=S.hsIncidents||[];
+    const actions=S.hsActions||[];
+    const redItems=[];const amberItems=[];
+
+    // WSIB Form 7 overdue
+    incidents.filter(i=>i.wsib_required&&!i.wsib_form7_filed&&i.wsib_form7_due).forEach(i=>{
+      const d=Math.round((new Date(i.wsib_form7_due+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+      if(d<0)redItems.push('WSIB Form 7 overdue: '+i.description.slice(0,40));
+      else if(d<=3)amberItems.push('WSIB Form 7 due in '+d+'d: '+i.description.slice(0,30));
+    });
+    // Corrective actions overdue/due soon
+    actions.filter(a=>a.status!=='complete'&&a.due_date).forEach(a=>{
+      const d=Math.round((new Date(a.due_date+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+      const emp=S.employees.find(e=>e.id===a.assigned_to_employee_id);
+      const who=emp?emp.name.split(' ')[0]:'Unassigned';
+      if(d<0)redItems.push('Action overdue ('+who+'): '+a.description.slice(0,35));
+      else if(d<=7)amberItems.push('Action due in '+d+'d ('+who+'): '+a.description.slice(0,30));
+    });
+    // Open incidents > 14 days
+    incidents.filter(i=>i.status==='open').forEach(i=>{
+      const age=Math.round((new Date(TODAY+'T12:00:00')-new Date(i.incident_date+'T12:00:00'))/86400000);
+      if(age>14)redItems.push('Open >14d: '+i.description.slice(0,40));
+    });
+
+    const insertAfter=hsHdr;
+    if(redItems.length){
+      redItems.forEach(msg=>{
+        const b=el('div');b.className='hs-banner red';
+        b.innerHTML='';
+        const ico=el('span');ico.textContent='🔴';ico.style.flexShrink='0';b.appendChild(ico);
+        const t=el('span');t.textContent=msg;b.appendChild(t);
+        hsCard.insertBefore(b,insertAfter.nextSibling);
+      });
+    }else if(amberItems.length){
+      amberItems.forEach(msg=>{
+        const b=el('div');b.className='hs-banner amber';
+        b.innerHTML='';
+        const ico=el('span');ico.textContent='🟡';ico.style.flexShrink='0';b.appendChild(ico);
+        const t=el('span');t.textContent=msg;b.appendChild(t);
+        hsCard.insertBefore(b,insertAfter.nextSibling);
+      });
+    }else{
+      const b=el('div');b.className='hs-banner green';
+      b.innerHTML='';
+      const ico=el('span');ico.textContent='🟢';ico.style.flexShrink='0';b.appendChild(ico);
+      const t=el('span');t.textContent='All H&S items current — no overdue actions or WSIB deadlines.';b.appendChild(t);
+      hsCard.insertBefore(b,insertAfter.nextSibling);
     }
-    items.forEach((item,idx)=>{
-      const s=HS_STATUS[item.status]||HS_STATUS.ok;
-      const row=el('div');row.className='hs-row';
-      const dot=el('span');dot.className='hs-dot';dot.style.background=s.dot;row.appendChild(dot);
-      const lbl=el('span');lbl.style.cssText='flex:1;font-size:12px;color:#1a2b4a';lbl.textContent=item.label;row.appendChild(lbl);
-      if(item.dueDate){const d=el('span');d.style.cssText='font-size:10px;color:#9ca3af';d.textContent=fmtDate(item.dueDate);row.appendChild(d)}
-      // Status toggle
-      const tog=el('select');tog.className='inp';tog.style.cssText='width:90px;font-size:11px;padding:2px 4px';
-      Object.entries(HS_STATUS).forEach(([k,v])=>{const o=el('option');o.value=k;o.textContent=v.label;if(k===item.status)o.selected=true;tog.appendChild(o)});
-      tog.onchange=e=>{S.mgmt.hsItems[idx].status=e.target.value;saveMgmt();renderHS()};
-      row.appendChild(tog);
-      const del=el('button');del.style.cssText='background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px';
-      del.textContent='×';del.onclick=async()=>{
-        if(!await confirmModal('Remove "'+item.label+'"?','Remove',true))return;
-        S.mgmt.hsItems.splice(idx,1);saveMgmt();renderHS();
-      };
-      row.appendChild(del);
-      hsCard.appendChild(row);
+  }
+
+  // ── Incident log list ────────────────────────────────────────────────────
+  const incList=el('div');incList.style.marginTop='8px';hsCard.appendChild(incList);
+
+  function renderHSList(){
+    incList.innerHTML='';
+    const incidents=S.hsIncidents||[];
+    if(!incidents.length){
+      const emp2=el('div');emp2.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:16px 0';
+      emp2.textContent='No incidents logged — use this section to record near-misses and incidents.';
+      incList.appendChild(emp2);return;
+    }
+    // Show open/in-progress first, then closed; within group sort by date desc
+    const sorted=[...incidents].sort((a,b)=>{
+      const ord={open:0,'in-progress':1,closed:2};
+      return (ord[a.status]||0)-(ord[b.status]||0)||b.incident_date.localeCompare(a.incident_date);
+    });
+    sorted.forEach(inc=>{
+      const typeC=INC_TYPES[inc.incident_type]||INC_TYPES['near-miss'];
+      const statC=INC_STATUS[inc.status]||INC_STATUS.open;
+      const row=el('div');row.className='hs-inc-row';
+      const typeBadge=el('span');typeBadge.className='hs-inc-type';
+      typeBadge.style.cssText='background:'+typeC.bg+';color:'+typeC.col;
+      typeBadge.textContent=typeC.label;row.appendChild(typeBadge);
+      const main=el('div');main.className='hs-inc-main';
+      const title=el('div');title.className='hs-inc-title';title.textContent=inc.description||'—';main.appendChild(title);
+      const meta=el('div');meta.className='hs-inc-meta';
+      const actions=S.hsActions.filter(a=>a.incident_id===inc.id);
+      const openActs=actions.filter(a=>a.status!=='complete').length;
+      const emp=S.employees.find(e=>e.id===inc.injured_employee_id);
+      const proj=S.projects.find(p=>p.id===inc.project_id);
+      const parts=[fmtDate(inc.incident_date)];
+      if(emp)parts.push(emp.name);
+      if(proj)parts.push(proj.job_num+' '+proj.client);
+      if(inc.wsib_required){
+        const wsibTxt=inc.wsib_form7_filed?'WSIB filed '+fmtDate(inc.wsib_form7_filed)
+          :inc.wsib_form7_due?'Form 7 due '+fmtDate(inc.wsib_form7_due):'WSIB required';
+        parts.push(wsibTxt);
+      }
+      if(openActs>0)parts.push(openActs+' open action'+(openActs!==1?'s':''));
+      meta.textContent=parts.join(' · ');main.appendChild(meta);row.appendChild(main);
+      const statBadge=el('span');statBadge.className='hs-status-badge';
+      statBadge.style.cssText='background:'+statC.bg+';color:'+statC.col;
+      statBadge.textContent=statC.label;row.appendChild(statBadge);
+      row.onclick=()=>openHSModal(inc);
+      incList.appendChild(row);
     });
   }
-  hsAdd.onclick=()=>{
-    const label=prompt('H&S item label:');if(!label)return;
-    S.mgmt.hsItems.push({id:uid(),label,status:'ok',dueDate:'',notes:''});
-    saveMgmt();renderHS();
-  };
-  renderHS();
+
+  // ── New incident button ──────────────────────────────────────────────────
+  hsAddBtn.onclick=()=>openHSModal(null);
+
+  function openHSModal(existingInc){
+    const isNew=!existingInc;
+    const inc=existingInc?{...existingInc}:{
+      id:crypto.randomUUID(),incident_date:TODAY,incident_type:'near-miss',
+      description:'',location:'',project_id:null,injured_employee_id:null,
+      root_cause:'',wsib_required:false,wsib_form7_due:null,wsib_form7_filed:null,
+      rtw_plan:'',status:'open',
+    };
+    // Fetch current actions for this incident
+    let localActions=isNew?[]:S.hsActions.filter(a=>a.incident_id===inc.id).map(a=>({...a}));
+
+    S.modal={type:'hs-incident',inc,isNew,localActions};openModal();
+  }
+
+  buildHSBanner();renderHSList();
   row1.appendChild(hsCard);
   wrap.appendChild(row1);
 
@@ -3920,6 +4082,190 @@ function buildEmployeesPanel(){
 // Builds the add/edit modal for a single employee including their certifications.
 // S.modal = {type:'employee', isNew, emp:{...}, pendingCerts:[]}
 // pendingCerts holds new certs added in this session before save.
+// ── H&S INCIDENT MODAL (M2) ───────────────────────────────────────────────────
+// S.modal = {type:'hs-incident', inc:{...}, isNew:bool, localActions:[...]}
+function buildHSIncidentModal(m){
+  const ms=S.modal;
+  const inc=ms.inc;
+  const INC_TYPES_M={
+    'near-miss':  'Near Miss',
+    'first-aid':  'First Aid',
+    'recordable': 'Recordable',
+    'critical':   'Critical / Serious',
+  };
+  mhdr(m,(ms.isNew?'Log Incident':'Edit Incident')+': '+inc.incident_type.replace('-',' ').replace(/\b\w/g,c=>c.toUpperCase()));
+
+  // ── Section 1: Incident Details ──────────────────────────────────────────
+  const sec1=el('div');sec1.style.cssText='background:#fff5f5;border:1px solid #fecaca;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s1l=el('p');s1l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s1l.textContent='Incident Details';sec1.appendChild(s1l);
+  const g1=el('div');g1.className='fg';
+
+  // Description (full width)
+  const dw=el('div');dw.className='fg-full';dw.appendChild(lbl2('Description of what happened'));
+  const dInp=el('textarea');dInp.className='inp';dInp.style.cssText='min-height:60px;resize:vertical';
+  dInp.value=inc.description||'';dInp.oninput=e=>{inc.description=e.target.value};dw.appendChild(dInp);g1.appendChild(dw);
+
+  // Type + Status
+  const tw=el('div');tw.appendChild(lbl2('Incident Type'));
+  tw.appendChild(inp2(inc.incident_type,e=>{inc.incident_type=e.target.value},'select',
+    Object.entries(INC_TYPES_M).map(([k,v])=>[k,v])));g1.appendChild(tw);
+  const sw=el('div');sw.appendChild(lbl2('Status'));
+  sw.appendChild(inp2(inc.status,e=>{inc.status=e.target.value},'select',
+    [['open','Open'],['in-progress','In Progress'],['closed','Closed']]));g1.appendChild(sw);
+
+  // Date + Location
+  const datew=el('div');datew.appendChild(lbl2('Incident Date'));
+  datew.appendChild(inp2(inc.incident_date||TODAY,e=>{inc.incident_date=e.target.value},'date'));g1.appendChild(datew);
+  const locw=el('div');locw.appendChild(lbl2('Location / Site'));
+  const locInp=inp2(inc.location||'',e=>{inc.location=e.target.value},'text');locInp.placeholder='e.g. 135 Craig Henry Dr — sidewalk area';
+  locw.appendChild(locInp);g1.appendChild(locw);
+
+  // Injured employee + Project
+  const empw=el('div');empw.appendChild(lbl2('Injured / Involved Employee'));
+  empw.appendChild(inp2(inc.injured_employee_id||'',e=>{inc.injured_employee_id=e.target.value||null},'select',
+    [['','— None / Unknown —'],...(S.employees||[]).filter(e=>e.active!==false).map(e=>[e.id,e.name])]));g1.appendChild(empw);
+  const projw=el('div');projw.appendChild(lbl2('Related Project'));
+  projw.appendChild(inp2(inc.project_id||'',e=>{inc.project_id=e.target.value||null},'select',
+    [['','— No project —'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]));g1.appendChild(projw);
+
+  // Root cause
+  const rcw=el('div');rcw.className='fg-full';rcw.appendChild(lbl2('Root Cause (4-Why Analysis)'));
+  const rcInp=el('textarea');rcInp.className='inp';rcInp.style.cssText='min-height:52px;resize:vertical';
+  rcInp.placeholder='Why did this happen? Work backwards to the root cause…';
+  rcInp.value=inc.root_cause||'';rcInp.oninput=e=>{inc.root_cause=e.target.value};rcw.appendChild(rcInp);g1.appendChild(rcw);
+  sec1.appendChild(g1);m.appendChild(sec1);
+
+  // ── Section 2: WSIB / Regulatory ────────────────────────────────────────
+  const sec2=el('div');sec2.style.cssText='background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s2l=el('p');s2l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s2l.textContent='WSIB / Regulatory';sec2.appendChild(s2l);
+  const g2=el('div');g2.className='fg';
+
+  // WSIB required toggle
+  const wsibW=el('div');wsibW.className='fg-full';
+  const wsibLbl=el('label');wsibLbl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444;margin-bottom:6px';
+  const wsibCb=el('input');wsibCb.type='checkbox';wsibCb.checked=!!inc.wsib_required;
+  const wsibDueSec=el('div');wsibDueSec.style.display=inc.wsib_required?'contents':'none';
+  wsibCb.onchange=e=>{
+    inc.wsib_required=e.target.checked;
+    wsibDueSec.style.display=e.target.checked?'contents':'none';
+    // Auto-calculate Form 7 due date: incident date + 3 business days
+    if(e.target.checked&&inc.incident_date&&!inc.wsib_form7_due){
+      inc.wsib_form7_due=addBusinessDays(inc.incident_date,3);
+      dueInp.value=inc.wsib_form7_due;
+    }
+  };
+  wsibLbl.appendChild(wsibCb);wsibLbl.appendChild(document.createTextNode('WSIB reporting required (Form 7 obligation)'));
+  wsibW.appendChild(wsibLbl);sec2.appendChild(wsibW);
+
+  // Form 7 fields — shown when WSIB required
+  const dueW=el('div');dueW.appendChild(lbl2('Form 7 Due Date (auto: +3 business days)'));
+  const dueInp=inp2(inc.wsib_form7_due||'',e=>{inc.wsib_form7_due=e.target.value||null},'date');
+  if(inc.wsib_required&&!inc.wsib_form7_due&&inc.incident_date){
+    inc.wsib_form7_due=addBusinessDays(inc.incident_date,3);dueInp.value=inc.wsib_form7_due;
+  }
+  dueW.appendChild(dueInp);wsibDueSec.appendChild(dueW);
+  const filedW=el('div');filedW.appendChild(lbl2('Form 7 Filed Date'));
+  filedW.appendChild(inp2(inc.wsib_form7_filed||'',e=>{inc.wsib_form7_filed=e.target.value||null},'date'));
+  wsibDueSec.appendChild(filedW);
+  const rtwW=el('div');rtwW.className='fg-full';rtwW.appendChild(lbl2('Return-to-Work Plan'));
+  const rtwInp=el('textarea');rtwInp.className='inp';rtwInp.style.cssText='min-height:44px;resize:vertical';
+  rtwInp.placeholder='Modified duties, expected return date, restrictions…';
+  rtwInp.value=inc.rtw_plan||'';rtwInp.oninput=e=>{inc.rtw_plan=e.target.value};
+  rtwW.appendChild(rtwInp);wsibDueSec.appendChild(rtwW);
+  g2.appendChild(wsibDueSec);
+  sec2.appendChild(g2);m.appendChild(sec2);
+
+  // ── Section 3: Corrective Actions ────────────────────────────────────────
+  const sec3=el('div');sec3.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s3hdr=el('div');s3hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  const s3l=el('p');s3l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin:0';s3l.textContent='Corrective Actions';
+  const addActBtn=el('button');addActBtn.className='btn-sm';addActBtn.style.fontSize='11px';addActBtn.textContent='+ Add Action';
+  s3hdr.appendChild(s3l);s3hdr.appendChild(addActBtn);sec3.appendChild(s3hdr);
+  const actList=el('div');sec3.appendChild(actList);
+  m.appendChild(sec3);
+
+  function renderActions(){
+    actList.innerHTML='';
+    if(!ms.localActions.length){
+      const none=el('div');none.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:8px 0';
+      none.textContent='No corrective actions yet — add at least one to document the response.';
+      actList.appendChild(none);return;
+    }
+    ms.localActions.forEach((act,ai)=>{
+      const row=el('div');row.className='hs-action-row';
+      // Description
+      const dIn=el('input');dIn.className='inp';dIn.style.cssText='flex:1;font-size:11px';
+      dIn.value=act.description;dIn.placeholder='What corrective action will be taken?';
+      dIn.oninput=e=>{act.description=e.target.value};row.appendChild(dIn);
+      // Assigned to
+      const empSel=inp2(act.assigned_to_employee_id||'',e=>{act.assigned_to_employee_id=e.target.value||null},'select',
+        [['','Unassigned'],...(S.employees||[]).filter(e=>e.active!==false).map(e=>[e.id,e.name.split(' ')[0]])]);
+      empSel.style.cssText='width:100px;font-size:11px;padding:2px 4px';row.appendChild(empSel);
+      // Due date
+      const dueI=el('input');dueI.type='date';dueI.className='inp';
+      dueI.style.cssText='width:120px;font-size:11px;padding:2px 5px';
+      dueI.value=act.due_date||'';dueI.onchange=e=>{act.due_date=e.target.value||null};row.appendChild(dueI);
+      // Status toggle
+      const stSel=inp2(act.status||'open',e=>{act.status=e.target.value},'select',
+        [['open','Open'],['complete','Complete']]);
+      stSel.style.cssText='width:80px;font-size:11px;padding:2px 4px';row.appendChild(stSel);
+      // Delete
+      const delB=el('button');delB.style.cssText='background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px;flex-shrink:0';
+      delB.textContent='×';delB.onclick=async()=>{
+        if(act._saved){
+          if(!await confirmModal('Remove this corrective action?','Remove',true))return;
+          await deleteHsAction(act.id);
+          S.hsActions=S.hsActions.filter(x=>x.id!==act.id);
+        }
+        ms.localActions.splice(ai,1);renderActions();
+      };row.appendChild(delB);
+      actList.appendChild(row);
+    });
+  }
+  // Mark existing saved actions
+  ms.localActions.forEach(a=>{a._saved=!ms.isNew});
+  renderActions();
+  addActBtn.onclick=()=>{
+    ms.localActions.push({id:crypto.randomUUID(),incident_id:inc.id,description:'',
+      assigned_to_employee_id:null,due_date:null,status:'open',_saved:false});
+    renderActions();
+  };
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const delBtn=!ms.isNew?(()=>{
+    const b=el('button');b.className='btn-danger';b.textContent='Delete Incident';
+    b.onclick=async()=>{
+      if(!await confirmModal('Permanently delete this incident record?','Delete',true))return;
+      await deleteHsIncident(inc.id);
+      S.hsIncidents=S.hsIncidents.filter(x=>x.id!==inc.id);
+      S.hsActions=S.hsActions.filter(x=>x.incident_id!==inc.id);
+      closeModal();render();
+    };return b;
+  })():null;
+
+  mkFooter(m,delBtn,async()=>{
+    if(!inc.description.trim()){toast('Please enter an incident description.','error');return}
+    // Optimistic update
+    if(S.hsIncidents.find(x=>x.id===inc.id))
+      S.hsIncidents=S.hsIncidents.map(x=>x.id===inc.id?inc:x);
+    else
+      S.hsIncidents=[inc,...S.hsIncidents];
+    // Save actions
+    for(const act of ms.localActions){
+      act.incident_id=inc.id;
+      if(S.hsActions.find(x=>x.id===act.id))
+        S.hsActions=S.hsActions.map(x=>x.id===act.id?act:x);
+      else
+        S.hsActions=[...S.hsActions,act];
+    }
+    closeModal();render();
+    // Persist to Supabase
+    await upsertHsIncident(inc);
+    for(const act of ms.localActions)await upsertHsAction(act);
+    await loadAll();render();
+  });
+}
+
 function buildEmployeeModal(m){
   const ms=S.modal;const emp=ms.emp;
   mhdr(m,ms.isNew?'Add Employee':'Edit: '+emp.name);
