@@ -353,6 +353,23 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .fr-entry-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;background:#f9fafb;border:1px solid #f0f2f5;margin-bottom:3px}
 .weather-btn{padding:4px 10px;border-radius:5px;border:1.5px solid #d1d5db;font-size:12px;cursor:pointer;background:#fff;color:#374151;transition:all .12s}
 .weather-btn.active{border-color:#1F3864;background:#1F3864;color:#fff}
+/* ── Equipment Registry & Dispatch (M7) ─────────────────────────────────── */
+.eq-card{display:flex;align-items:flex-start;gap:10px;background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:7px;border:1px solid #e4e8f0;cursor:pointer;transition:box-shadow .12s}
+.eq-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.eq-av{width:34px;height:34px;border-radius:8px;background:#334155;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.eq-name{font-weight:700;color:#1a2b4a;font-size:13px}
+.eq-meta{font-size:11px;color:#6b7280}
+.eq-maint-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+/* Dispatch Gantt */
+.eq-dispatch-wrap{overflow-x:auto;border:1px solid #e4e8f0;border-radius:6px;margin-top:10px}
+.eq-dispatch-hdr{display:flex;height:22px;background:#f8f9fc;border-bottom:1px solid #e4e8f0}
+.eq-dispatch-lc{width:160px;flex-shrink:0;border-right:2px solid #e4e8f0;display:flex;align-items:center;padding:0 8px;font-size:10px;font-weight:700;color:#9ca3af}
+.eq-dispatch-gc{flex:1;position:relative}
+.eq-row{display:flex;height:26px;border-bottom:1px solid #f0f2f5}
+.eq-row-lc{width:160px;flex-shrink:0;border-right:2px solid #e4e8f0;display:flex;align-items:center;padding:0 8px;font-size:11px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq-row-gc{flex:1;position:relative;background:repeating-linear-gradient(to right,transparent,transparent 21px,#f0f2f5 21px,#f0f2f5 22px)}
+.eq-bar{position:absolute;height:14px;top:50%;transform:translateY(-50%);border-radius:3px;font-size:8px;color:#fff;font-weight:700;display:flex;align-items:center;padding:0 4px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.eq-today{position:absolute;top:0;width:2px;background:rgba(255,210,0,.7);pointer-events:none}
 </style>
 </head>
 <body>
@@ -560,9 +577,10 @@ const S={
   hsMeetings:[],hsPhas:[],        // M3: JHSC Meetings & Pre-Job Hazard Assessments
   subcontractors:[],              // M4: Subcontractor Compliance Registry
   fieldReports:[],reportEntries:[], // M6: Daily Field Reports
+  equipment:[],                     // M7: Equipment Registry
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
-  mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[]},
+  mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[]},
   // Phase 2: filter & sort state (persisted to localStorage per user)
   filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false},
   presets:[] // [{id,name,filter}]
@@ -615,7 +633,7 @@ function saveMgmt(){try{localStorage.setItem(_mgmtKey(),JSON.stringify(S.mgmt))}
 function loadMgmt(){
   try{
     const m=JSON.parse(localStorage.getItem(_mgmtKey())||'null');
-    if(m)S.mgmt={bids:[],hsItems:[],timeOff:[],mgEvents:[],...m};
+    if(m)S.mgmt={bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[],...m};
   }catch(e){}
 }
 
@@ -967,7 +985,7 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp,sc,fr,re]=await withTimeout(
+    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp,sc,fr,re,eq]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
@@ -983,6 +1001,7 @@ async function loadAll(){
         sb.from('subcontractors').select('*').order('name'),
         sb.from('field_reports').select('*').order('report_date',{ascending:false}),
         sb.from('report_entries').select('*').order('report_id'),
+        sb.from('equipment').select('*').order('sort_order'),
       ]),
       QUERY_TIMEOUT_MS
     );
@@ -1000,6 +1019,7 @@ async function loadAll(){
     if(!sc.error&&sc.data)S.subcontractors=sc.data;
     if(!fr.error&&fr.data)S.fieldReports=fr.data;
     if(!re.error&&re.data)S.reportEntries=re.data;
+    if(!eq.error&&eq.data)S.equipment=eq.data;
     _projTaskCache=null;
     buildHolCache();  // rebuild immediately — workDays() must be correct before next render
     clearWdCache();   // invalidate memoization — holidays or tasks may have changed
@@ -1098,6 +1118,12 @@ function handleRealtimeEvent(table, payload){
         else S.reportEntries=[...S.reportEntries,e];
         renderSafe();return;
       }
+      if(table==='equipment'){
+        const e=nw;
+        if(S.equipment.find(x=>x.id===e.id))S.equipment=S.equipment.map(x=>x.id===e.id?e:x);
+        else S.equipment=[...S.equipment,e].sort((a,b)=>a.name.localeCompare(b.name));
+        renderSafe();return;
+      }
     }
     if(eventType==='DELETE'){
       const id=(ol||{}).id;if(!id)throw new Error('no id');
@@ -1113,6 +1139,7 @@ function handleRealtimeEvent(table, payload){
       if(table==='subcontractors'){S.subcontractors=S.subcontractors.filter(x=>x.id!==id)}
       if(table==='field_reports'){S.fieldReports=S.fieldReports.filter(x=>x.id!==id);S.reportEntries=S.reportEntries.filter(x=>x.report_id!==id)}
       if(table==='report_entries'){S.reportEntries=S.reportEntries.filter(x=>x.id!==id)}
+      if(table==='equipment'){S.equipment=S.equipment.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
   }catch(e){
@@ -1135,6 +1162,7 @@ function startRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'subcontractors'},p=>handleRealtimeEvent('subcontractors',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'field_reports'},p=>handleRealtimeEvent('field_reports',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'report_entries'},p=>handleRealtimeEvent('report_entries',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'equipment'},p=>handleRealtimeEvent('equipment',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
@@ -1350,6 +1378,65 @@ const upsertFieldReport=r=>api(async()=>{const{error}=await sb.from('field_repor
 const deleteFieldReport=id=>api(async()=>{const{error}=await sb.from('field_reports').delete().eq('id',id);if(error)throw error});
 const upsertReportEntry=e=>api(async()=>{const{error}=await sb.from('report_entries').upsert(reportEntryToDB(e));if(error)throw error});
 const deleteReportEntry=id=>api(async()=>{const{error}=await sb.from('report_entries').delete().eq('id',id);if(error)throw error});
+// ── M7: Equipment Registry data layer ────────────────────────────────────────
+const EQ_TYPES=[
+  {key:'paver',    icon:'🛣',  label:'Paver'},
+  {key:'grader',   icon:'🚧',  label:'Grader'},
+  {key:'excavator',icon:'🏗',  label:'Excavator'},
+  {key:'roller',   icon:'🔵',  label:'Roller'},
+  {key:'truck',    icon:'🚛',  label:'Truck'},
+  {key:'loader',   icon:'🚜',  label:'Loader'},
+  {key:'trailer',  icon:'🚚',  label:'Trailer'},
+  {key:'skid',     icon:'🟡',  label:'Skid Steer'},
+  {key:'other',    icon:'⚙️',  label:'Other'},
+];
+const EQ_TYPE_MAP=Object.fromEntries(EQ_TYPES.map(t=>[t.key,t]));
+function equipmentToDB(e){
+  return{
+    id:e.id, name:e.name||'',
+    equipment_type:e.equipment_type||'other',
+    ownership:e.ownership||'owned',
+    make:e.make||null, model:e.model||null,
+    year:e.year||null, serial_number:e.serial_number||null, plate:e.plate||null,
+    rental_supplier:e.rental_supplier||null,
+    rental_daily_rate_cents:e.rental_daily_rate_cents||null,
+    internal_daily_rate_cents:e.internal_daily_rate_cents||null,
+    last_service_date:e.last_service_date||null,
+    next_service_date:e.next_service_date||null,
+    service_interval_days:e.service_interval_days||null,
+    operator_cert_required:e.operator_cert_required||null,
+    notes:e.notes||null, active:e.active!==false, sort_order:e.sort_order||0,
+  };
+}
+const upsertEquipment=e=>api(async()=>{const{error}=await sb.from('equipment').upsert(equipmentToDB(e));if(error)throw error});
+const deleteEquipment=id=>api(async()=>{const{error}=await sb.from('equipment').delete().eq('id',id);if(error)throw error});
+// equipmentMaintenanceStatus — returns 'ok'|'due-soon'|'overdue'|'unknown'
+function equipmentMaintenanceStatus(eq){
+  if(eq.next_service_date){
+    const d=Math.round((new Date(eq.next_service_date+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
+    if(d<0)return{state:'overdue',days:d,label:'Overdue '+Math.abs(d)+'d'};
+    if(d<=14)return{state:'due-soon',days:d,label:'Due in '+d+'d'};
+    return{state:'ok',days:d,label:'Due '+fmtDate(eq.next_service_date)};
+  }
+  if(eq.last_service_date&&eq.service_interval_days){
+    const due=new Date(eq.last_service_date+'T12:00:00');
+    due.setDate(due.getDate()+eq.service_interval_days);
+    const d=Math.round((due-new Date(TODAY+'T12:00:00'))/86400000);
+    if(d<0)return{state:'overdue',days:d,label:'Overdue '+Math.abs(d)+'d'};
+    if(d<=14)return{state:'due-soon',days:d,label:'Due in '+d+'d'};
+    return{state:'ok',days:d,label:'Due '+fmtDate(due.toISOString().slice(0,10))};
+  }
+  return{state:'unknown',days:null,label:'No schedule'};
+}
+// activeEquipment — active items sorted by type then name
+function activeEquipment(){
+  return(S.equipment||[]).filter(e=>e.active!==false)
+    .sort((a,b)=>(a.equipment_type||'').localeCompare(b.equipment_type||'')||a.name.localeCompare(b.name));
+}
+// equipmentDispatch helpers — store/retrieve from S.mgmt.equipmentDispatch (localStorage)
+function getDispatch(equipmentId){return(S.mgmt.equipmentDispatch||[]).filter(d=>d.equipment_id===equipmentId)}
+function allDispatch(){return S.mgmt.equipmentDispatch||[]}
+function saveDispatch(patch){S.mgmt.equipmentDispatch=patch;saveMgmt()}
 // reportEntries(reportId) — entries for one report
 function reportEntries(reportId){return(S.reportEntries||[]).filter(e=>e.report_id===reportId);}
 // crewOnDate(projectId, date) — employee names scheduled on a project on a given date
@@ -1778,6 +1865,7 @@ function openModal(){
   else if(S.modal.type==='jhsc-meeting')buildJHSCModal(m);
   else if(S.modal.type==='pha')buildPHAModal(m);
   else if(S.modal.type==='subcontractor')buildSubcontractorModal(m);
+  else if(S.modal.type==='equipment')buildEquipmentModal(m);
   else if(S.modal.type==='field-report')buildFieldReportModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
@@ -3932,6 +4020,12 @@ function buildManagement(){
         else if(d<=14)amberItems.push(label+' expires in '+d+'d: '+sub);
       });
     });
+    // M7: Equipment maintenance overdue or due soon
+    (S.equipment||[]).filter(e=>e.active!==false).forEach(eq=>{
+      const ms=equipmentMaintenanceStatus(eq);
+      if(ms.state==='overdue')redItems.push('Maintenance OVERDUE: '+eq.name+' ('+ms.label+')');
+      else if(ms.state==='due-soon')amberItems.push('Maintenance due: '+eq.name+' — '+ms.label);
+    });
 
     const insertAfter=hsHdr;
     if(redItems.length){
@@ -4681,6 +4775,208 @@ Rules:
   renderFRList();
   wrap.appendChild(frCard);
 
+  // ── Row 8: Equipment Registry & Dispatch (M7) ─────────────────────────────
+  const eqCard=el('div');eqCard.className='mgmt-card';
+  const eqHdr=el('div');eqHdr.className='mgmt-card-hdr';
+  const eqTitle=el('div');eqTitle.className='mgmt-card-title';eqTitle.textContent='🚜 Equipment & Dispatch';
+  const eqBtns=el('div');eqBtns.style.cssText='display:flex;gap:6px';
+  const eqAddBtn=el('button');eqAddBtn.className='btn-sm';eqAddBtn.style.fontSize='11px';eqAddBtn.textContent='+ Add Equipment';
+  const eqDispBtn=el('button');eqDispBtn.className='btn-sm';eqDispBtn.style.cssText='font-size:11px;background:#f0f4ff;border-color:#c5d0e8;color:#1F3864';
+  eqDispBtn.textContent='+ Dispatch';eqDispBtn.title='Assign equipment to a project for a date range';
+  eqBtns.appendChild(eqAddBtn);eqBtns.appendChild(eqDispBtn);
+  eqHdr.appendChild(eqTitle);eqHdr.appendChild(eqBtns);eqCard.appendChild(eqHdr);
+
+  // ── Equipment list ────────────────────────────────────────────────────────
+  const eqList=el('div');eqCard.appendChild(eqList);
+  const MAINT_CFG={
+    'overdue': {bg:'#fee2e2',col:'#dc2626',border:'#fca5a5'},
+    'due-soon':{bg:'#fef3c7',col:'#92400e',border:'#fcd34d'},
+    'ok':      {bg:'#dcfce7',col:'#166534',border:'#86efac'},
+    'unknown': {bg:'#f3f4f6',col:'#6b7280',border:'#d1d5db'},
+  };
+
+  function renderEqList(){
+    eqList.innerHTML='';
+    const all=S.equipment||[];
+    if(!all.length){
+      const emp=el('div');emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:16px 0';
+      emp.textContent='No equipment on record — click + Add Equipment to get started.';eqList.appendChild(emp);return;
+    }
+    // Sort: active first (overdue → due-soon → ok → unknown), then inactive
+    const ord={'overdue':0,'due-soon':1,'ok':2,'unknown':3};
+    const sorted=[...all].sort((a,b)=>{
+      if(a.active===b.active){
+        const ma=equipmentMaintenanceStatus(a).state,mb=equipmentMaintenanceStatus(b).state;
+        return (ord[ma]||0)-(ord[mb]||0)||a.name.localeCompare(b.name);
+      }
+      return a.active===false?1:-1;
+    });
+    sorted.forEach(eq=>{
+      const typeInfo=EQ_TYPE_MAP[eq.equipment_type]||EQ_TYPE_MAP.other;
+      const ms=equipmentMaintenanceStatus(eq);
+      const mc=MAINT_CFG[ms.state]||MAINT_CFG.unknown;
+      const dispatches=getDispatch(eq.id);
+      const now=dispatches.find(d=>d.from<=TODAY&&d.to>=TODAY);
+
+      const card=el('div');card.className='eq-card';
+      if(eq.active===false)card.style.opacity='0.5';
+      // Avatar
+      const av=el('div');av.className='eq-av';av.textContent=typeInfo.icon;card.appendChild(av);
+      // Info
+      const info=el('div');info.style.cssText='flex:1;min-width:0';
+      const nameLine=el('div');nameLine.className='eq-name';
+      nameLine.textContent=eq.name+(eq.active===false?' (inactive)':'');info.appendChild(nameLine);
+      const meta=el('div');meta.className='eq-meta';
+      const metaParts=[];
+      if(eq.make||eq.model)metaParts.push([eq.make,eq.model,eq.year].filter(Boolean).join(' '));
+      if(eq.ownership==='rented'&&eq.rental_supplier)metaParts.push('Rental: '+eq.rental_supplier);
+      if(now){const p=S.projects.find(x=>x.id===now.project_id);if(p)metaParts.push('On: '+p.job_num);}
+      meta.textContent=metaParts.join(' · ');info.appendChild(meta);
+      card.appendChild(info);
+      // Maintenance badge
+      const mb=el('span');mb.className='eq-maint-badge';
+      mb.style.cssText='background:'+mc.bg+';color:'+mc.col+';border:1px solid '+mc.border;
+      mb.textContent=ms.label;card.appendChild(mb);
+      card.onclick=()=>{S.modal={type:'equipment',isNew:false,eq:{...eq}};openModal()};
+      eqList.appendChild(card);
+    });
+  }
+  eqAddBtn.onclick=()=>{
+    S.modal={type:'equipment',isNew:true,eq:{
+      id:crypto.randomUUID(),name:'',equipment_type:'other',ownership:'owned',
+      make:'',model:'',year:null,serial_number:'',plate:'',
+      rental_supplier:'',rental_daily_rate_cents:null,
+      internal_daily_rate_cents:null,last_service_date:'',
+      next_service_date:'',service_interval_days:null,
+      operator_cert_required:'',notes:'',active:true,sort_order:S.equipment.length,
+    }};openModal();
+  };
+  renderEqList();
+
+  // ── Dispatch Gantt ────────────────────────────────────────────────────────
+  // 6 weeks rolling: 2 weeks before → 4 weeks after today
+  const EQ_DW=22; // px per day
+  const DISP_DAYS=42;
+  const dispStart=new Date(TODAY+'T12:00:00');
+  dispStart.setDate(dispStart.getDate()-14);
+  const dispStartStr=dispStart.toISOString().slice(0,10);
+
+  // Only show dispatch Gantt if any equipment or dispatch entries exist
+  const hasDispData=(S.equipment||[]).filter(e=>e.active!==false).length>0;
+  if(hasDispData){
+    const dWrap=el('div');dWrap.className='eq-dispatch-wrap';
+
+    // Header row — day labels every 7 days
+    const dHdr=el('div');dHdr.className='eq-dispatch-hdr';
+    const dHdrLc=el('div');dHdrLc.className='eq-dispatch-lc';dHdrLc.textContent='Equipment';dHdr.appendChild(dHdrLc);
+    const dHdrGc=el('div');dHdrGc.className='eq-dispatch-gc';
+    dHdrGc.style.cssText='flex:1;position:relative;min-width:'+(DISP_DAYS*EQ_DW)+'px;height:22px';
+    for(let i=0;i<DISP_DAYS;i++){
+      const d=new Date(dispStart);d.setDate(d.getDate()+i);
+      if(i===0||d.getDay()===1){
+        const lbl=el('span');lbl.style.cssText='position:absolute;left:'+(i*EQ_DW+2)+'px;top:4px;font-size:8px;color:#9ca3af;pointer-events:none';
+        lbl.textContent=d.toLocaleDateString('en-CA',{month:'short',day:'numeric'});dHdrGc.appendChild(lbl);
+      }
+    }
+    // Today marker in header
+    const todayOff=Math.round((new Date(TODAY+'T12:00:00')-dispStart)/86400000);
+    if(todayOff>=0&&todayOff<DISP_DAYS){
+      const tl=el('div');tl.className='eq-today';tl.style.cssText='position:absolute;left:'+(todayOff*EQ_DW+EQ_DW/2)+'px;top:0;width:2px;height:22px;background:rgba(255,210,0,.7)';
+      dHdrGc.appendChild(tl);
+    }
+    dHdr.appendChild(dHdrGc);dWrap.appendChild(dHdr);
+
+    // One row per active equipment item
+    activeEquipment().forEach(eq=>{
+      const row=el('div');row.className='eq-row';
+      const lc=el('div');lc.className='eq-row-lc';
+      const typeInfo=EQ_TYPE_MAP[eq.equipment_type]||EQ_TYPE_MAP.other;
+      lc.textContent=typeInfo.icon+' '+eq.name;lc.title=eq.name;row.appendChild(lc);
+      const gc=el('div');gc.className='eq-row-gc';
+      gc.style.cssText='flex:1;position:relative;min-width:'+(DISP_DAYS*EQ_DW)+'px;height:26px';
+      // Today line
+      if(todayOff>=0&&todayOff<DISP_DAYS){
+        const tl=el('div');tl.className='eq-today';
+        tl.style.cssText='position:absolute;left:'+(todayOff*EQ_DW+EQ_DW/2)+'px;top:0;width:2px;height:26px;background:rgba(255,210,0,.5)';
+        gc.appendChild(tl);
+      }
+      // Dispatch bars
+      getDispatch(eq.id).forEach(d=>{
+        if(d.to<dispStartStr)return;
+        const s=Math.max(0,Math.round((new Date(d.from+'T12:00:00')-dispStart)/86400000));
+        const e=Math.min(DISP_DAYS-1,Math.round((new Date(d.to+'T12:00:00')-dispStart)/86400000));
+        if(e<s)return;
+        const proj=S.projects.find(p=>p.id===d.project_id);
+        const bar=el('div');bar.className='eq-bar';
+        bar.style.cssText='left:'+(s*EQ_DW)+'px;width:'+((e-s+1)*EQ_DW)+'px;background:#1F3864';
+        bar.textContent=proj?proj.job_num:'—';
+        bar.title=(proj?proj.client+' ('+proj.job_num+')':'Unknown project')+'\n'+fmtDate(d.from)+' → '+fmtDate(d.to)+(d.note?'\n'+d.note:'');
+        bar.onclick=e2=>{e2.stopPropagation();openDispatchEdit(d,eq)};
+        gc.appendChild(bar);
+      });
+      row.appendChild(gc);dWrap.appendChild(row);
+    });
+    eqCard.appendChild(dWrap);
+  }
+
+  // ── Dispatch add form (opened by + Dispatch button) ───────────────────────
+  function openDispatchEdit(existing,preselectedEq){
+    eqCard.querySelectorAll('.eq-dispatch-form').forEach(f=>f.remove());
+    const isNew=!existing;
+    const d=existing?{...existing}:{
+      id:crypto.randomUUID(),equipment_id:preselectedEq?preselectedEq.id:'',
+      project_id:'',from:TODAY,to:TODAY,note:'',
+    };
+    const form=el('div');form.className='eq-dispatch-form';
+    form.style.cssText='background:#f0f4ff;border:1.5px solid #c5d0e8;border-radius:8px;padding:12px;margin-top:8px';
+    const g=el('div');g.style.cssText='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap';
+    // Equipment
+    const eqW=el('div');eqW.appendChild(lbl2('Equipment'));
+    const eqSel=inp2(d.equipment_id||'',e=>{d.equipment_id=e.target.value},'select',
+      [['','— Select —'],...activeEquipment().map(e=>[e.id,(EQ_TYPE_MAP[e.equipment_type]||EQ_TYPE_MAP.other).icon+' '+e.name])]);
+    eqSel.style.cssText='width:160px;font-size:12px';eqW.appendChild(eqSel);g.appendChild(eqW);
+    // Project
+    const pW=el('div');pW.appendChild(lbl2('Project'));
+    const pSel=inp2(d.project_id||'',e=>{d.project_id=e.target.value},'select',
+      [['','— Select —'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]);
+    pSel.style.cssText='width:200px;font-size:12px';pW.appendChild(pSel);g.appendChild(pW);
+    // From / To
+    const fW=el('div');fW.appendChild(lbl2('From'));
+    const fI=el('input');fI.type='date';fI.className='inp';fI.value=d.from;fI.style.width='120px';
+    fI.onchange=e=>{d.from=e.target.value};fW.appendChild(fI);g.appendChild(fW);
+    const tW=el('div');tW.appendChild(lbl2('To'));
+    const tI=el('input');tI.type='date';tI.className='inp';tI.value=d.to;tI.style.width='120px';
+    tI.onchange=e=>{d.to=e.target.value};tW.appendChild(tI);g.appendChild(tW);
+    // Note
+    const nW=el('div');nW.style.flex='1';nW.appendChild(lbl2('Note'));
+    const nI=el('input');nI.className='inp';nI.placeholder='Optional note';nI.value=d.note||'';
+    nI.oninput=e=>{d.note=e.target.value};nW.appendChild(nI);g.appendChild(nW);
+    form.appendChild(g);
+    const foot=el('div');foot.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:8px';
+    if(!isNew){
+      const delB=el('button');delB.className='btn-danger';delB.style.fontSize='11px';delB.textContent='Remove';
+      delB.onclick=async()=>{
+        if(!await confirmModal('Remove this dispatch assignment?','Remove',true))return;
+        saveDispatch(allDispatch().filter(x=>x.id!==d.id));form.remove();render();
+      };foot.appendChild(delB);
+    }
+    const cancelB=el('button');cancelB.className='btn-sec';cancelB.style.fontSize='11px';cancelB.textContent='Cancel';
+    cancelB.onclick=()=>form.remove();
+    const saveB=el('button');saveB.className='btn-primary';saveB.style.fontSize='11px';saveB.textContent=isNew?'Dispatch':'Save';
+    saveB.onclick=()=>{
+      if(!d.equipment_id||!d.project_id||!d.from||!d.to){toast('Select equipment, project, and dates.','error');return}
+      if(d.to<d.from){toast('End date must be on or after start date.','error');return}
+      const existing2=allDispatch().find(x=>x.id===d.id);
+      if(existing2)saveDispatch(allDispatch().map(x=>x.id===d.id?d:x));
+      else saveDispatch([...allDispatch(),d]);
+      form.remove();render();toast('✓ Equipment dispatched','ok');
+    };
+    foot.appendChild(cancelB);foot.appendChild(saveB);form.appendChild(foot);
+    eqCard.appendChild(form);
+  }
+  eqDispBtn.onclick=()=>openDispatchEdit(null,null);
+  wrap.appendChild(eqCard);
+
   // ── Row 6: Info card — what goes here ─────────────────────────────────────
   const infoCard=el('div');infoCard.className='mgmt-card';
   infoCard.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:10px;padding:16px';
@@ -4930,6 +5226,118 @@ function buildEmployeesPanel(){
 // Builds the add/edit modal for a single employee including their certifications.
 // S.modal = {type:'employee', isNew, emp:{...}, pendingCerts:[]}
 // pendingCerts holds new certs added in this session before save.
+// ── EQUIPMENT MODAL (M7) ──────────────────────────────────────────────────────
+// S.modal = {type:'equipment', isNew:bool, eq:{...}}
+function buildEquipmentModal(m){
+  const ms=S.modal;const eq=ms.eq;
+  mhdr(m,ms.isNew?'Add Equipment':'Edit: '+eq.name);
+
+  // ── Section 1: Identity ────────────────────────────────────────────────────
+  const sec1=el('div');sec1.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s1l=el('p');s1l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+  s1l.textContent='Equipment Details';sec1.appendChild(s1l);
+  const g1=el('div');g1.className='fg';
+  // Name
+  const nW=el('div');nW.className='fg-full';nW.appendChild(lbl2('Equipment Name'));
+  const nInp=inp2(eq.name||'',e=>{eq.name=e.target.value});nInp.placeholder='e.g. CAT 950M Wheel Loader';nW.appendChild(nInp);g1.appendChild(nW);
+  // Type + Ownership
+  const tW=el('div');tW.appendChild(lbl2('Type'));
+  tW.appendChild(inp2(eq.equipment_type||'other',e=>{eq.equipment_type=e.target.value},'select',
+    EQ_TYPES.map(t=>[t.key,t.icon+' '+t.label])));g1.appendChild(tW);
+  const oW=el('div');oW.appendChild(lbl2('Ownership'));
+  oW.appendChild(inp2(eq.ownership||'owned',e=>{eq.ownership=e.target.value},'select',
+    [['owned','Company Owned'],['rented','Rented / Leased']]));g1.appendChild(oW);
+  // Make / Model / Year
+  const mkW=el('div');mkW.appendChild(lbl2('Make'));
+  const mkI=inp2(eq.make||'',e=>{eq.make=e.target.value||null});mkI.placeholder='e.g. Caterpillar';mkW.appendChild(mkI);g1.appendChild(mkW);
+  const mdW=el('div');mdW.appendChild(lbl2('Model'));
+  const mdI=inp2(eq.model||'',e=>{eq.model=e.target.value||null});mdI.placeholder='e.g. 950M';mdW.appendChild(mdI);g1.appendChild(mdW);
+  const yrW=el('div');yrW.appendChild(lbl2('Year'));
+  const yrI=el('input');yrI.type='number';yrI.className='inp';yrI.placeholder='2019';yrI.min='1990';yrI.max='2035';
+  yrI.value=eq.year||'';yrI.oninput=e=>{eq.year=e.target.value?parseInt(e.target.value):null};yrW.appendChild(yrI);g1.appendChild(yrW);
+  // Serial / Plate
+  const snW=el('div');snW.appendChild(lbl2('Serial Number'));
+  const snI=inp2(eq.serial_number||'',e=>{eq.serial_number=e.target.value||null});snI.placeholder='CAT serial…';snW.appendChild(snI);g1.appendChild(snW);
+  const plW=el('div');plW.appendChild(lbl2('Plate / Unit #'));
+  const plI=inp2(eq.plate||'',e=>{eq.plate=e.target.value||null});plI.placeholder='e.g. BCAB 123 or Unit 04';plW.appendChild(plI);g1.appendChild(plW);
+  // Active
+  const actW=el('div');actW.className='fg-full';
+  const actLbl=el('label');actLbl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444;margin-top:6px';
+  const actCb=el('input');actCb.type='checkbox';actCb.checked=eq.active!==false;
+  actCb.onchange=e=>{eq.active=e.target.checked};
+  actLbl.appendChild(actCb);actLbl.appendChild(document.createTextNode('Active (uncheck to retire this equipment)'));
+  actW.appendChild(actLbl);g1.appendChild(actW);
+  sec1.appendChild(g1);m.appendChild(sec1);
+
+  // ── Section 2: Rental (shown for rented equipment) ────────────────────────
+  const sec2=el('div');sec2.style.cssText='background:#fff8ed;border:1px solid #fcd34d;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s2l=el('p');s2l.style.cssText='font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+  s2l.textContent='Rental / Cost Rates';sec2.appendChild(s2l);
+  const g2=el('div');g2.className='fg';
+  const rsW=el('div');rsW.appendChild(lbl2('Rental Supplier'));
+  const rsI=inp2(eq.rental_supplier||'',e=>{eq.rental_supplier=e.target.value||null});rsI.placeholder='e.g. Toromont CAT';rsW.appendChild(rsI);g2.appendChild(rsW);
+  // Rental daily rate
+  const rdW=el('div');rdW.appendChild(lbl2('Rental Daily Rate ($)'));
+  const rdI=el('input');rdI.type='number';rdI.className='inp';rdI.min='0';rdI.step='50';
+  rdI.value=eq.rental_daily_rate_cents?eq.rental_daily_rate_cents/100:'';rdI.placeholder='e.g. 1200';
+  rdI.oninput=e=>{eq.rental_daily_rate_cents=e.target.value?Math.round(parseFloat(e.target.value)*100):null};
+  rdW.appendChild(rdI);g2.appendChild(rdW);
+  // Internal daily rate
+  const idW=el('div');idW.appendChild(lbl2('Internal Cost Rate ($/day)'));
+  const idI=el('input');idI.type='number';idI.className='inp';idI.min='0';idI.step='50';
+  idI.value=eq.internal_daily_rate_cents?eq.internal_daily_rate_cents/100:'';idI.placeholder='For job costing';
+  idI.oninput=e=>{eq.internal_daily_rate_cents=e.target.value?Math.round(parseFloat(e.target.value)*100):null};
+  idW.appendChild(idI);g2.appendChild(idW);
+  sec2.appendChild(g2);m.appendChild(sec2);
+
+  // ── Section 3: Maintenance ────────────────────────────────────────────────
+  const sec3=el('div');sec3.style.cssText='background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s3l=el('p');s3l.style.cssText='font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+  s3l.textContent='Maintenance Schedule';sec3.appendChild(s3l);
+  const g3=el('div');g3.className='fg';
+  const lsdW=el('div');lsdW.appendChild(lbl2('Last Service Date'));
+  lsdW.appendChild(inp2(eq.last_service_date||'',e=>{eq.last_service_date=e.target.value||null},'date'));g3.appendChild(lsdW);
+  const nsdW=el('div');nsdW.appendChild(lbl2('Next Service Date'));
+  nsdW.appendChild(inp2(eq.next_service_date||'',e=>{eq.next_service_date=e.target.value||null},'date'));g3.appendChild(nsdW);
+  const intW=el('div');intW.appendChild(lbl2('Service Interval (days)'));
+  const intI=el('input');intI.type='number';intI.className='inp';intI.min='1';
+  intI.value=eq.service_interval_days||'';intI.placeholder='e.g. 90';
+  intI.oninput=e=>{eq.service_interval_days=e.target.value?parseInt(e.target.value):null};intW.appendChild(intI);g3.appendChild(intW);
+  // Operator cert required
+  const certW=el('div');certW.appendChild(lbl2('Operator Cert Required'));
+  certW.appendChild(inp2(eq.operator_cert_required||'',e=>{eq.operator_cert_required=e.target.value||null},'select',
+    [['','— None required —'],...CERT_TYPES.filter(t=>t.startsWith('Equipment')||t==='DZ Licence'||t==='AZ Licence').map(t=>[t,t])]));
+  g3.appendChild(certW);
+  // Notes
+  const notW=el('div');notW.className='fg-full';notW.appendChild(lbl2('Notes'));
+  const notI=el('textarea');notI.className='inp';notI.style.cssText='min-height:44px;resize:vertical';
+  notI.placeholder='Condition notes, known issues, special instructions…';
+  notI.value=eq.notes||'';notI.oninput=e=>{eq.notes=e.target.value||null};notW.appendChild(notI);g3.appendChild(notW);
+  sec3.appendChild(g3);m.appendChild(sec3);
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const delBtn=!ms.isNew?(()=>{
+    const b=el('button');b.className='btn-danger';b.textContent='Delete';
+    b.onclick=async()=>{
+      if(!await confirmModal('Delete "'+eq.name+'"? Dispatch history will also be removed.','Delete',true))return;
+      await deleteEquipment(eq.id);
+      S.equipment=S.equipment.filter(x=>x.id!==eq.id);
+      // Remove dispatch entries for this equipment from localStorage
+      saveDispatch(allDispatch().filter(d=>d.equipment_id!==eq.id));
+      closeModal();render();
+    };return b;
+  })():null;
+
+  mkFooter(m,delBtn,async()=>{
+    if(!eq.name.trim()){toast('Please enter an equipment name.','error');return}
+    if(S.equipment.find(x=>x.id===eq.id))S.equipment=S.equipment.map(x=>x.id===eq.id?eq:x);
+    else S.equipment=[...S.equipment,eq];
+    closeModal();render();
+    await upsertEquipment(eq);
+    await loadAll();render();
+  });
+}
+
 // ── DAILY FIELD REPORT MODAL (M6) ────────────────────────────────────────────
 // S.modal = {type:'field-report', report:{...}, isNew:bool, localEntries:[...]}
 function buildFieldReportModal(m){
