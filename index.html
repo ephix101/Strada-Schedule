@@ -334,6 +334,15 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .sub-trade{font-size:11px;color:#6b7280}
 .sub-compliance-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;white-space:nowrap;flex-shrink:0}
 .sub-status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:2px}
+/* ── Cert Expiry Alert Dashboard (M5) ───────────────────────────────────── */
+.cert-alert-band{margin-bottom:10px}
+.cert-alert-band-hdr{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:5px;margin-bottom:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.cert-alert-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;margin-bottom:3px;cursor:pointer;transition:background .1s;font-size:12px}
+.cert-alert-row:hover{filter:brightness(.97)}
+.cert-alert-name{font-weight:700;color:#1a2b4a;white-space:nowrap;flex-shrink:0;min-width:90px}
+.cert-alert-type{flex:1;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cert-alert-date{font-size:10px;color:#6b7280;flex-shrink:0;white-space:nowrap}
+.cert-alert-days{font-size:10px;font-weight:700;flex-shrink:0;min-width:60px;text-align:right;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -1347,6 +1356,145 @@ function subComplianceStatus(sub){
   const warn=items.filter(i=>i.daysLeft!==null&&i.daysLeft>=0&&i.daysLeft<=30);
   const state=expired.length?'expired':warn.length?'warn':'ok';
   return{state,items,expired,warn};
+}
+
+// ── M5: Certification Expiry Alert Dashboard ──────────────────────────────────
+// Reads from S.employeeCerts (M1) and S.subcontractors (M4).
+// Returns a fully built card DOM element. No DB calls — pure read layer.
+// showUpcoming: if true, also shows 31-60 day items (toggled by user).
+function buildCertAlertPanel(showUpcoming){
+  const BANDS=[
+    {key:'expired',  label:'🔴 Expired',         days:[-Infinity,0], bg:'#fef2f2', hdrBg:'#fee2e2', col:'#991b1b', borderCol:'#fca5a5'},
+    {key:'critical', label:'🟠 Expiring this week',days:[0,8],        bg:'#fff7ed', hdrBg:'#fed7aa', col:'#9a3412', borderCol:'#fb923c'},
+    {key:'warn',     label:'🟡 Expiring in 30 days',days:[8,31],      bg:'#fffbeb', hdrBg:'#fef3c7', col:'#92400e', borderCol:'#fcd34d'},
+    {key:'upcoming', label:'🔵 Expiring in 60 days',days:[31,61],     bg:'#eff6ff', hdrBg:'#dbeafe', col:'#1e40af', borderCol:'#93c5fd'},
+  ];
+
+  // Collect all alerts from employee certs
+  const today=new Date(TODAY+'T12:00:00');
+  const alerts=[];
+
+  (S.employeeCerts||[]).forEach(cert=>{
+    if(!cert.expiry_date)return;
+    const emp=(S.employees||[]).find(e=>e.id===cert.employee_id);
+    if(!emp||emp.active===false)return;
+    const daysLeft=Math.round((new Date(cert.expiry_date+'T12:00:00')-today)/86400000);
+    if(daysLeft>60)return; // outside our window
+    alerts.push({
+      kind:'employee', daysLeft, name:emp.name, type:cert.cert_type,
+      date:cert.expiry_date, empId:emp.id, emp,
+    });
+  });
+
+  // Collect from subcontractor WSIB + insurance
+  (S.subcontractors||[]).filter(s=>s.status==='active').forEach(sub=>{
+    [
+      {date:sub.wsib_clearance_expiry, type:'WSIB Clearance'},
+      {date:sub.insurance_expiry,      type:'Insurance Certificate'},
+    ].forEach(({date,type})=>{
+      if(!date)return;
+      const daysLeft=Math.round((new Date(date+'T12:00:00')-today)/86400000);
+      if(daysLeft>60)return;
+      alerts.push({kind:'sub', daysLeft, name:sub.name, type, date, subId:sub.id, sub});
+    });
+  });
+
+  // Sort by daysLeft ascending (most urgent first)
+  alerts.sort((a,b)=>a.daysLeft-b.daysLeft);
+
+  const card=el('div');card.className='mgmt-card';
+
+  // Header
+  const hdr=el('div');hdr.className='mgmt-card-hdr';
+  const title=el('div');title.className='mgmt-card-title';
+  title.textContent='🎓 Certification & Compliance Expiry Alerts';
+  hdr.appendChild(title);
+
+  // Toggle upcoming button
+  const toggleBtn=el('button');toggleBtn.className='btn-sm';toggleBtn.style.fontSize='11px';
+  toggleBtn.textContent=showUpcoming?'Hide 60-day':'Show 60-day';
+  toggleBtn.title=(showUpcoming?'Hide':'Show')+' items expiring in 31–60 days';
+  toggleBtn.onclick=()=>{
+    // Re-render the card in place with toggled state
+    const newCard=buildCertAlertPanel(!showUpcoming);
+    card.parentNode.replaceChild(newCard,card);
+  };
+  hdr.appendChild(toggleBtn);
+  card.appendChild(hdr);
+
+  // Filter to relevant bands
+  const visibleBands=showUpcoming?BANDS:BANDS.filter(b=>b.key!=='upcoming');
+
+  // Nothing at all in range
+  if(!alerts.length||(alerts.length>0&&alerts.filter(a=>showUpcoming||a.daysLeft<=30).length===0)){
+    const green=el('div');
+    green.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;font-size:12px;color:#166534;font-weight:600';
+    green.innerHTML='';
+    const ico=el('span');ico.textContent='✅';green.appendChild(ico);
+    const msg=el('span');msg.textContent='All certifications and compliance documents are current.';green.appendChild(msg);
+    card.appendChild(green);
+    return card;
+  }
+
+  // Render each band
+  visibleBands.forEach(band=>{
+    const [lo,hi]=band.days;
+    const bandAlerts=alerts.filter(a=>a.daysLeft>=lo&&a.daysLeft<hi);
+    if(!bandAlerts.length)return;
+
+    const bandEl=el('div');bandEl.className='cert-alert-band';
+
+    // Band header
+    const bHdr=el('div');bHdr.className='cert-alert-band-hdr';
+    bHdr.style.cssText='background:'+band.hdrBg+';color:'+band.col+';display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:5px;margin-bottom:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px';
+    const bLabel=el('span');bLabel.textContent=band.label;bHdr.appendChild(bLabel);
+    const bCount=el('span');bCount.style.cssText='margin-left:auto;background:'+band.col+';color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:1px 6px';
+    bCount.textContent=bandAlerts.length;bHdr.appendChild(bCount);
+    bandEl.appendChild(bHdr);
+
+    bandAlerts.forEach(alert=>{
+      const row=el('div');row.className='cert-alert-row';
+      row.style.cssText='background:'+band.bg+';border:1px solid '+band.borderCol;
+
+      // Kind icon
+      const ico=el('span');ico.style.cssText='font-size:12px;flex-shrink:0';
+      ico.textContent=alert.kind==='employee'?'👷':'🤝';row.appendChild(ico);
+
+      // Name
+      const name=el('span');name.className='cert-alert-name';
+      name.textContent=alert.name;row.appendChild(name);
+
+      // Cert/doc type
+      const type=el('span');type.className='cert-alert-type';
+      type.textContent=alert.type;row.appendChild(type);
+
+      // Expiry date
+      const date=el('span');date.className='cert-alert-date';
+      date.textContent=alert.date?fmtDate(alert.date):'—';row.appendChild(date);
+
+      // Days remaining
+      const days=el('span');days.className='cert-alert-days';
+      days.style.color=band.col;
+      days.textContent=alert.daysLeft<0
+        ?'Exp. '+Math.abs(alert.daysLeft)+'d ago'
+        :alert.daysLeft===0?'Expires TODAY'
+        :alert.daysLeft+'d left';
+      row.appendChild(days);
+
+      // Click → open relevant modal
+      row.onclick=()=>{
+        if(alert.kind==='employee'){
+          S.modal={type:'employee',isNew:false,emp:{...alert.emp},pendingCerts:[]};openModal();
+        }else{
+          S.modal={type:'subcontractor',isNew:false,sub:{...alert.sub}};openModal();
+        }
+      };
+      bandEl.appendChild(row);
+    });
+    card.appendChild(bandEl);
+  });
+
+  return card;
 }
 const d2s=d=>d?d.toISOString().slice(0,10):null;
 const s2d=s=>s?new Date(s+'T12:00:00'):null;
@@ -3487,21 +3635,6 @@ function buildManagement(){
     goEmp.onclick=()=>{S.view='settings';S.settingsTab='employees';render()};
     epHdr.appendChild(epTitle);epHdr.appendChild(goEmp);empPanel.appendChild(epHdr);
 
-    // Cert alert summary
-    const alertedEmps=emps.filter(e=>{
-      if(e.active===false)return false;
-      return empCerts(e.id).some(c=>{const d=certDaysLeft(c);return d!==null&&d<=30});
-    });
-    if(alertedEmps.length){
-      const alertBanner=el('div');
-      alertBanner.style.cssText='background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:10px;display:flex;align-items:center;gap:8px';
-      alertBanner.innerHTML='';
-      const ico=el('span');ico.textContent='⚠';alertBanner.appendChild(ico);
-      const txt=el('span');txt.textContent=alertedEmps.length+' employee'+(alertedEmps.length!==1?'s have':' has')+' certifications expiring within 30 days: '+alertedEmps.map(e=>e.name).join(', ');
-      alertBanner.appendChild(txt);
-      empPanel.appendChild(alertBanner);
-    }
-
     // Compact employee chips
     const chipWrap=el('div');chipWrap.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
     emps.filter(e=>e.active!==false).slice(0,16).forEach(emp=>{
@@ -3523,6 +3656,15 @@ function buildManagement(){
     }
     empPanel.appendChild(chipWrap);
     wrap.appendChild(empPanel);
+  }
+
+  // ── M5: Certification & Compliance Expiry Alert Dashboard ─────────────────
+  // Reads from S.employeeCerts (M1) and S.subcontractors (M4).
+  // Only rendered when there is at least one employee cert or active subcontractor.
+  // Sits between the employee summary and the operational cards below.
+  const hasCertData=(S.employeeCerts||[]).length>0||(S.subcontractors||[]).filter(s=>s.status==='active').length>0;
+  if(hasCertData){
+    wrap.appendChild(buildCertAlertPanel(false));
   }
 
   // ── Row 1: Bid Board + H&S Tracker ───────────────────────────────────────
