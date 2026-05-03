@@ -343,6 +343,16 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .cert-alert-type{flex:1;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cert-alert-date{font-size:10px;color:#6b7280;flex-shrink:0;white-space:nowrap}
 .cert-alert-days{font-size:10px;font-weight:700;flex-shrink:0;min-width:60px;text-align:right;white-space:nowrap}
+/* ── Daily Field Reports (M6) ───────────────────────────────────────────── */
+.fr-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;border:1px solid #e4e8f0;margin-bottom:5px;cursor:pointer;transition:box-shadow .12s;background:#fff}
+.fr-row:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.fr-date{font-size:11px;font-weight:700;color:#1F3864;white-space:nowrap;flex-shrink:0;min-width:72px}
+.fr-proj{font-size:12px;font-weight:600;color:#1a2b4a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.fr-meta{font-size:10px;color:#6b7280;white-space:nowrap;flex-shrink:0}
+.fr-status{font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px;white-space:nowrap;flex-shrink:0}
+.fr-entry-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;background:#f9fafb;border:1px solid #f0f2f5;margin-bottom:3px}
+.weather-btn{padding:4px 10px;border-radius:5px;border:1.5px solid #d1d5db;font-size:12px;cursor:pointer;background:#fff;color:#374151;transition:all .12s}
+.weather-btn.active{border-color:#1F3864;background:#1F3864;color:#fff}
 </style>
 </head>
 <body>
@@ -549,6 +559,7 @@ const S={
   hsIncidents:[],hsActions:[],    // M2: H&S Incidents & WSIB
   hsMeetings:[],hsPhas:[],        // M3: JHSC Meetings & Pre-Job Hazard Assessments
   subcontractors:[],              // M4: Subcontractor Compliance Registry
+  fieldReports:[],reportEntries:[], // M6: Daily Field Reports
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
   mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[]},
@@ -956,7 +967,7 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp,sc]=await withTimeout(
+    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp,sc,fr,re]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
@@ -970,6 +981,8 @@ async function loadAll(){
         sb.from('hs_meetings').select('*').order('meeting_date',{ascending:false}),
         sb.from('hs_phas').select('*').order('pha_date',{ascending:false}),
         sb.from('subcontractors').select('*').order('name'),
+        sb.from('field_reports').select('*').order('report_date',{ascending:false}),
+        sb.from('report_entries').select('*').order('report_id'),
       ]),
       QUERY_TIMEOUT_MS
     );
@@ -985,6 +998,8 @@ async function loadAll(){
     if(!hm.error&&hm.data)S.hsMeetings=hm.data;
     if(!hp.error&&hp.data)S.hsPhas=hp.data;
     if(!sc.error&&sc.data)S.subcontractors=sc.data;
+    if(!fr.error&&fr.data)S.fieldReports=fr.data;
+    if(!re.error&&re.data)S.reportEntries=re.data;
     _projTaskCache=null;
     buildHolCache();  // rebuild immediately — workDays() must be correct before next render
     clearWdCache();   // invalidate memoization — holidays or tasks may have changed
@@ -1071,6 +1086,18 @@ function handleRealtimeEvent(table, payload){
         else S.subcontractors=[...S.subcontractors,s].sort((a,b)=>a.name.localeCompare(b.name));
         renderSafe();return;
       }
+      if(table==='field_reports'){
+        const r=nw;
+        if(S.fieldReports.find(x=>x.id===r.id))S.fieldReports=S.fieldReports.map(x=>x.id===r.id?r:x);
+        else S.fieldReports=[r,...S.fieldReports];
+        renderSafe();return;
+      }
+      if(table==='report_entries'){
+        const e=nw;
+        if(S.reportEntries.find(x=>x.id===e.id))S.reportEntries=S.reportEntries.map(x=>x.id===e.id?e:x);
+        else S.reportEntries=[...S.reportEntries,e];
+        renderSafe();return;
+      }
     }
     if(eventType==='DELETE'){
       const id=(ol||{}).id;if(!id)throw new Error('no id');
@@ -1084,6 +1111,8 @@ function handleRealtimeEvent(table, payload){
       if(table==='hs_meetings'){S.hsMeetings=S.hsMeetings.filter(x=>x.id!==id)}
       if(table==='hs_phas'){S.hsPhas=S.hsPhas.filter(x=>x.id!==id)}
       if(table==='subcontractors'){S.subcontractors=S.subcontractors.filter(x=>x.id!==id)}
+      if(table==='field_reports'){S.fieldReports=S.fieldReports.filter(x=>x.id!==id);S.reportEntries=S.reportEntries.filter(x=>x.report_id!==id)}
+      if(table==='report_entries'){S.reportEntries=S.reportEntries.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
   }catch(e){
@@ -1104,6 +1133,8 @@ function startRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_meetings'},p=>handleRealtimeEvent('hs_meetings',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_phas'},p=>handleRealtimeEvent('hs_phas',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'subcontractors'},p=>handleRealtimeEvent('subcontractors',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'field_reports'},p=>handleRealtimeEvent('field_reports',p))
+    .on('postgres_changes',{event:'*',schema:'public',table:'report_entries'},p=>handleRealtimeEvent('report_entries',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
     .subscribe();
@@ -1294,6 +1325,52 @@ function subcontractorToDB(s){
 }
 const upsertSubcontractor=s=>api(async()=>{const{error}=await sb.from('subcontractors').upsert(subcontractorToDB(s));if(error)throw error});
 const deleteSubcontractor=id=>api(async()=>{const{error}=await sb.from('subcontractors').delete().eq('id',id);if(error)throw error});
+// ── M6: Daily Field Reports data layer ──────────────────────────────────────
+const WEATHER_OPTS=['☀️ Clear','⛅ Cloudy','🌧️ Rain','❄️ Snow','💨 Windy','🌫️ Fog','🥵 Hot','🥶 Cold'];
+function fieldReportToDB(r){
+  return{
+    id:r.id, project_id:r.project_id||null,
+    report_date:r.report_date||TODAY,
+    supervisor_employee_id:r.supervisor_employee_id||null,
+    weather:r.weather||null, temp_celsius:r.temp_celsius||null,
+    work_description:r.work_description||null,
+    visitors:r.visitors||null, issues:r.issues||null,
+    status:r.status||'draft',
+  };
+}
+function reportEntryToDB(e){
+  return{
+    id:e.id, report_id:e.report_id,
+    employee_id:e.employee_id||null,
+    hours:Number(e.hours)||0,
+    entry_type:e.entry_type||'labour',
+  };
+}
+const upsertFieldReport=r=>api(async()=>{const{error}=await sb.from('field_reports').upsert(fieldReportToDB(r));if(error)throw error});
+const deleteFieldReport=id=>api(async()=>{const{error}=await sb.from('field_reports').delete().eq('id',id);if(error)throw error});
+const upsertReportEntry=e=>api(async()=>{const{error}=await sb.from('report_entries').upsert(reportEntryToDB(e));if(error)throw error});
+const deleteReportEntry=id=>api(async()=>{const{error}=await sb.from('report_entries').delete().eq('id',id);if(error)throw error});
+// reportEntries(reportId) — entries for one report
+function reportEntries(reportId){return(S.reportEntries||[]).filter(e=>e.report_id===reportId);}
+// crewOnDate(projectId, date) — employee names scheduled on a project on a given date
+// Cross-references Gantt segments via segCrews() for auto-population.
+function crewOnDate(projectId,date){
+  const names=new Set();
+  projTasks(projectId).forEach(task=>{
+    task.segs.forEach(seg=>{
+      if(seg.s&&seg.e&&date>=seg.s&&date<=seg.e){
+        segCrews(seg,task).forEach(n=>{if(n)names.add(n);});
+      }
+    });
+  });
+  // Resolve crew names → employee IDs where possible
+  const empIds=[];
+  names.forEach(name=>{
+    const emp=(S.employees||[]).find(e=>e.name===name&&e.active!==false);
+    if(emp)empIds.push(emp.id);
+  });
+  return empIds;
+}
 
 async function seedData(){
   if(!await confirmModal('Load all 41 default projects into the database? This cannot be undone.','Load Data',false))return;
@@ -1701,6 +1778,7 @@ function openModal(){
   else if(S.modal.type==='jhsc-meeting')buildJHSCModal(m);
   else if(S.modal.type==='pha')buildPHAModal(m);
   else if(S.modal.type==='subcontractor')buildSubcontractorModal(m);
+  else if(S.modal.type==='field-report')buildFieldReportModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
@@ -4522,6 +4600,87 @@ Rules:
   renderSubList();
   wrap.appendChild(subCard);
 
+  // ── Row 7: Daily Field Reports (M6) ──────────────────────────────────────
+  const frCard=el('div');frCard.className='mgmt-card';
+  const frHdr=el('div');frHdr.className='mgmt-card-hdr';
+  const frTitle=el('div');frTitle.className='mgmt-card-title';frTitle.textContent='📋 Daily Field Reports';
+  const frBtns=el('div');frBtns.style.cssText='display:flex;gap:6px;align-items:center';
+  const frAddBtn=el('button');frAddBtn.className='btn-sm';frAddBtn.style.fontSize='11px';frAddBtn.textContent='+ New Report';
+  frBtns.appendChild(frAddBtn);frHdr.appendChild(frTitle);frHdr.appendChild(frBtns);frCard.appendChild(frHdr);
+
+  // Filter row — project selector + search
+  const frFilter=el('div');frFilter.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
+  const frProjSel=inp2('',()=>{},'select',
+    [['','All projects'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]);
+  frProjSel.style.cssText='flex:1;min-width:180px;max-width:280px;font-size:12px';
+  const frCountSp=el('span');frCountSp.style.cssText='font-size:11px;color:#9ca3af;margin-left:auto';
+  frFilter.appendChild(frProjSel);frFilter.appendChild(frCountSp);frCard.appendChild(frFilter);
+
+  const frList=el('div');frCard.appendChild(frList);
+
+  const FR_STATUS={
+    draft:    {label:'Draft',    bg:'#fef3c7',col:'#92400e'},
+    submitted:{label:'Submitted',bg:'#dcfce7',col:'#166534'},
+  };
+
+  function renderFRList(){
+    frList.innerHTML='';
+    const projFilter=frProjSel.value;
+    const reports=(S.fieldReports||[])
+      .filter(r=>!projFilter||r.project_id===projFilter)
+      .sort((a,b)=>b.report_date.localeCompare(a.report_date))
+      .slice(0,20);
+    frCountSp.textContent=(S.fieldReports||[]).length+' total reports';
+
+    if(!reports.length){
+      const emp=el('div');emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:16px 0';
+      emp.textContent=projFilter?'No reports for this project yet.':'No field reports yet — click + New Report to start.';
+      frList.appendChild(emp);return;
+    }
+    reports.forEach(report=>{
+      const proj=S.projects.find(p=>p.id===report.project_id);
+      const sup=S.employees.find(e=>e.id===report.supervisor_employee_id);
+      const entries=reportEntries(report.id);
+      const totalHrs=entries.reduce((s,e)=>s+Number(e.hours||0),0);
+      const st=FR_STATUS[report.status]||FR_STATUS.draft;
+      const row=el('div');row.className='fr-row';
+      const stBadge=el('span');stBadge.className='fr-status';
+      stBadge.style.cssText='background:'+st.bg+';color:'+st.col;stBadge.textContent=st.label;row.appendChild(stBadge);
+      const dateSpan=el('span');dateSpan.className='fr-date';dateSpan.textContent=fmtDate(report.report_date);row.appendChild(dateSpan);
+      const projName=el('span');projName.className='fr-proj';
+      projName.textContent=proj?(proj.job_num+' — '+proj.client):'(No project)';row.appendChild(projName);
+      const meta=el('span');meta.className='fr-meta';
+      const parts=[];
+      if(report.weather)parts.push(report.weather.split(' ')[0]); // just the emoji
+      if(entries.length)parts.push(entries.length+' crew, '+totalHrs+'h');
+      if(sup)parts.push(sup.name.split(' ')[0]);
+      meta.textContent=parts.join(' · ');row.appendChild(meta);
+      row.onclick=()=>{S.modal={type:'field-report',report:{...report},isNew:false,localEntries:entries.map(e=>({...e}))};openModal()};
+      frList.appendChild(row);
+    });
+    if((S.fieldReports||[]).filter(r=>!projFilter||r.project_id===projFilter).length>20){
+      const more=el('div');more.style.cssText='font-size:11px;color:#9ca3af;text-align:center;padding:4px 0';
+      more.textContent='Showing 20 most recent. Use the project filter to narrow results.';frList.appendChild(more);
+    }
+  }
+  frProjSel.onchange=()=>renderFRList();
+  frAddBtn.onclick=()=>{
+    const report={id:crypto.randomUUID(),project_id:frProjSel.value||null,
+      report_date:TODAY,supervisor_employee_id:null,weather:'',
+      temp_celsius:null,work_description:'',visitors:'',issues:'',status:'draft'};
+    // Auto-populate entries from Gantt if project selected
+    const autoEntries=report.project_id
+      ?crewOnDate(report.project_id,TODAY).map(empId=>({
+          id:crypto.randomUUID(),report_id:report.id,
+          employee_id:empId,hours:8,entry_type:'labour',
+        }))
+      :[];
+    S.modal={type:'field-report',report,isNew:true,localEntries:autoEntries};
+    openModal();
+  };
+  renderFRList();
+  wrap.appendChild(frCard);
+
   // ── Row 6: Info card — what goes here ─────────────────────────────────────
   const infoCard=el('div');infoCard.className='mgmt-card';
   infoCard.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:10px;padding:16px';
@@ -4771,6 +4930,198 @@ function buildEmployeesPanel(){
 // Builds the add/edit modal for a single employee including their certifications.
 // S.modal = {type:'employee', isNew, emp:{...}, pendingCerts:[]}
 // pendingCerts holds new certs added in this session before save.
+// ── DAILY FIELD REPORT MODAL (M6) ────────────────────────────────────────────
+// S.modal = {type:'field-report', report:{...}, isNew:bool, localEntries:[...]}
+function buildFieldReportModal(m){
+  const ms=S.modal;const r=ms.report;
+  mhdr(m,(ms.isNew?'New Field Report':'Field Report — ')+fmtDateLong(r.report_date));
+
+  // ── Section 1: Report Header ───────────────────────────────────────────────
+  const sec1=el('div');sec1.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s1l=el('p');s1l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+  s1l.textContent='Report Details';sec1.appendChild(s1l);
+  const g1=el('div');g1.className='fg';
+
+  // Project
+  const projW=el('div');projW.className='fg-full';projW.appendChild(lbl2('Project'));
+  const projSel=inp2(r.project_id||'',e=>{
+    r.project_id=e.target.value||null;
+    // Auto-populate crew when project changes (only for new reports with no entries yet)
+    if(ms.isNew&&ms.localEntries.length===0&&r.project_id&&r.report_date){
+      ms.localEntries=crewOnDate(r.project_id,r.report_date).map(empId=>({
+        id:crypto.randomUUID(),report_id:r.id,employee_id:empId,hours:8,entry_type:'labour',
+      }));
+      renderEntries();
+    }
+  },'select',[['','— Select project —'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]);
+  projW.appendChild(projSel);g1.appendChild(projW);
+
+  // Date + Supervisor
+  const dW=el('div');dW.appendChild(lbl2('Report Date'));
+  const dInp=inp2(r.report_date||TODAY,e=>{r.report_date=e.target.value},'date');dW.appendChild(dInp);g1.appendChild(dW);
+  const supW=el('div');supW.appendChild(lbl2('Site Supervisor'));
+  supW.appendChild(inp2(r.supervisor_employee_id||'',e=>{r.supervisor_employee_id=e.target.value||null},'select',
+    [['','— Select —'],...activeEmployees().map(e=>[e.id,e.name])]));g1.appendChild(supW);
+
+  // Status
+  const stW=el('div');stW.appendChild(lbl2('Status'));
+  stW.appendChild(inp2(r.status||'draft',e=>{r.status=e.target.value},'select',
+    [['draft','Draft'],['submitted','Submitted']]));g1.appendChild(stW);
+  sec1.appendChild(g1);
+
+  // Weather row — icon toggle buttons
+  const wRow=el('div');wRow.style.cssText='margin-top:10px';wRow.appendChild(lbl2('Weather Conditions'));
+  const wBtns=el('div');wBtns.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-top:4px';
+  WEATHER_OPTS.forEach(w=>{
+    const btn=el('button');btn.className='weather-btn'+(r.weather===w?' active':'');
+    btn.textContent=w;
+    btn.onclick=()=>{
+      r.weather=r.weather===w?'':w; // toggle off if already selected
+      wBtns.querySelectorAll('.weather-btn').forEach(b=>b.classList.toggle('active',b.textContent===r.weather));
+    };
+    wBtns.appendChild(btn);
+  });
+  wRow.appendChild(wBtns);
+  // Temperature
+  const tmpRow=el('div');tmpRow.style.cssText='display:flex;align-items:center;gap:8px;margin-top:8px';
+  tmpRow.appendChild(lbl2('Temp (°C)'));
+  const tmpInp=el('input');tmpInp.type='number';tmpInp.className='inp';tmpInp.style.cssText='width:80px';
+  tmpInp.value=r.temp_celsius!=null?r.temp_celsius:'';
+  tmpInp.placeholder='e.g. 18';tmpInp.oninput=e=>{r.temp_celsius=e.target.value!==''?parseInt(e.target.value):null};
+  tmpRow.appendChild(tmpInp);wRow.appendChild(tmpRow);
+  sec1.appendChild(wRow);m.appendChild(sec1);
+
+  // ── Section 2: Crew Hours ──────────────────────────────────────────────────
+  const sec2=el('div');sec2.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s2hdr=el('div');s2hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  const s2l=el('p');s2l.style.cssText='font-size:10px;font-weight:700;color:#1F3864;text-transform:uppercase;letter-spacing:.5px;margin:0';
+  s2l.textContent='Crew Hours (feeds job costing)';
+  const addEntryBtn=el('button');addEntryBtn.className='btn-sm';addEntryBtn.style.fontSize='11px';addEntryBtn.textContent='+ Add Person';
+  s2hdr.appendChild(s2l);s2hdr.appendChild(addEntryBtn);sec2.appendChild(s2hdr);
+
+  // Auto-populate note
+  if(ms.isNew&&ms.localEntries.length>0){
+    const note=el('div');note.style.cssText='font-size:11px;color:#1F3864;background:#dbeafe;border-radius:4px;padding:4px 8px;margin-bottom:8px';
+    note.textContent='✓ Crew auto-populated from the Gantt schedule for this date.';sec2.appendChild(note);
+  }
+
+  const entryList=el('div');sec2.appendChild(entryList);
+  // Hours summary
+  const hrsSummary=el('div');hrsSummary.style.cssText='margin-top:8px;font-size:12px;font-weight:700;color:#1F3864;text-align:right';sec2.appendChild(hrsSummary);
+
+  function renderEntries(){
+    entryList.innerHTML='';
+    if(!ms.localEntries.length){
+      const none=el('div');none.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:8px 0';
+      none.textContent='No crew on report yet — click + Add Person or select a project to auto-populate.';
+      entryList.appendChild(none);hrsSummary.textContent='';return;
+    }
+    ms.localEntries.forEach((entry,ei)=>{
+      const row=el('div');row.className='fr-entry-row';
+      // Employee select
+      const empSel=inp2(entry.employee_id||'',e=>{entry.employee_id=e.target.value||null},'select',
+        [['','— Select employee —'],...activeEmployees().map(e=>[e.id,e.name])]);
+      empSel.style.cssText='flex:1;font-size:11px;min-width:120px';row.appendChild(empSel);
+      // Hours
+      const hrsInp=el('input');hrsInp.type='number';hrsInp.className='inp';
+      hrsInp.style.cssText='width:64px;font-size:11px';hrsInp.min='0';hrsInp.max='24';hrsInp.step='0.5';
+      hrsInp.value=entry.hours!=null?entry.hours:'';
+      hrsInp.placeholder='hrs';
+      hrsInp.oninput=e=>{entry.hours=e.target.value!==''?parseFloat(e.target.value):0;updateHrsSummary()};
+      row.appendChild(hrsInp);
+      // Hrs label
+      const hLbl=el('span');hLbl.style.cssText='font-size:11px;color:#6b7280;flex-shrink:0';hLbl.textContent='hrs';row.appendChild(hLbl);
+      // Entry type
+      const typeSel=inp2(entry.entry_type||'labour',e=>{entry.entry_type=e.target.value},'select',
+        [['labour','Labour'],['equipment','Equipment']]);
+      typeSel.style.cssText='width:90px;font-size:11px';row.appendChild(typeSel);
+      // Delete
+      const delB=el('button');delB.style.cssText='background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px;flex-shrink:0';
+      delB.textContent='×';delB.onclick=async()=>{
+        if(entry._saved){
+          await deleteReportEntry(entry.id);
+          S.reportEntries=S.reportEntries.filter(x=>x.id!==entry.id);
+        }
+        ms.localEntries.splice(ei,1);renderEntries();
+      };row.appendChild(delB);
+      entryList.appendChild(row);
+    });
+    updateHrsSummary();
+  }
+  function updateHrsSummary(){
+    const total=ms.localEntries.reduce((s,e)=>s+Number(e.hours||0),0);
+    hrsSummary.textContent=total>0?'Total: '+total+'h on site':'';
+  }
+  // Mark existing saved entries
+  ms.localEntries.forEach(e=>{e._saved=!ms.isNew&&!!S.reportEntries.find(x=>x.id===e.id)});
+  renderEntries();
+  addEntryBtn.onclick=()=>{
+    ms.localEntries.push({id:crypto.randomUUID(),report_id:r.id,employee_id:null,hours:8,entry_type:'labour',_saved:false});
+    renderEntries();
+  };
+  m.appendChild(sec2);
+
+  // ── Section 3: Work Description & Notes ───────────────────────────────────
+  const sec3=el('div');sec3.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
+  const s3l=el('p');s3l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
+  s3l.textContent='Site Notes';sec3.appendChild(s3l);
+  const addTA=(parent,labelTxt,key,placeholder,minH=52)=>{
+    parent.appendChild(lbl2(labelTxt));
+    const ta=el('textarea');ta.className='inp';ta.style.cssText='min-height:'+minH+'px;resize:vertical;margin-bottom:8px';
+    ta.placeholder=placeholder;ta.value=r[key]||'';ta.oninput=e=>{r[key]=e.target.value||null};parent.appendChild(ta);
+  };
+  addTA(sec3,'Work Completed (description of work done today)','work_description',
+    'Describe work completed — quantities, locations, materials placed…',72);
+  addTA(sec3,'Site Visitors (inspector name, client rep, etc.)','visitors',
+    'e.g. City inspector John Smith — checked base compaction');
+  addTA(sec3,'Issues / Delays','issues',
+    'e.g. Equipment breakdown, material delay, weather stop…');
+  m.appendChild(sec3);
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const delBtn=!ms.isNew?(()=>{
+    const b=el('button');b.className='btn-danger';b.textContent='Delete Report';
+    b.onclick=async()=>{
+      if(!await confirmModal('Delete this field report? All crew hours will also be deleted.','Delete',true))return;
+      await deleteFieldReport(r.id);
+      S.fieldReports=S.fieldReports.filter(x=>x.id!==r.id);
+      S.reportEntries=S.reportEntries.filter(x=>x.report_id!==r.id);
+      closeModal();render();
+    };return b;
+  })():null;
+
+  mkFooter(m,delBtn,async()=>{
+    if(!r.project_id){toast('Please select a project.','error');return}
+    // Optimistic update
+    if(S.fieldReports.find(x=>x.id===r.id))
+      S.fieldReports=S.fieldReports.map(x=>x.id===r.id?r:x);
+    else
+      S.fieldReports=[r,...S.fieldReports];
+    // Optimistic entries
+    ms.localEntries.forEach(e=>{
+      e.report_id=r.id;
+      if(S.reportEntries.find(x=>x.id===e.id))
+        S.reportEntries=S.reportEntries.map(x=>x.id===e.id?e:x);
+      else
+        S.reportEntries=[...S.reportEntries,e];
+    });
+    closeModal();render();
+    // Persist to Supabase
+    try{
+      await upsertFieldReport(r);
+      for(const e of ms.localEntries)if(e.employee_id)await upsertReportEntry(e);
+      await loadAll();render();
+    }catch(err){
+      // Handle UNIQUE constraint violation gracefully
+      if(err.message&&err.message.includes('unique')){
+        toast('⚠ A report already exists for this project on this date.','error');
+      }else{
+        toast('⚠ Save failed: '+err.message,'error');
+      }
+    }
+  });
+}
+
 // ── SUBCONTRACTOR MODAL (M4) ──────────────────────────────────────────────────
 // S.modal = {type:'subcontractor', isNew:bool, sub:{...}}
 function buildSubcontractorModal(m){
