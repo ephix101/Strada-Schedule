@@ -1970,6 +1970,7 @@ function openModal(){
   else if(S.modal.type==='equipment')buildEquipmentModal(m);
   else if(S.modal.type==='field-report')buildFieldReportModal(m);
   else if(S.modal.type==='cc-cell-edit')buildCellEditModal(m);
+  else if(S.modal.type==='cc-add-task')buildCellAddTaskModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
@@ -5099,40 +5100,35 @@ Rules:
 
 // ── CREW CALENDAR VIEW ────────────────────────────────────────────────────────
 // Two-week grid: rows = crew leads, columns = Mon–Fri × 2.
-// Each cell shows the project scheduled for that crew on that day (from Gantt
-// segments), with editable task selection, notes, and equipment overlay stored
-// in S.mgmt.crewAssignments (localStorage — no DB migration required).
+// Reads directly from S.tasks (same source as Gantt) — changes via task modal
+// automatically appear in both views. localStorage overlay adds day-level
+// dispatch notes and equipment without touching the Gantt schema.
 function buildCrewCalendar(){
   const wrap=el('div');wrap.className='cc-wrap';
   const holDates=new Set(S.holidays.map(h=>h.date));
 
   // ── Navigation ──────────────────────────────────────────────────────────
   const weekStart=getCalWeekStart();
-  const workDays=calWorkDays(weekStart);   // 10 ISO date strings Mon–Fri × 2
+  const workDays=calWorkDays(weekStart);
   const week2Start=workDays[5];
 
-  // Prev/Next step one work week (5 days forward/back, skip weekend)
   function prevWeek(){
     let d=addDays(weekStart,-1);
-    while(new Date(d+'T12:00:00').getDay()===0||new Date(d+'T12:00:00').getDay()===6)d=addDays(d,-1);
-    // Go to Monday of that week
+    while([0,6].includes(new Date(d+'T12:00:00').getDay()))d=addDays(d,-1);
     const dow2=new Date(d+'T12:00:00').getDay();
-    d=addDays(d,1-dow2);
-    setCalWeekStart(d);render();
+    setCalWeekStart(addDays(d,1-dow2));render();
   }
-  function nextWeek(){
-    let d=addDays(workDays[4],3); // skip weekend after fri
-    setCalWeekStart(d);render();
-  }
+  function nextWeek(){setCalWeekStart(addDays(workDays[4],3));render();}
 
   // ── Nav bar ──────────────────────────────────────────────────────────────
   const nav=el('div');nav.className='cc-nav';
   const prevBtn=el('button');prevBtn.className='btn-sec';prevBtn.style.fontSize='12px';prevBtn.textContent='← Prev week';
   prevBtn.onclick=prevWeek;nav.appendChild(prevBtn);
   const navLabel=el('div');navLabel.className='cc-nav-label';
-  const fmt=s=>fmtDate(s);
-  const t1=el('div');t1.className='cc-nav-title';t1.textContent=fmt(workDays[0])+' – '+fmt(workDays[9])+', '+new Date(workDays[0]+'T12:00:00').getFullYear();
-  const t2=el('div');t2.className='cc-nav-sub';t2.textContent='Two-week crew schedule — click any cell to edit task & notes';
+  const t1=el('div');t1.className='cc-nav-title';
+  t1.textContent=fmtDate(workDays[0])+' – '+fmtDate(workDays[9])+', '+new Date(workDays[0]+'T12:00:00').getFullYear();
+  const t2=el('div');t2.className='cc-nav-sub';
+  t2.textContent='Click any cell to edit — changes sync to the Gantt';
   navLabel.appendChild(t1);navLabel.appendChild(t2);nav.appendChild(navLabel);
   const nextBtn=el('button');nextBtn.className='btn-sec';nextBtn.style.fontSize='12px';nextBtn.textContent='Next week →';
   nextBtn.onclick=nextWeek;nav.appendChild(nextBtn);
@@ -5142,36 +5138,32 @@ function buildCrewCalendar(){
   const tableWrap=el('div');tableWrap.className='cc-table-wrap';
   const table=el('table');table.className='cc-table';
 
-  // Column widths: 120px crew label + 10 day cols
   const CREW_W=120,DAY_W=96;
   const cg=el('colgroup');
   const c0=el('col');c0.style.width=CREW_W+'px';cg.appendChild(c0);
   workDays.forEach(()=>{const c=el('col');c.style.width=DAY_W+'px';cg.appendChild(c);});
   table.appendChild(cg);
 
-  // ── Header row 1: week labels ──────────────────────────────────────────
+  // ── Header row 1: week labels ────────────────────────────────────────────
   const thead=el('thead');
   const hr1=el('tr');
   const th0=el('th');th0.className='cc-th-crew';th0.textContent='CREW / DATE';hr1.appendChild(th0);
-  // Week 1 label spanning 5 cols
   const wk1th=el('th');wk1th.colSpan=5;wk1th.className='cc-th-wk';
   wk1th.textContent='WEEK OF '+new Date(workDays[0]+'T12:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric'}).toUpperCase();
   hr1.appendChild(wk1th);
-  // Week 2 label spanning 5 cols
   const wk2th=el('th');wk2th.colSpan=5;wk2th.className='cc-th-wk';
   wk2th.textContent='WEEK OF '+new Date(workDays[5]+'T12:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric'}).toUpperCase();
   hr1.appendChild(wk2th);
   thead.appendChild(hr1);
 
-  // ── Header row 2: day labels ──────────────────────────────────────────
+  // ── Header row 2: day labels ─────────────────────────────────────────────
   const hr2=el('tr');
-  const th00=el('th');th00.className='cc-th-crew';th00.style.fontWeight='400';th00.style.fontSize='9px';
+  const th00=el('th');th00.className='cc-th-crew';th00.style.cssText='font-weight:400;font-size:9px;color:rgba(255,255,255,.5)';
   th00.textContent='Click cell to edit';hr2.appendChild(th00);
   workDays.forEach((date,di)=>{
     const d=new Date(date+'T12:00:00');
     const isToday=date===TODAY;const isHol=holDates.has(date);
-    const th=el('th');
-    th.className='cc-th-day'+(isToday?' today':isHol?' hol':'');
+    const th=el('th');th.className='cc-th-day'+(isToday?' today':isHol?' hol':'');
     const dn=el('div');dn.style.cssText='font-size:8px;font-weight:700;color:'+(isToday?'#1d4ed8':isHol?'#dc2626':'#9ca3af')+';letter-spacing:.3px';
     dn.textContent=['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
     const dd=el('div');dd.style.cssText='font-size:16px;font-weight:'+(isToday?'700':'500')+';color:'+(isToday?'#1d4ed8':isHol?'#dc2626':'#1a2b4a')+';line-height:1.15';
@@ -5183,121 +5175,123 @@ function buildCrewCalendar(){
       const hp=el('div');hp.style.cssText='font-size:7px;color:#dc2626;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:'+(DAY_W-8)+'px';
       hp.textContent=hname?hname.name:'Holiday';th.appendChild(hp);
     }
-    // Week separator: bold right border after col 4 (index 4)
     if(di===4)th.style.borderRight='2px solid #c5d0e8';
     hr2.appendChild(th);
   });
   thead.appendChild(hr2);
   table.appendChild(thead);
 
-  // ── Body: one row per crew ────────────────────────────────────────────
+  // ── Body: one row per crew ────────────────────────────────────────────────
   const tbody=el('tbody');
   const crews=S.crews.slice().sort((a,b)=>a.sort_order-b.sort_order);
 
   crews.forEach((crew,ri)=>{
     const row=el('tr');
-
-    // Crew label cell
     const lc=el('td');lc.className='cc-crew-lc';lc.style.height='94px';
-    const ldiv=el('div');ldiv.style.cssText='display:flex;align-items:center;gap:7px;';
+    const ldiv=el('div');ldiv.style.cssText='display:flex;align-items:center;gap:7px';
     const dot=el('div');dot.style.cssText='width:10px;height:10px;border-radius:50%;background:'+crew.color+';flex-shrink:0';
     const nm=el('span');nm.style.cssText='font-size:12px;font-weight:700;color:#1a2b4a';nm.textContent=crew.name;
     ldiv.appendChild(dot);ldiv.appendChild(nm);lc.appendChild(ldiv);
+
+    // + Add task quick-link in crew cell
+    const addLink=el('button');addLink.style.cssText='display:block;margin-top:6px;font-size:9px;color:#1F3864;background:none;border:none;cursor:pointer;text-align:left;padding:0;opacity:.6';
+    addLink.textContent='+ Add task';
+    addLink.onclick=()=>openCrewAddTask(crew);
+    lc.appendChild(addLink);
     row.appendChild(lc);
 
-    // Day cells
     workDays.forEach((date,di)=>{
-      const isToday=date===TODAY;
-      const isHol=holDates.has(date);
-      const td=el('td');
-      td.className='cc-cell'+(isToday?' today':isHol?' hol':'');
+      const isToday=date===TODAY;const isHol=holDates.has(date);
+      const td=el('td');td.className='cc-cell'+(isToday?' today':isHol?' hol':'');
       if(di===4)td.style.borderRight='2px solid #c5d0e8';
 
-      // Determine what's on for this crew on this date
       const off=timeOffOnDay(crew.name,date);
-      const proj=off?null:projectOnDay(crew.name,date);
-      const asgn=proj?getCrewAssignment(crew.name,date):null;
+      // All tasks for this crew on this date (from Gantt segments)
+      const tasksOnDay=off?[]:tasksForCrewOnDay(crew.name,date);
+      const asgn=getCrewAssignment(crew.name,date);
 
-      // Check if this is a continuation (same project as previous workday)
+      // Continuation detection — same set of projects as previous workday
       const prevDate=di>0?workDays[di-1]:null;
-      const prevProj=prevDate&&!off?projectOnDay(crew.name,prevDate):null;
-      const isCont=proj&&prevProj&&proj.id===prevProj.id;
+      const prevTasks=prevDate&&!off?tasksForCrewOnDay(crew.name,prevDate):[];
+      const prevProj=prevTasks.length?S.projects.find(p=>p.id===prevTasks[0].project_id):null;
+      const curProj=tasksOnDay.length?S.projects.find(p=>p.id===tasksOnDay[0].project_id):null;
+      const isCont=curProj&&prevProj&&curProj.id===prevProj.id;
 
-      // Build inner cell
       const inner=el('div');
-      inner.className='cc-cell-inner '+(off?'off':proj?isCont?'cont':'start':'empty');
+      inner.className='cc-cell-inner '+(off?'off':tasksOnDay.length?isCont?'cont':'start':'empty');
 
       if(off){
-        // Time off
         inner.style.cssText='height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box;border-left:3px solid #dc2626;background:#fee2e2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px';
         const ol=el('div');ol.style.cssText='font-size:10px;color:#991b1b;font-weight:700';ol.textContent='Time off';inner.appendChild(ol);
-        const ol2=el('div');ol2.style.cssText='font-size:9px;color:#c9190b';
         const tof=(S.mgmt.timeOff||[]).find(t=>t.crew===crew.name&&date>=t.from&&date<=t.to);
-        ol2.textContent=tof&&tof.note?tof.note:'';inner.appendChild(ol2);
-      }else if(proj){
-        // Project assignment
-        inner.style.cssText='height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box;border-left-width:'+(isCont?'2':'3')+'px;border-left-style:solid;border-left-color:'+(isCont?crew.color+'55':crew.color)+';background:'+crew.color+(isCont?'0B':'18');
+        if(tof&&tof.note){const ol2=el('div');ol2.style.cssText='font-size:9px;color:#c9190b';ol2.textContent=tof.note;inner.appendChild(ol2);}
+      }else if(tasksOnDay.length){
         const opacity=isCont?0.45:1;
-        // Job number
-        const jn=el('div');jn.className='cc-job';jn.style.cssText='font-size:8px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;color:'+crew.color+';opacity:'+opacity;
-        jn.textContent=proj.job_num;inner.appendChild(jn);
-        // Location (primary)
-        const loc=el('div');loc.className='cc-loc';loc.style.cssText='font-size:11px;font-weight:700;color:#1a2b4a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;opacity:'+opacity;
-        loc.textContent=proj.loc||proj.client;inner.appendChild(loc);
-        // Client (if different from loc)
-        if(proj.client&&proj.loc&&proj.client!==proj.loc){
-          const cl=el('div');cl.className='cc-client';cl.style.cssText='font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;opacity:'+opacity;
-          cl.textContent=proj.client;inner.appendChild(cl);
-        }
-        // Task/note/equipment — only on start days or days with explicit assignment
-        if(!isCont||(asgn&&(asgn.task_ids.length||asgn.note||asgn.equipment_ids.length))){
-          const tasks=projTasks(proj.id);
-          const selTasks=asgn&&asgn.task_ids.length
-            ?asgn.task_ids.map(id=>tasks.find(t=>t.id===id)).filter(Boolean)
-            :tasks.slice(0,1); // default: show first task if no selection made
-          if(selTasks.length||(asgn&&(asgn.note||asgn.equipment_ids.length))){
-            const div=el('div');div.className='cc-divider';div.style.cssText='height:1px;margin:4px 0;background:'+crew.color;inner.appendChild(div);
+        const borderW=isCont?'2':'3';
+        const borderColor=isCont?crew.color+'55':crew.color;
+        const tint=crew.color+(isCont?'0B':'18');
+        inner.style.cssText='height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box;border-left:'+borderW+'px solid '+borderColor+';background:'+tint;
+
+        // Project location (primary)
+        const proj=S.projects.find(p=>p.id===tasksOnDay[0].project_id);
+        if(proj){
+          const jn=el('div');jn.className='cc-job';jn.style.cssText='font-size:8px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;color:'+crew.color+';opacity:'+opacity;
+          jn.textContent=proj.job_num;inner.appendChild(jn);
+          const loc=el('div');loc.className='cc-loc';loc.style.cssText='font-size:11px;font-weight:700;color:#1a2b4a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;opacity:'+opacity;
+          loc.textContent=proj.loc||proj.client;inner.appendChild(loc);
+          if(proj.client&&proj.loc&&proj.client!==proj.loc){
+            const cl=el('div');cl.className='cc-client';cl.style.cssText='font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;opacity:'+opacity;
+            cl.textContent=proj.client;inner.appendChild(cl);
           }
-          selTasks.forEach(t=>{
+        }
+        // Tasks (from Gantt + overlay selection)
+        if(!isCont){
+          const selIds=asgn&&asgn.task_ids&&asgn.task_ids.length?asgn.task_ids:null;
+          const displayTasks=selIds
+            ?selIds.map(id=>tasksOnDay.find(t=>t.id===id)).filter(Boolean)
+            :tasksOnDay.slice(0,2);
+          if(displayTasks.length){
+            const dv=el('div');dv.className='cc-divider';dv.style.cssText='height:1px;margin:4px 0;background:'+crew.color;inner.appendChild(dv);
+          }
+          displayTasks.forEach(t=>{
             const tl=el('div');tl.className='cc-task-line';
             const tick=el('span');tick.style.cssText='color:'+crew.color+';font-size:9px;flex-shrink:0;margin-top:1px';tick.textContent='✓';
-            const txt=el('span');txt.textContent=t.descr;
-            tl.appendChild(tick);tl.appendChild(txt);inner.appendChild(tl);
+            const txt=el('span');txt.textContent=t.descr;tl.appendChild(tick);tl.appendChild(txt);inner.appendChild(tl);
           });
+          if(tasksOnDay.length>2&&!selIds){const ml=el('div');ml.style.cssText='font-size:9px;color:'+crew.color+';opacity:.7;margin-top:2px';ml.textContent='+'+(tasksOnDay.length-2)+' more';inner.appendChild(ml)}
+          // Overlay: notes + equipment
           if(asgn&&asgn.note){
             const nl=el('div');nl.className='cc-note-line';
             const ico=el('span');ico.style.flexShrink='0';ico.textContent='📝';
-            const nt=el('span');nt.textContent=asgn.note;
-            nl.appendChild(ico);nl.appendChild(nt);inner.appendChild(nl);
+            const nt=el('span');nt.textContent=asgn.note;nl.appendChild(ico);nl.appendChild(nt);inner.appendChild(nl);
           }
           if(asgn&&asgn.equipment_ids&&asgn.equipment_ids.length){
             const eqs=asgn.equipment_ids.map(id=>S.equipment.find(e=>e.id===id)).filter(Boolean);
             if(eqs.length){
               const el2=el('div');el2.className='cc-note-line';
-              const ico=el('span');ico.style.flexShrink='0';ico.textContent='🚜';
-              const txt=el('span');txt.textContent=eqs.map(e=>e.name).join(', ');
-              el2.appendChild(ico);el2.appendChild(txt);inner.appendChild(el2);
+              const ic2=el('span');ic2.style.flexShrink='0';ic2.textContent='🚜';
+              const tx2=el('span');tx2.textContent=eqs.map(e=>e.name).join(', ');
+              el2.appendChild(ic2);el2.appendChild(tx2);inner.appendChild(el2);
             }
           }
         }
+        // Click → open cell edit panel (tasks + notes + equipment)
+        td.style.cursor='pointer';
+        td.onclick=()=>openCellEdit(crew,date,tasksOnDay,curProj,asgn);
       }else{
-        // Empty — blank, shows available capacity
-        inner.style.cssText='height:88px;border-radius:5px;overflow:hidden;box-sizing:border-box;';
+        // Empty — click to assign
+        inner.style.cssText='height:88px;border-radius:5px;overflow:hidden;box-sizing:border-box';
+        td.style.cursor='pointer';
+        td.title='Click to assign a project to '+crew.name+' on '+fmtDate(date);
+        td.onclick=()=>openCellEdit(crew,date,[],null,null);
       }
 
-      // Click handler — open edit panel
-      if(!off){
-        td.style.cursor='pointer';
-        td.onclick=()=>openCellEdit(crew,date,proj,asgn);
-      }
       td.appendChild(inner);row.appendChild(td);
     });
     tbody.appendChild(row);
   });
 
-  table.appendChild(tbody);
-  tableWrap.appendChild(table);
-  wrap.appendChild(tableWrap);
+  table.appendChild(tbody);tableWrap.appendChild(table);wrap.appendChild(tableWrap);
 
   // Legend
   const legend=el('div');legend.style.cssText='display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;padding:0 2px';
@@ -5307,166 +5301,218 @@ function buildCrewCalendar(){
     const lbl=el('span');lbl.style.cssText='font-size:11px;color:#6b7280';lbl.textContent=label;
     d.appendChild(box);d.appendChild(lbl);return d;
   };
-  legend.appendChild(mkLeg('rgba(0,114,200,.1)','#0072C8','New project start'));
+  legend.appendChild(mkLeg('rgba(0,114,200,.1)','#0072C8','New project day'));
   legend.appendChild(mkLeg('rgba(0,114,200,.04)','rgba(0,114,200,.33)','Continues'));
   legend.appendChild(mkLeg('#fee2e2','#dc2626','Time off'));
   legend.appendChild(mkLeg('#f8f9fb','transparent','Unscheduled'));
   wrap.appendChild(legend);
-
   return wrap;
 }
 
+// ── tasksForCrewOnDay ─────────────────────────────────────────────────────────
+// Returns all tasks where this crew has a segment covering the given date.
+// Reads from S.tasks directly (same source as Gantt) — the single source of truth.
+function tasksForCrewOnDay(crewName,date){
+  const results=[];
+  for(const proj of S.projects){
+    if(proj.archived)continue;
+    for(const task of projTasks(proj.id)){
+      const taskCrews=segCrews(null,task);
+      if(!taskCrews.includes(crewName))continue;
+      const onDay=task.segs.some(seg=>seg.s&&seg.e&&date>=seg.s&&date<=seg.e);
+      if(onDay)results.push(task);
+    }
+  }
+  return results;
+}
+
+// ── openCrewAddTask — quick-add: opens task modal pre-filled for this crew ────
+function openCrewAddTask(crew){
+  // Open a project picker first, then task modal
+  S.modal={type:'cc-add-task',crew};openModal();
+}
+
 // ── CELL EDIT PANEL ───────────────────────────────────────────────────────────
-// Opens a modal to select tasks, add notes, and assign equipment for one
-// crew+date slot. Saves to S.mgmt.crewAssignments (localStorage).
-function openCellEdit(crew,date,proj,existingAsgn){
-  const d=new Date(date+'T12:00:00');
-  const dayLabel=d.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
-
-  // Working copy of assignment
-  const asgn={
-    crew:crew.name, date,
-    project_id:proj?proj.id:null,
-    task_ids:existingAsgn?[...existingAsgn.task_ids]:[],
-    note:existingAsgn?existingAsgn.note:'',
-    equipment_ids:existingAsgn?[...existingAsgn.equipment_ids]:[],
-  };
-
-  S.modal={type:'cc-cell-edit',crew,date,proj,asgn};
+// Full editing: open task modal(s) for Gantt sync + notes/equipment overlay.
+function openCellEdit(crew,date,tasksOnDay,proj,existingAsgn){
+  S.modal={type:'cc-cell-edit',crew,date,tasksOnDay,proj,
+    asgn:{
+      crew:crew.name,date,project_id:proj?proj.id:null,
+      task_ids:existingAsgn?[...existingAsgn.task_ids]:[],
+      note:existingAsgn?existingAsgn.note:'',
+      equipment_ids:existingAsgn?[...existingAsgn.equipment_ids]:[],
+    }};
   openModal();
 }
+// ── CELL EDIT PANEL (old stub — replaced above) ──── DELETED
 
 function buildCellEditModal(m){
   const ms=S.modal;
-  const {crew,date,proj,asgn}=ms;
+  const {crew,date,tasksOnDay,proj,asgn}=ms;
   const d=new Date(date+'T12:00:00');
   const dayLabel=d.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
 
-  // Header
-  const hdr=el('div');hdr.className='modal-hdr';
-  const ht=el('div');
-  const h3=el('h3');h3.textContent=crew.name+' — '+dayLabel;ht.appendChild(h3);
-  if(proj){const sub=el('div');sub.style.cssText='font-size:11px;color:#6b7280;margin-top:2px';sub.textContent='Select tasks for today (max 3)';ht.appendChild(sub);}
-  hdr.appendChild(ht);
-  const cls=el('button');cls.className='modal-close';cls.innerHTML='&times;';cls.onclick=closeModal;hdr.appendChild(cls);
-  m.appendChild(hdr);
+  mhdr(m,crew.name+' — '+dayLabel);
 
-  // No project case
-  if(!proj){
-    const np=el('div');np.style.cssText='background:#f8f9fb;border-radius:7px;padding:16px;margin-bottom:12px;text-align:center;color:#9ca3af;font-size:12px';
-    np.textContent='No project scheduled for this crew on this date. Assign tasks via the Gantt first.';m.appendChild(np);
-    const ftr=el('div');ftr.className='modal-footer';
-    const rb=el('div');rb.style.cssText='display:flex;gap:8px';
-    const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Close';cancel.onclick=closeModal;rb.appendChild(cancel);
-    ftr.appendChild(el('div'));ftr.appendChild(rb);m.appendChild(ftr);
-    return;
+  // ── Project header ─────────────────────────────────────────────────────────
+  if(proj){
+    const projSec=el('div');projSec.style.cssText='background:'+crew.color+'12;border:1px solid '+crew.color+'30;border-left:3px solid '+crew.color+';border-radius:7px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px';
+    const info=el('div');info.style.minWidth='0';
+    const pn=el('div');pn.style.cssText='font-size:13px;font-weight:700;color:#1a2b4a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';pn.textContent=proj.loc||proj.client;info.appendChild(pn);
+    const pm=el('div');pm.style.cssText='font-size:11px;color:#6b7280;margin-top:2px';
+    pm.textContent=[proj.client!==proj.loc?proj.client:null,proj.job_num].filter(Boolean).join(' · ');info.appendChild(pm);
+    projSec.appendChild(info);
+    // Edit project button — opens full project modal (Gantt sync)
+    const editProjBtn=el('button');editProjBtn.className='btn-sm';editProjBtn.style.fontSize='11px';editProjBtn.textContent='✎ Edit Project';
+    editProjBtn.onclick=()=>{closeModal();S.modal={type:'proj',isNew:false,p:{...proj}};openModal()};
+    projSec.appendChild(editProjBtn);
+    m.appendChild(projSec);
+  }else{
+    // No project — show project picker
+    const npSec=el('div');npSec.className='cc-edit-sec';
+    const npl=el('div');npl.className='cc-edit-sec-lbl';npl.textContent='Assign a project to this day';npSec.appendChild(npl);
+    const info=el('div');info.style.cssText='color:#9ca3af;font-size:12px;margin-bottom:8px';
+    info.textContent='This crew has no project scheduled on this date in the Gantt. Assign dates to a task first, or use the Gantt to schedule this crew.';
+    npSec.appendChild(info);
+    // Quick-navigate to Gantt
+    const toGantt=el('button');toGantt.className='btn-sec';toGantt.style.fontSize='12px';toGantt.textContent='→ Open Gantt to schedule';
+    toGantt.onclick=()=>{closeModal();S.view='gantt';render()};
+    npSec.appendChild(toGantt);
+    m.appendChild(npSec);
+    // Still show notes section below even for empty days
   }
 
-  // ── Project summary ────────────────────────────────────────────────────
-  const projSec=el('div');projSec.style.cssText='background:'+crew.color+'12;border:1px solid '+crew.color+'30;border-left:3px solid '+crew.color+';border-radius:7px;padding:10px 12px;margin-bottom:12px';
-  const pn=el('div');pn.style.cssText='font-size:13px;font-weight:700;color:#1a2b4a';pn.textContent=proj.loc||proj.client;projSec.appendChild(pn);
-  const pm=el('div');pm.style.cssText='font-size:11px;color:#6b7280;margin-top:2px';
-  pm.textContent=[proj.client!==proj.loc?proj.client:null,proj.job_num,proj.status].filter(Boolean).join(' · ');
-  projSec.appendChild(pm);m.appendChild(projSec);
-
-  // ── Task selection (all tasks for this project) ────────────────────────
-  const tasks=projTasks(proj.id);
-  if(tasks.length){
+  // ── Tasks section: each task = edit button + date range display ────────────
+  if(tasksOnDay&&tasksOnDay.length){
     const taskSec=el('div');taskSec.className='cc-edit-sec';
-    const tl=el('div');tl.className='cc-edit-sec-lbl';tl.textContent='Tasks for today (max 3)';taskSec.appendChild(tl);
+    const tl=el('div');tl.className='cc-edit-sec-lbl';tl.textContent='Tasks on this date — click ✎ to edit dates & crew';taskSec.appendChild(tl);
     const selCount=el('div');selCount.style.cssText='font-size:10px;color:#6b7280;margin-bottom:6px';
+    selCount.textContent='Select which tasks are the focus today (max 3):';taskSec.appendChild(selCount);
 
-    function updateSelCount(){
-      selCount.textContent=asgn.task_ids.length+' of 3 selected';
-      selCount.style.color=asgn.task_ids.length>=3?'#dc2626':'#6b7280';
-    }
-    taskSec.appendChild(selCount);updateSelCount();
-
-    tasks.forEach(task=>{
+    // Task checkboxes (for calendar display override)
+    tasksOnDay.forEach(task=>{
       const checked=asgn.task_ids.includes(task.id);
-      const row=el('label');row.className='cc-task-check'+(checked?' checked':'');
-      const cb=el('input');cb.type='checkbox';cb.checked=checked;
+      const row=el('div');row.className='cc-task-check'+(checked?' checked':'');
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;border:1px solid '+(checked?crew.color+'44':'#e4e8f0')+';margin-bottom:3px;cursor:default;background:'+(checked?crew.color+'08':'#f9fafb');
+
+      // Checkbox for calendar display
+      const cb=el('input');cb.type='checkbox';cb.style.accentColor=crew.color;cb.checked=checked;
       cb.onchange=e=>{
         if(e.target.checked){
-          if(asgn.task_ids.length>=3){e.target.checked=false;toast('Maximum 3 tasks per day.','error');return}
-          asgn.task_ids.push(task.id);row.classList.add('checked');
+          if(asgn.task_ids.length>=3){e.target.checked=false;toast('Maximum 3 tasks highlighted per day.','error');return}
+          asgn.task_ids.push(task.id);row.style.background=crew.color+'08';row.style.borderColor=crew.color+'44';
         }else{
-          asgn.task_ids=asgn.task_ids.filter(id=>id!==task.id);row.classList.remove('checked');
+          asgn.task_ids=asgn.task_ids.filter(id=>id!==task.id);row.style.background='#f9fafb';row.style.borderColor='#e4e8f0';
         }
-        updateSelCount();
       };
       row.appendChild(cb);
-      const span=el('span');span.textContent=task.descr;row.appendChild(span);
-      // Crew hint
-      if(task.crew){const crewHint=el('span');crewHint.style.cssText='margin-left:auto;font-size:9px;color:#9ca3af;flex-shrink:0;padding-left:8px';crewHint.textContent=task.crew;row.appendChild(crewHint)}
+
+      // Task info
+      const info=el('div');info.style.cssText='flex:1;min-width:0';
+      const taskDescr=el('div');taskDescr.style.cssText='font-size:11px;font-weight:600;color:#1a2b4a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';taskDescr.textContent=task.descr;info.appendChild(taskDescr);
+      // Show date range for this task
+      const firstSeg=task.segs.find(sg=>sg.s&&sg.e&&date>=sg.s&&date<=sg.e);
+      if(firstSeg){const dates=el('div');dates.style.cssText='font-size:9px;color:#6b7280;margin-top:1px';dates.textContent=fmtDate(firstSeg.s)+' → '+fmtDate(firstSeg.e);info.appendChild(dates)}
+      row.appendChild(info);
+
+      // ✎ Edit task button — opens full task modal → Gantt syncs automatically
+      const editBtn=el('button');editBtn.className='btn-sm';editBtn.style.fontSize='11px';editBtn.textContent='✎ Edit Task';
+      editBtn.onclick=()=>{
+        // Save overlay first, then open task modal
+        saveCrewAssignment(asgn);
+        closeModal();
+        const safeSegs=(task.segs||[{s:null,e:null,crews:[]}]).map(s=>({
+          s:s.s||null,e:s.e||null,
+          crews:Array.isArray(s.crews)?[...s.crews]:(task.crew?[task.crew]:[])
+        }));
+        S.modal={type:'task',t:{...task,segs:safeSegs}};openModal();
+      };
+      row.appendChild(editBtn);
       taskSec.appendChild(row);
     });
+    // + Add task button within this project
+    if(proj){
+      const addTaskBtn=el('button');addTaskBtn.className='btn-sm';addTaskBtn.style.cssText='font-size:11px;margin-top:6px;color:#1F3864';addTaskBtn.textContent='+ Add task to this project';
+      addTaskBtn.onclick=()=>{
+        saveCrewAssignment(asgn);closeModal();
+        const t={id:uid(),project_id:proj.id,descr:'',crew:crew.name,status:proj.status,wknd:false,sort_order:projTasks(proj.id).length,segs:[{s:date,e:date,crews:[crew.name]}]};
+        S.modal={type:'task',t};openModal();
+      };
+      taskSec.appendChild(addTaskBtn);
+    }
     m.appendChild(taskSec);
   }
 
-  // ── Equipment ─────────────────────────────────────────────────────────
+  // ── Equipment ─────────────────────────────────────────────────────────────
   const activeEq=activeEquipment();
   if(activeEq.length){
     const eqSec=el('div');eqSec.className='cc-edit-sec';
-    const el2=el('div');el2.className='cc-edit-sec-lbl';el2.textContent='Equipment for today';eqSec.appendChild(el2);
+    const eql=el('div');eql.className='cc-edit-sec-lbl';eql.textContent='Equipment dispatched today';eqSec.appendChild(eql);
     const chipWrap=el('div');chipWrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px';
-
     function renderEqChips(){
       chipWrap.innerHTML='';
       asgn.equipment_ids.forEach(eid=>{
         const eq=S.equipment.find(e=>e.id===eid);if(!eq)return;
         const ti=EQ_TYPE_MAP[eq.equipment_type]||EQ_TYPE_MAP.other;
         const chip=el('span');chip.className='cc-eq-chip';
-        chip.innerHTML=ti.icon+' '+eq.name+'<span class="rm">×</span>';
-        chip.querySelector('.rm').onclick=()=>{asgn.equipment_ids=asgn.equipment_ids.filter(id=>id!==eid);renderEqChips();};
-        chipWrap.appendChild(chip);
+        const span=el('span');span.textContent=ti.icon+' '+eq.name;chip.appendChild(span);
+        const rm=el('span');rm.className='rm';rm.textContent='×';rm.onclick=()=>{asgn.equipment_ids=asgn.equipment_ids.filter(id=>id!==eid);renderEqChips()};
+        chip.appendChild(rm);chipWrap.appendChild(chip);
       });
     }
     renderEqChips();eqSec.appendChild(chipWrap);
-
-    // Equipment selector dropdown
-    const eqRow=el('div');eqRow.style.cssText='display:flex;gap:8px;align-items:center';
     const eqSel=inp2('',()=>{},'select',
-      [['','+ Add equipment'],...activeEq.filter(e=>!asgn.equipment_ids.includes(e.id)).map(e=>[(EQ_TYPE_MAP[e.equipment_type]||EQ_TYPE_MAP.other).icon+' '+e.name,e.name,e.id])
-        .map(([label,,id])=>[id,label])]);
-    eqSel.style.cssText='flex:1;font-size:12px';
-    eqSel.onchange=e=>{
-      const id=e.target.value;if(!id)return;
-      if(!asgn.equipment_ids.includes(id))asgn.equipment_ids.push(id);
-      e.target.value='';renderEqChips();
-    };
-    eqRow.appendChild(eqSel);eqSec.appendChild(eqRow);
-    m.appendChild(eqSec);
+      [['','+ Add equipment'],...activeEq.filter(e=>!asgn.equipment_ids.includes(e.id)).map(e=>[e.id,(EQ_TYPE_MAP[e.equipment_type]||EQ_TYPE_MAP.other).icon+' '+e.name])]);
+    eqSel.style.cssText='width:100%;font-size:12px';
+    eqSel.onchange=e=>{const id=e.target.value;if(!id)return;if(!asgn.equipment_ids.includes(id))asgn.equipment_ids.push(id);e.target.value='';renderEqChips()};
+    eqSec.appendChild(eqSel);m.appendChild(eqSec);
   }
 
-  // ── Notes ─────────────────────────────────────────────────────────────
+  // ── Notes ─────────────────────────────────────────────────────────────────
   const noteSec=el('div');noteSec.className='cc-edit-sec';
   const nl=el('div');nl.className='cc-edit-sec-lbl';nl.textContent='Notes / Site instructions';noteSec.appendChild(nl);
-  const noteTA=el('textarea');noteTA.className='inp';noteTA.style.cssText='min-height:56px;resize:vertical;font-size:12px';
-  noteTA.placeholder='Delivery times, inspector visit, safety notes, materials required…';
+  const noteTA=el('textarea');noteTA.className='inp';noteTA.style.cssText='min-height:52px;resize:vertical;font-size:12px';
+  noteTA.placeholder='Delivery times, inspector visit, safety notes, access instructions…';
   noteTA.value=asgn.note||'';noteTA.oninput=e=>{asgn.note=e.target.value};
   noteSec.appendChild(noteTA);m.appendChild(noteSec);
 
-  // ── Footer ────────────────────────────────────────────────────────────
+  // ── Footer ────────────────────────────────────────────────────────────────
   const ftr=el('div');ftr.className='modal-footer';
   const lb=el('div');
-  const hadExisting=!!(existingAsgn&&(existingAsgn.task_ids.length||existingAsgn.note||existingAsgn.equipment_ids.length));
-  if(hadExisting||(asgn.task_ids.length||asgn.note||asgn.equipment_ids.length)){
-    const clrBtn=el('button');clrBtn.className='btn-danger';clrBtn.textContent='Clear day';
-    clrBtn.onclick=()=>{
-      saveCrewAssignment({crew:crew.name,date,project_id:proj?proj.id:null,task_ids:[],note:'',equipment_ids:[]});
-      closeModal();render();
-    };lb.appendChild(clrBtn);
+  const hadData=!!(existingAsgn&&(existingAsgn.task_ids.length||existingAsgn.note||existingAsgn.equipment_ids.length));
+  if(hadData||(asgn.task_ids.length||asgn.note||asgn.equipment_ids.length)){
+    const clrBtn=el('button');clrBtn.className='btn-danger';clrBtn.textContent='Clear notes';
+    clrBtn.onclick=()=>{saveCrewAssignment({...asgn,task_ids:[],note:'',equipment_ids:[]});closeModal();render()};lb.appendChild(clrBtn);
   }
   ftr.appendChild(lb);
   const rb=el('div');rb.style.cssText='display:flex;gap:8px';
   const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.onclick=closeModal;rb.appendChild(cancel);
-  const save=el('button');save.className='btn-primary';save.textContent='Save';
-  save.onclick=()=>{
-    saveCrewAssignment(asgn);
-    closeModal();render();
-  };rb.appendChild(save);
+  const save=el('button');save.className='btn-primary';save.textContent='Save notes';
+  save.onclick=()=>{saveCrewAssignment(asgn);closeModal();render()};rb.appendChild(save);
   ftr.appendChild(rb);m.appendChild(ftr);
+}
+
+// buildCellAddTaskModal — quick-add: pick project + open task modal
+function buildCellAddTaskModal(m){
+  const ms=S.modal;const crew=ms.crew;
+  mhdr(m,'Add Task for '+crew.name);
+  const sec=el('div');sec.className='cc-edit-sec';
+  const lbl=el('div');lbl.className='cc-edit-sec-lbl';lbl.textContent='Select project to add a task to';sec.appendChild(lbl);
+  const pSel=inp2('',()=>{},'select',
+    [['','— Select project —'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]);
+  pSel.style.cssText='width:100%;font-size:12px';sec.appendChild(pSel);m.appendChild(sec);
+  const ftr=el('div');ftr.className='modal-footer';
+  const lb=el('div');ftr.appendChild(lb);
+  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+  const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.onclick=closeModal;rb.appendChild(cancel);
+  const go=el('button');go.className='btn-primary';go.textContent='Open Task Editor';
+  go.onclick=()=>{
+    const pid=pSel.value;if(!pid){toast('Please select a project.','error');return}
+    const proj=S.projects.find(p=>p.id===pid);if(!proj)return;
+    closeModal();
+    const t={id:uid(),project_id:pid,descr:'',crew:crew.name,status:proj.status,wknd:false,sort_order:projTasks(pid).length,segs:[{s:null,e:null,crews:[crew.name]}]};
+    S.modal={type:'task',t};openModal();
+  };rb.appendChild(go);ftr.appendChild(rb);m.appendChild(ftr);
 }
 
 // ── BOARD ─────────────────────────────────────────────────────────────────────
@@ -7245,7 +7291,7 @@ function buildProjModal(m){
     }
     return b;
   })():null;
-  // Put archive btn in left slot, delete btn next to it
+  const isNew=S.modal.isNew; // capture before closeModal() nulls S.modal
   const leftDiv=el('div');leftDiv.style.cssText='display:flex;gap:6px';
   if(arcBtn)leftDiv.appendChild(arcBtn);
   if(delBtn)leftDiv.appendChild(delBtn);
@@ -7253,6 +7299,12 @@ function buildProjModal(m){
     // Optimistically update S.tasks so the Gantt shows changes immediately:
     // — remove tasks the user deleted via ×
     // — add brand-new tasks (not yet in S.tasks) so they appear before loadAll()
+    // — for NEW projects, also add the project to S.projects so applyFilters() finds it
+    if(isNew){
+      if(!S.projects.find(x=>x.id===p.id))S.projects=[...S.projects,p];
+    }else{
+      S.projects=S.projects.map(x=>x.id===p.id?p:x);
+    }
     S.tasks=S.tasks.filter(x=>!deletedTaskIds.has(x.id));
     const newTasks=tasks.filter(t=>!S.tasks.find(x=>x.id===t.id));
     if(newTasks.length)S.tasks=[...S.tasks,...newTasks];
@@ -7264,7 +7316,7 @@ function buildProjModal(m){
       await upsertProject(p);
       for(const t of tasks)await upsertTask(t);
       // M3: auto-create a draft PHA for every new project so it never starts without one
-      if(S.modal&&S.modal.isNew){
+      if(isNew){
         const draftPha={
           id:crypto.randomUUID(),project_id:p.id,pha_date:TODAY,
           supervisor_employee_id:null,hazards_identified:'',
