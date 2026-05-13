@@ -353,6 +353,44 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .fr-entry-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;background:#f9fafb;border:1px solid #f0f2f5;margin-bottom:3px}
 .weather-btn{padding:4px 10px;border-radius:5px;border:1.5px solid #d1d5db;font-size:12px;cursor:pointer;background:#fff;color:#374151;transition:all .12s}
 .weather-btn.active{border-color:#1F3864;background:#1F3864;color:#fff}
+/* ── Crew Calendar View ─────────────────────────────────────────────────── */
+.cc-wrap{flex:1;overflow:auto;background:#f0f2f5;padding:12px 14px;user-select:none}
+.cc-nav{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.cc-nav-label{flex:1;text-align:center}
+.cc-nav-title{font-size:14px;font-weight:700;color:#1F3864}
+.cc-nav-sub{font-size:11px;color:#6b7280;margin-top:2px}
+.cc-table-wrap{border:1px solid #d0d7e3;border-radius:10px;overflow:hidden;background:#fff}
+.cc-table{border-collapse:collapse;width:100%;table-layout:fixed}
+.cc-th-crew{background:#1F3864;color:#fff;font-size:9px;font-weight:700;letter-spacing:.5px;padding:6px 8px;border-right:2px solid #0d2748;border-bottom:2px solid #0d2748;white-space:nowrap}
+.cc-th-wk{background:#1F3864;color:rgba(255,255,255,.6);font-size:9px;font-weight:700;letter-spacing:.5px;text-align:center;padding:4px 2px;border-bottom:1px solid #0d2748}
+.cc-th-day{text-align:center;padding:4px 2px;font-size:11px;border-right:1px solid #d0d7e3;border-bottom:2px solid #d0d7e3;background:#f8f9fb;cursor:default}
+.cc-th-day.today{background:#dbeafe;border-bottom:2px solid #1d4ed8}
+.cc-th-day.hol{background:#fff5f5}
+.cc-th-wknd{background:#1F3864;border-right:1px solid #0d2748;border-bottom:2px solid #0d2748}
+.cc-crew-lc{background:#f0f4ff;border-right:2px solid #c5d0e8;border-bottom:1px solid #e4e8f0;padding:0 8px;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.cc-cell{padding:3px;border-right:1px solid #e4e8f0;border-bottom:1px solid #e4e8f0;vertical-align:top;overflow:hidden;cursor:pointer}
+.cc-cell.today{background:#f0f6ff}
+.cc-cell.wknd{background:#f5f5f5;border-right:1px solid #d0d7e3}
+.cc-cell.hol{background:#fff8f8}
+.cc-cell-inner{height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box}
+.cc-cell-inner.start{border-left-width:3px;border-left-style:solid}
+.cc-cell-inner.cont{border-left-width:2px;border-left-style:solid;opacity:.42}
+.cc-cell-inner.empty{border:1px dashed transparent}
+.cc-cell-inner.off{border-left:3px solid #dc2626;background:#fee2e2}
+.cc-job{font-size:8px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px}
+.cc-loc{font-size:11px;font-weight:700;color:#1a2b4a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.cc-client{font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.cc-divider{height:1px;margin:4px 0;opacity:.25}
+.cc-task-line{font-size:9px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;display:flex;align-items:flex-start;gap:3px}
+.cc-note-line{font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4;font-style:italic;display:flex;align-items:flex-start;gap:3px}
+/* Cell edit modal */
+.cc-edit-sec{background:#f8f9fc;border-radius:7px;padding:10px 12px;margin-bottom:10px}
+.cc-edit-sec-lbl{font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
+.cc-task-check{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;border:1px solid #e4e8f0;margin-bottom:3px;cursor:pointer;font-size:11px;color:#374151;transition:background .1s}
+.cc-task-check.checked{background:#f0f4ff;border-color:#c5d0e8;color:#1F3864}
+.cc-task-check input{accent-color:#1F3864;flex-shrink:0}
+.cc-eq-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:12px;font-size:11px;background:#f0f4ff;border:1px solid #c5d0e8;color:#1F3864;cursor:pointer;margin:2px}
+.cc-eq-chip .rm{color:#9ca3af;font-size:13px;margin-left:2px;line-height:1}
 /* ── Equipment Registry & Dispatch (M7) ─────────────────────────────────── */
 .eq-card{display:flex;align-items:flex-start;gap:10px;background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:7px;border:1px solid #e4e8f0;cursor:pointer;transition:box-shadow .12s}
 .eq-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
@@ -580,7 +618,7 @@ const S={
   equipment:[],                     // M7: Equipment Registry
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
-  mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[]},
+  mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[],crewAssignments:[]},
   // Phase 2: filter & sort state (persisted to localStorage per user)
   filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false},
   presets:[] // [{id,name,filter}]
@@ -633,7 +671,7 @@ function saveMgmt(){try{localStorage.setItem(_mgmtKey(),JSON.stringify(S.mgmt))}
 function loadMgmt(){
   try{
     const m=JSON.parse(localStorage.getItem(_mgmtKey())||'null');
-    if(m)S.mgmt={bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[],...m};
+    if(m)S.mgmt={bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[],crewAssignments:[],...m};
   }catch(e){}
 }
 
@@ -1437,6 +1475,70 @@ function activeEquipment(){
 function getDispatch(equipmentId){return(S.mgmt.equipmentDispatch||[]).filter(d=>d.equipment_id===equipmentId)}
 function allDispatch(){return S.mgmt.equipmentDispatch||[]}
 function saveDispatch(patch){S.mgmt.equipmentDispatch=patch;saveMgmt()}
+
+// ── Crew Calendar helpers ─────────────────────────────────────────────────────
+// crewCalWeekStart — Monday of the 2-week window, stored as ISO string in S.mgmt.
+// Defaults to the Monday of the current week.
+function getCalWeekStart(){
+  const stored=S.mgmt.calWeekStart;
+  if(stored)return stored;
+  const d=new Date(TODAY+'T12:00:00');
+  const dow=d.getDay();                     // 0=Sun,1=Mon…
+  const diff=dow===0?-6:1-dow;             // back to Monday
+  d.setDate(d.getDate()+diff);
+  return d.toISOString().slice(0,10);
+}
+function setCalWeekStart(iso){S.mgmt.calWeekStart=iso;saveMgmt();}
+// addDays(iso, n) — pure date arithmetic
+function addDays(iso,n){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+// workDaysInWindow(start) — returns array of 10 ISO dates (Mon–Fri × 2 weeks)
+function calWorkDays(weekStart){
+  const days=[];let d=weekStart;
+  while(days.length<10){
+    const wd=new Date(d+'T12:00:00').getDay();
+    if(wd!==0&&wd!==6)days.push(d);
+    d=addDays(d,1);
+    if(days.length===5)d=addDays(d,2); // skip weekend after week 1 — wait, simpler:
+    // Actually just walk day by day and skip weekends
+  }
+  // Rebuild properly:
+  const out=[];let cur=weekStart;let count=0;
+  while(out.length<10){
+    const wd=new Date(cur+'T12:00:00').getDay();
+    if(wd!==0&&wd!==6)out.push(cur);
+    cur=addDays(cur,1);
+  }
+  return out;
+}
+// projectOnDay(crewName, date) — returns the first project where this crew has
+// a task segment covering the given date. Returns project obj or null.
+function projectOnDay(crewName,date){
+  for(const proj of S.projects){
+    if(proj.archived||proj.status==='Complete')continue;
+    const tasks=projTasks(proj.id);
+    for(const task of tasks){
+      const crews=segCrews(null,task); // task-level crew
+      if(!crews.includes(crewName))continue;
+      for(const seg of task.segs){
+        if(seg.s&&seg.e&&date>=seg.s&&date<=seg.e)return proj;
+      }
+    }
+  }
+  return null;
+}
+// getCrewAssignment(crewName, date) — localStorage overlay for task/note/equipment
+function getCrewAssignment(crewName,date){
+  return(S.mgmt.crewAssignments||[]).find(a=>a.crew===crewName&&a.date===date)||null;
+}
+function saveCrewAssignment(asgn){
+  const list=(S.mgmt.crewAssignments||[]).filter(a=>!(a.crew===asgn.crew&&a.date===asgn.date));
+  if(asgn.task_ids.length||asgn.note||asgn.equipment_ids.length)list.push(asgn);
+  S.mgmt.crewAssignments=list;saveMgmt();
+}
+// timeOffOnDay(crewName, date) — check S.mgmt.timeOff
+function timeOffOnDay(crewName,date){
+  return(S.mgmt.timeOff||[]).some(t=>t.crew===crewName&&date>=t.from&&date<=t.to);
+}
 // reportEntries(reportId) — entries for one report
 function reportEntries(reportId){return(S.reportEntries||[]).filter(e=>e.report_id===reportId);}
 // crewOnDate(projectId, date) — employee names scheduled on a project on a given date
@@ -1867,6 +1969,7 @@ function openModal(){
   else if(S.modal.type==='subcontractor')buildSubcontractorModal(m);
   else if(S.modal.type==='equipment')buildEquipmentModal(m);
   else if(S.modal.type==='field-report')buildFieldReportModal(m);
+  else if(S.modal.type==='cc-cell-edit')buildCellEditModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
   else if(S.modal.type==='export')buildExportModal(m);
   bg.appendChild(m);root.appendChild(bg);
@@ -3303,6 +3406,7 @@ function render(){
   bgGrad=buildBgGrad(getHolIdxs());
   if(S.view==='gantt')main.appendChild(buildGantt());
   else if(S.view==='board')main.appendChild(buildBoard());
+  else if(S.view==='crew')main.appendChild(buildCrewCalendar());
   else if(S.view==='management')main.appendChild(buildManagement());
   else main.appendChild(buildSettings());
   restoreScroll(); // FIX CP4: apply after new DOM is attached
@@ -3332,7 +3436,7 @@ function buildToolbar(){
   const t=el('div');t.className='toolbar';t.id='toolbar';
   const logo=el('span');logo.className='logo';logo.textContent='🏗 Strada Schedule '+SEASON_YEAR;t.appendChild(logo);
   const tabs=el('div');tabs.className='tabs';
-  [['gantt','📅 Gantt'],['board','📋 Board'],['management','📊 Management'],['settings','⚙️ Settings']].forEach(([v,l])=>{
+  [['gantt','📅 Gantt'],['board','📋 Board'],['crew','👥 Crew'],['management','📊 Management'],['settings','⚙️ Settings']].forEach(([v,l])=>{
     const b=el('button');b.className='tab'+(S.view===v?' active':'');b.textContent=l;
     b.onclick=()=>{S.view=v;render()};tabs.appendChild(b);
   });t.appendChild(tabs);
@@ -4991,6 +5095,378 @@ Rules:
   wrap.appendChild(infoCard);
 
   return wrap;
+}
+
+// ── CREW CALENDAR VIEW ────────────────────────────────────────────────────────
+// Two-week grid: rows = crew leads, columns = Mon–Fri × 2.
+// Each cell shows the project scheduled for that crew on that day (from Gantt
+// segments), with editable task selection, notes, and equipment overlay stored
+// in S.mgmt.crewAssignments (localStorage — no DB migration required).
+function buildCrewCalendar(){
+  const wrap=el('div');wrap.className='cc-wrap';
+  const holDates=new Set(S.holidays.map(h=>h.date));
+
+  // ── Navigation ──────────────────────────────────────────────────────────
+  const weekStart=getCalWeekStart();
+  const workDays=calWorkDays(weekStart);   // 10 ISO date strings Mon–Fri × 2
+  const week2Start=workDays[5];
+
+  // Prev/Next step one work week (5 days forward/back, skip weekend)
+  function prevWeek(){
+    let d=addDays(weekStart,-1);
+    while(new Date(d+'T12:00:00').getDay()===0||new Date(d+'T12:00:00').getDay()===6)d=addDays(d,-1);
+    // Go to Monday of that week
+    const dow2=new Date(d+'T12:00:00').getDay();
+    d=addDays(d,1-dow2);
+    setCalWeekStart(d);render();
+  }
+  function nextWeek(){
+    let d=addDays(workDays[4],3); // skip weekend after fri
+    setCalWeekStart(d);render();
+  }
+
+  // ── Nav bar ──────────────────────────────────────────────────────────────
+  const nav=el('div');nav.className='cc-nav';
+  const prevBtn=el('button');prevBtn.className='btn-sec';prevBtn.style.fontSize='12px';prevBtn.textContent='← Prev week';
+  prevBtn.onclick=prevWeek;nav.appendChild(prevBtn);
+  const navLabel=el('div');navLabel.className='cc-nav-label';
+  const fmt=s=>fmtDate(s);
+  const t1=el('div');t1.className='cc-nav-title';t1.textContent=fmt(workDays[0])+' – '+fmt(workDays[9])+', '+new Date(workDays[0]+'T12:00:00').getFullYear();
+  const t2=el('div');t2.className='cc-nav-sub';t2.textContent='Two-week crew schedule — click any cell to edit task & notes';
+  navLabel.appendChild(t1);navLabel.appendChild(t2);nav.appendChild(navLabel);
+  const nextBtn=el('button');nextBtn.className='btn-sec';nextBtn.style.fontSize='12px';nextBtn.textContent='Next week →';
+  nextBtn.onclick=nextWeek;nav.appendChild(nextBtn);
+  wrap.appendChild(nav);
+
+  // ── Table ────────────────────────────────────────────────────────────────
+  const tableWrap=el('div');tableWrap.className='cc-table-wrap';
+  const table=el('table');table.className='cc-table';
+
+  // Column widths: 120px crew label + 10 day cols
+  const CREW_W=120,DAY_W=96;
+  const cg=el('colgroup');
+  const c0=el('col');c0.style.width=CREW_W+'px';cg.appendChild(c0);
+  workDays.forEach(()=>{const c=el('col');c.style.width=DAY_W+'px';cg.appendChild(c);});
+  table.appendChild(cg);
+
+  // ── Header row 1: week labels ──────────────────────────────────────────
+  const thead=el('thead');
+  const hr1=el('tr');
+  const th0=el('th');th0.className='cc-th-crew';th0.textContent='CREW / DATE';hr1.appendChild(th0);
+  // Week 1 label spanning 5 cols
+  const wk1th=el('th');wk1th.colSpan=5;wk1th.className='cc-th-wk';
+  wk1th.textContent='WEEK OF '+new Date(workDays[0]+'T12:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric'}).toUpperCase();
+  hr1.appendChild(wk1th);
+  // Week 2 label spanning 5 cols
+  const wk2th=el('th');wk2th.colSpan=5;wk2th.className='cc-th-wk';
+  wk2th.textContent='WEEK OF '+new Date(workDays[5]+'T12:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric'}).toUpperCase();
+  hr1.appendChild(wk2th);
+  thead.appendChild(hr1);
+
+  // ── Header row 2: day labels ──────────────────────────────────────────
+  const hr2=el('tr');
+  const th00=el('th');th00.className='cc-th-crew';th00.style.fontWeight='400';th00.style.fontSize='9px';
+  th00.textContent='Click cell to edit';hr2.appendChild(th00);
+  workDays.forEach((date,di)=>{
+    const d=new Date(date+'T12:00:00');
+    const isToday=date===TODAY;const isHol=holDates.has(date);
+    const th=el('th');
+    th.className='cc-th-day'+(isToday?' today':isHol?' hol':'');
+    const dn=el('div');dn.style.cssText='font-size:8px;font-weight:700;color:'+(isToday?'#1d4ed8':isHol?'#dc2626':'#9ca3af')+';letter-spacing:.3px';
+    dn.textContent=['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
+    const dd=el('div');dd.style.cssText='font-size:16px;font-weight:'+(isToday?'700':'500')+';color:'+(isToday?'#1d4ed8':isHol?'#dc2626':'#1a2b4a')+';line-height:1.15';
+    dd.textContent=d.getDate();
+    th.appendChild(dn);th.appendChild(dd);
+    if(isToday){const pill=el('div');pill.style.cssText='font-size:7px;font-weight:700;color:#1d4ed8;background:rgba(29,78,216,.1);border-radius:3px;padding:1px 4px;display:inline-block;letter-spacing:.3px';pill.textContent='TODAY';th.appendChild(pill)}
+    if(isHol){
+      const hname=S.holidays.find(h=>h.date===date);
+      const hp=el('div');hp.style.cssText='font-size:7px;color:#dc2626;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:'+(DAY_W-8)+'px';
+      hp.textContent=hname?hname.name:'Holiday';th.appendChild(hp);
+    }
+    // Week separator: bold right border after col 4 (index 4)
+    if(di===4)th.style.borderRight='2px solid #c5d0e8';
+    hr2.appendChild(th);
+  });
+  thead.appendChild(hr2);
+  table.appendChild(thead);
+
+  // ── Body: one row per crew ────────────────────────────────────────────
+  const tbody=el('tbody');
+  const crews=S.crews.slice().sort((a,b)=>a.sort_order-b.sort_order);
+
+  crews.forEach((crew,ri)=>{
+    const row=el('tr');
+
+    // Crew label cell
+    const lc=el('td');lc.className='cc-crew-lc';lc.style.height='94px';
+    const ldiv=el('div');ldiv.style.cssText='display:flex;align-items:center;gap:7px;';
+    const dot=el('div');dot.style.cssText='width:10px;height:10px;border-radius:50%;background:'+crew.color+';flex-shrink:0';
+    const nm=el('span');nm.style.cssText='font-size:12px;font-weight:700;color:#1a2b4a';nm.textContent=crew.name;
+    ldiv.appendChild(dot);ldiv.appendChild(nm);lc.appendChild(ldiv);
+    row.appendChild(lc);
+
+    // Day cells
+    workDays.forEach((date,di)=>{
+      const isToday=date===TODAY;
+      const isHol=holDates.has(date);
+      const td=el('td');
+      td.className='cc-cell'+(isToday?' today':isHol?' hol':'');
+      if(di===4)td.style.borderRight='2px solid #c5d0e8';
+
+      // Determine what's on for this crew on this date
+      const off=timeOffOnDay(crew.name,date);
+      const proj=off?null:projectOnDay(crew.name,date);
+      const asgn=proj?getCrewAssignment(crew.name,date):null;
+
+      // Check if this is a continuation (same project as previous workday)
+      const prevDate=di>0?workDays[di-1]:null;
+      const prevProj=prevDate&&!off?projectOnDay(crew.name,prevDate):null;
+      const isCont=proj&&prevProj&&proj.id===prevProj.id;
+
+      // Build inner cell
+      const inner=el('div');
+      inner.className='cc-cell-inner '+(off?'off':proj?isCont?'cont':'start':'empty');
+
+      if(off){
+        // Time off
+        inner.style.cssText='height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box;border-left:3px solid #dc2626;background:#fee2e2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px';
+        const ol=el('div');ol.style.cssText='font-size:10px;color:#991b1b;font-weight:700';ol.textContent='Time off';inner.appendChild(ol);
+        const ol2=el('div');ol2.style.cssText='font-size:9px;color:#c9190b';
+        const tof=(S.mgmt.timeOff||[]).find(t=>t.crew===crew.name&&date>=t.from&&date<=t.to);
+        ol2.textContent=tof&&tof.note?tof.note:'';inner.appendChild(ol2);
+      }else if(proj){
+        // Project assignment
+        inner.style.cssText='height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box;border-left-width:'+(isCont?'2':'3')+'px;border-left-style:solid;border-left-color:'+(isCont?crew.color+'55':crew.color)+';background:'+crew.color+(isCont?'0B':'18');
+        const opacity=isCont?0.45:1;
+        // Job number
+        const jn=el('div');jn.className='cc-job';jn.style.cssText='font-size:8px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;color:'+crew.color+';opacity:'+opacity;
+        jn.textContent=proj.job_num;inner.appendChild(jn);
+        // Location (primary)
+        const loc=el('div');loc.className='cc-loc';loc.style.cssText='font-size:11px;font-weight:700;color:#1a2b4a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;opacity:'+opacity;
+        loc.textContent=proj.loc||proj.client;inner.appendChild(loc);
+        // Client (if different from loc)
+        if(proj.client&&proj.loc&&proj.client!==proj.loc){
+          const cl=el('div');cl.className='cc-client';cl.style.cssText='font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;opacity:'+opacity;
+          cl.textContent=proj.client;inner.appendChild(cl);
+        }
+        // Task/note/equipment — only on start days or days with explicit assignment
+        if(!isCont||(asgn&&(asgn.task_ids.length||asgn.note||asgn.equipment_ids.length))){
+          const tasks=projTasks(proj.id);
+          const selTasks=asgn&&asgn.task_ids.length
+            ?asgn.task_ids.map(id=>tasks.find(t=>t.id===id)).filter(Boolean)
+            :tasks.slice(0,1); // default: show first task if no selection made
+          if(selTasks.length||(asgn&&(asgn.note||asgn.equipment_ids.length))){
+            const div=el('div');div.className='cc-divider';div.style.cssText='height:1px;margin:4px 0;background:'+crew.color;inner.appendChild(div);
+          }
+          selTasks.forEach(t=>{
+            const tl=el('div');tl.className='cc-task-line';
+            const tick=el('span');tick.style.cssText='color:'+crew.color+';font-size:9px;flex-shrink:0;margin-top:1px';tick.textContent='✓';
+            const txt=el('span');txt.textContent=t.descr;
+            tl.appendChild(tick);tl.appendChild(txt);inner.appendChild(tl);
+          });
+          if(asgn&&asgn.note){
+            const nl=el('div');nl.className='cc-note-line';
+            const ico=el('span');ico.style.flexShrink='0';ico.textContent='📝';
+            const nt=el('span');nt.textContent=asgn.note;
+            nl.appendChild(ico);nl.appendChild(nt);inner.appendChild(nl);
+          }
+          if(asgn&&asgn.equipment_ids&&asgn.equipment_ids.length){
+            const eqs=asgn.equipment_ids.map(id=>S.equipment.find(e=>e.id===id)).filter(Boolean);
+            if(eqs.length){
+              const el2=el('div');el2.className='cc-note-line';
+              const ico=el('span');ico.style.flexShrink='0';ico.textContent='🚜';
+              const txt=el('span');txt.textContent=eqs.map(e=>e.name).join(', ');
+              el2.appendChild(ico);el2.appendChild(txt);inner.appendChild(el2);
+            }
+          }
+        }
+      }else{
+        // Empty — blank, shows available capacity
+        inner.style.cssText='height:88px;border-radius:5px;overflow:hidden;box-sizing:border-box;';
+      }
+
+      // Click handler — open edit panel
+      if(!off){
+        td.style.cursor='pointer';
+        td.onclick=()=>openCellEdit(crew,date,proj,asgn);
+      }
+      td.appendChild(inner);row.appendChild(td);
+    });
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  wrap.appendChild(tableWrap);
+
+  // Legend
+  const legend=el('div');legend.style.cssText='display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;padding:0 2px';
+  const mkLeg=(bg,border,label)=>{
+    const d=el('div');d.style.cssText='display:flex;align-items:center;gap:5px';
+    const box=el('div');box.style.cssText='width:36px;height:14px;border-radius:3px;background:'+bg+';border-left:3px solid '+border;
+    const lbl=el('span');lbl.style.cssText='font-size:11px;color:#6b7280';lbl.textContent=label;
+    d.appendChild(box);d.appendChild(lbl);return d;
+  };
+  legend.appendChild(mkLeg('rgba(0,114,200,.1)','#0072C8','New project start'));
+  legend.appendChild(mkLeg('rgba(0,114,200,.04)','rgba(0,114,200,.33)','Continues'));
+  legend.appendChild(mkLeg('#fee2e2','#dc2626','Time off'));
+  legend.appendChild(mkLeg('#f8f9fb','transparent','Unscheduled'));
+  wrap.appendChild(legend);
+
+  return wrap;
+}
+
+// ── CELL EDIT PANEL ───────────────────────────────────────────────────────────
+// Opens a modal to select tasks, add notes, and assign equipment for one
+// crew+date slot. Saves to S.mgmt.crewAssignments (localStorage).
+function openCellEdit(crew,date,proj,existingAsgn){
+  const d=new Date(date+'T12:00:00');
+  const dayLabel=d.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
+
+  // Working copy of assignment
+  const asgn={
+    crew:crew.name, date,
+    project_id:proj?proj.id:null,
+    task_ids:existingAsgn?[...existingAsgn.task_ids]:[],
+    note:existingAsgn?existingAsgn.note:'',
+    equipment_ids:existingAsgn?[...existingAsgn.equipment_ids]:[],
+  };
+
+  S.modal={type:'cc-cell-edit',crew,date,proj,asgn};
+  openModal();
+}
+
+function buildCellEditModal(m){
+  const ms=S.modal;
+  const {crew,date,proj,asgn}=ms;
+  const d=new Date(date+'T12:00:00');
+  const dayLabel=d.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
+
+  // Header
+  const hdr=el('div');hdr.className='modal-hdr';
+  const ht=el('div');
+  const h3=el('h3');h3.textContent=crew.name+' — '+dayLabel;ht.appendChild(h3);
+  if(proj){const sub=el('div');sub.style.cssText='font-size:11px;color:#6b7280;margin-top:2px';sub.textContent='Select tasks for today (max 3)';ht.appendChild(sub);}
+  hdr.appendChild(ht);
+  const cls=el('button');cls.className='modal-close';cls.innerHTML='&times;';cls.onclick=closeModal;hdr.appendChild(cls);
+  m.appendChild(hdr);
+
+  // No project case
+  if(!proj){
+    const np=el('div');np.style.cssText='background:#f8f9fb;border-radius:7px;padding:16px;margin-bottom:12px;text-align:center;color:#9ca3af;font-size:12px';
+    np.textContent='No project scheduled for this crew on this date. Assign tasks via the Gantt first.';m.appendChild(np);
+    const ftr=el('div');ftr.className='modal-footer';
+    const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+    const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Close';cancel.onclick=closeModal;rb.appendChild(cancel);
+    ftr.appendChild(el('div'));ftr.appendChild(rb);m.appendChild(ftr);
+    return;
+  }
+
+  // ── Project summary ────────────────────────────────────────────────────
+  const projSec=el('div');projSec.style.cssText='background:'+crew.color+'12;border:1px solid '+crew.color+'30;border-left:3px solid '+crew.color+';border-radius:7px;padding:10px 12px;margin-bottom:12px';
+  const pn=el('div');pn.style.cssText='font-size:13px;font-weight:700;color:#1a2b4a';pn.textContent=proj.loc||proj.client;projSec.appendChild(pn);
+  const pm=el('div');pm.style.cssText='font-size:11px;color:#6b7280;margin-top:2px';
+  pm.textContent=[proj.client!==proj.loc?proj.client:null,proj.job_num,proj.status].filter(Boolean).join(' · ');
+  projSec.appendChild(pm);m.appendChild(projSec);
+
+  // ── Task selection (all tasks for this project) ────────────────────────
+  const tasks=projTasks(proj.id);
+  if(tasks.length){
+    const taskSec=el('div');taskSec.className='cc-edit-sec';
+    const tl=el('div');tl.className='cc-edit-sec-lbl';tl.textContent='Tasks for today (max 3)';taskSec.appendChild(tl);
+    const selCount=el('div');selCount.style.cssText='font-size:10px;color:#6b7280;margin-bottom:6px';
+
+    function updateSelCount(){
+      selCount.textContent=asgn.task_ids.length+' of 3 selected';
+      selCount.style.color=asgn.task_ids.length>=3?'#dc2626':'#6b7280';
+    }
+    taskSec.appendChild(selCount);updateSelCount();
+
+    tasks.forEach(task=>{
+      const checked=asgn.task_ids.includes(task.id);
+      const row=el('label');row.className='cc-task-check'+(checked?' checked':'');
+      const cb=el('input');cb.type='checkbox';cb.checked=checked;
+      cb.onchange=e=>{
+        if(e.target.checked){
+          if(asgn.task_ids.length>=3){e.target.checked=false;toast('Maximum 3 tasks per day.','error');return}
+          asgn.task_ids.push(task.id);row.classList.add('checked');
+        }else{
+          asgn.task_ids=asgn.task_ids.filter(id=>id!==task.id);row.classList.remove('checked');
+        }
+        updateSelCount();
+      };
+      row.appendChild(cb);
+      const span=el('span');span.textContent=task.descr;row.appendChild(span);
+      // Crew hint
+      if(task.crew){const crewHint=el('span');crewHint.style.cssText='margin-left:auto;font-size:9px;color:#9ca3af;flex-shrink:0;padding-left:8px';crewHint.textContent=task.crew;row.appendChild(crewHint)}
+      taskSec.appendChild(row);
+    });
+    m.appendChild(taskSec);
+  }
+
+  // ── Equipment ─────────────────────────────────────────────────────────
+  const activeEq=activeEquipment();
+  if(activeEq.length){
+    const eqSec=el('div');eqSec.className='cc-edit-sec';
+    const el2=el('div');el2.className='cc-edit-sec-lbl';el2.textContent='Equipment for today';eqSec.appendChild(el2);
+    const chipWrap=el('div');chipWrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px';
+
+    function renderEqChips(){
+      chipWrap.innerHTML='';
+      asgn.equipment_ids.forEach(eid=>{
+        const eq=S.equipment.find(e=>e.id===eid);if(!eq)return;
+        const ti=EQ_TYPE_MAP[eq.equipment_type]||EQ_TYPE_MAP.other;
+        const chip=el('span');chip.className='cc-eq-chip';
+        chip.innerHTML=ti.icon+' '+eq.name+'<span class="rm">×</span>';
+        chip.querySelector('.rm').onclick=()=>{asgn.equipment_ids=asgn.equipment_ids.filter(id=>id!==eid);renderEqChips();};
+        chipWrap.appendChild(chip);
+      });
+    }
+    renderEqChips();eqSec.appendChild(chipWrap);
+
+    // Equipment selector dropdown
+    const eqRow=el('div');eqRow.style.cssText='display:flex;gap:8px;align-items:center';
+    const eqSel=inp2('',()=>{},'select',
+      [['','+ Add equipment'],...activeEq.filter(e=>!asgn.equipment_ids.includes(e.id)).map(e=>[(EQ_TYPE_MAP[e.equipment_type]||EQ_TYPE_MAP.other).icon+' '+e.name,e.name,e.id])
+        .map(([label,,id])=>[id,label])]);
+    eqSel.style.cssText='flex:1;font-size:12px';
+    eqSel.onchange=e=>{
+      const id=e.target.value;if(!id)return;
+      if(!asgn.equipment_ids.includes(id))asgn.equipment_ids.push(id);
+      e.target.value='';renderEqChips();
+    };
+    eqRow.appendChild(eqSel);eqSec.appendChild(eqRow);
+    m.appendChild(eqSec);
+  }
+
+  // ── Notes ─────────────────────────────────────────────────────────────
+  const noteSec=el('div');noteSec.className='cc-edit-sec';
+  const nl=el('div');nl.className='cc-edit-sec-lbl';nl.textContent='Notes / Site instructions';noteSec.appendChild(nl);
+  const noteTA=el('textarea');noteTA.className='inp';noteTA.style.cssText='min-height:56px;resize:vertical;font-size:12px';
+  noteTA.placeholder='Delivery times, inspector visit, safety notes, materials required…';
+  noteTA.value=asgn.note||'';noteTA.oninput=e=>{asgn.note=e.target.value};
+  noteSec.appendChild(noteTA);m.appendChild(noteSec);
+
+  // ── Footer ────────────────────────────────────────────────────────────
+  const ftr=el('div');ftr.className='modal-footer';
+  const lb=el('div');
+  const hadExisting=!!(existingAsgn&&(existingAsgn.task_ids.length||existingAsgn.note||existingAsgn.equipment_ids.length));
+  if(hadExisting||(asgn.task_ids.length||asgn.note||asgn.equipment_ids.length)){
+    const clrBtn=el('button');clrBtn.className='btn-danger';clrBtn.textContent='Clear day';
+    clrBtn.onclick=()=>{
+      saveCrewAssignment({crew:crew.name,date,project_id:proj?proj.id:null,task_ids:[],note:'',equipment_ids:[]});
+      closeModal();render();
+    };lb.appendChild(clrBtn);
+  }
+  ftr.appendChild(lb);
+  const rb=el('div');rb.style.cssText='display:flex;gap:8px';
+  const cancel=el('button');cancel.className='btn-sec';cancel.textContent='Cancel';cancel.onclick=closeModal;rb.appendChild(cancel);
+  const save=el('button');save.className='btn-primary';save.textContent='Save';
+  save.onclick=()=>{
+    saveCrewAssignment(asgn);
+    closeModal();render();
+  };rb.appendChild(save);
+  ftr.appendChild(rb);m.appendChild(ftr);
 }
 
 // ── BOARD ─────────────────────────────────────────────────────────────────────
