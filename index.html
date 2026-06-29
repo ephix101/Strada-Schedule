@@ -792,6 +792,8 @@ const Data = {
 function setFilter(patch){Object.assign(state.filters,patch);
   if(_opts.write&&_opts.write.viewPref){try{_opts.write.viewPref({sortBy:state.filters.sortBy,hideComplete:state.filters.hideComplete,showArchived:state.filters.showArchived});}catch(e){}}
   save();render();}
+function editProject(p){if(_opts.openProjectModal){_opts.openProjectModal(p.id);return;}Modal.project(p);}
+function newProject(){if(_opts.openProjectModal){_opts.openProjectModal(null);return;}const p=Data.addProject();Modal.project(p);}
 function projStart(p){let s=null;projTasks(p.id).forEach(t=>(t.segs||[]).forEach(sg=>{if(sg.s&&(!s||sg.s<s))s=sg.s;}));return s;}
 function projVPD(p){if(p.value==null||!p.value)return null;let d=0;projTasks(p.id).forEach(t=>d+=workDays(t));return d>0?p.value/d:null;}
 function sortProjects(projs,mode){
@@ -974,7 +976,7 @@ function labelProj(p){
   const addB=mk("button");addB.textContent="+";addB.title="Add task";
   addB.onclick=(e)=>{e.stopPropagation();const t=Data.addTask(p.id);Modal.task(t,true);};
   const edB=mk("button");edB.textContent="✎";edB.title="Edit project";
-  edB.onclick=(e)=>{e.stopPropagation();Modal.project(p);};
+  edB.onclick=(e)=>{e.stopPropagation();editProject(p);};
   act.appendChild(addB);act.appendChild(edB);r.appendChild(act);
   return r;
 }
@@ -1172,7 +1174,7 @@ function renderToolbar(){
   const expB=mk("button","tb-btn");expB.textContent="Export";expB.onclick=()=>Export.open();
   const reset=mk("button","tb-btn");reset.textContent="Reset data";reset.title="Restore sample data";
   reset.onclick=()=>{if(confirm("Reset to sample data? Your changes in this browser will be lost."))resetData();};
-  const addP=mk("button","tb-btn primary");addP.textContent="+ Project";addP.onclick=()=>{const p=Data.addProject();Modal.project(p);};
+  const addP=mk("button","tb-btn primary");addP.textContent="+ Project";addP.onclick=()=>newProject();
   const _tb=[zoom,colB,today];
   if(!_opts.embedded)_tb.push(holB);   // holidays managed in the app Settings tab when embedded
   if(!_opts.embedded)_tb.push(expB);   // when embedded, the host app provides its own (richer) export
@@ -1367,7 +1369,7 @@ const Keys = {
         case "t":ScrollSync.toToday();break;
         case "+":case "=":setZoom(Math.min(54,CFG.dayW+4));break;
         case "-":setZoom(Math.max(16,CFG.dayW-4));break;
-        case "n":{const p=Data.addProject();Modal.project(p);break;}
+        case "n":{newProject();break;}
         case "c":Data.collapseAll(true);render();break;
         case "e":Data.collapseAll(false);render();break;
         case "/":{e.preventDefault();const sr=document.getElementById("searchInput");if(sr)sr.focus();break;}
@@ -1523,11 +1525,11 @@ const Ctx = {
   },
   forProject(p){
     return [
-      {label:"Edit project\u2026",action:()=>Modal.project(p)},
+      {label:"Edit project\u2026",action:()=>editProject(p)},
       {label:"Add task",action:()=>{const t=Data.addTask(p.id);Modal.task(t,true);}},
       {label:"Status",submenu:CFG.statuses.map(st=>({label:st,checked:p.status===st,action:()=>{Data.updateProject(p.id,{status:st});render();}}))},
       {label:p.collapsed?"Expand":"Collapse",action:()=>{Data.toggleCollapse(p.id);render();}},
-      {label:"Edit locates\u2026",action:()=>Modal.project(p)},
+      {label:"Edit locates\u2026",action:()=>editProject(p)},
       {label:p.archived?"\u{1F4C1} Restore from archive":"\u{1F4C1} Archive project",action:()=>{Data.setArchived(p.id,!p.archived);render();}},
       {sep:true},
       {label:"Delete project",danger:true,action:()=>{if(confirm("Delete project and all its tasks?")){Data.deleteProject(p.id);render();}}}
@@ -1543,7 +1545,7 @@ const Ctx = {
   },
   forBlank(){
     return [
-      {label:"New project",action:()=>{const p=Data.addProject();Modal.project(p);}},
+      {label:"New project",action:()=>newProject()},
       {label:"Jump to today",action:()=>ScrollSync.toToday()},
       {sep:true},
       {label:"Collapse all",action:()=>{Data.collapseAll(true);render();}},
@@ -4287,7 +4289,93 @@ function parseEstimateLocally(t){
   return result;
 }
 
+async function loadSheetJS(){
+  // Lazy-load SheetJS only when a spreadsheet is imported (same pattern as mammoth for .docx).
+  if(typeof XLSX==='undefined'){
+    await new Promise((resolve,reject)=>{
+      const sc=document.createElement('script');
+      sc.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      sc.onload=resolve;
+      sc.onerror=()=>reject(new Error('Could not load the spreadsheet parser. Check your connection, or export the schedule to CSV.'));
+      document.head.appendChild(sc);
+    });
+  }
+}
+function csvToRows(text){
+  // Minimal RFC-4180-ish CSV: handles quoted fields with embedded commas/newlines.
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){const ch=text[i];
+    if(q){if(ch==='"'){if(text[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;}
+    else{if(ch==='"')q=true;
+      else if(ch===','){row.push(cur);cur='';}
+      else if(ch==='\n'){row.push(cur);rows.push(row);row=[];cur='';}
+      else if(ch==='\r'){}
+      else cur+=ch;}}
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  return rows;
+}
+async function parseSpreadsheet(file){
+  const name=(file.name||'').toLowerCase();
+  let rows;
+  if(name.endsWith('.csv')){rows=csvToRows(await file.text());}
+  else{await loadSheetJS();const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});}
+  return classifyPriceSchedule(rows);
+}
+// Turn an OPSS-style price schedule (Item No / Description / Qty / Unit / Unit Price / Cost)
+// into {job_num, client, location, value, tasks}. Category header rows and the TOTAL are skipped.
+function classifyPriceSchedule(rows){
+  const norm=v=>v==null?'':String(v).trim();
+  let hi=-1;
+  for(let i=0;i<rows.length;i++){const cells=(rows[i]||[]).map(c=>norm(c).toLowerCase());
+    if(cells.some(c=>c.includes('item'))&&cells.some(c=>c.includes('description'))){hi=i;break;}}
+  if(hi<0)throw new Error('No header row with "Item" and "Description" columns found — is this a price schedule?');
+  const H=(rows[hi]||[]).map(c=>norm(c).toLowerCase());
+  const findCol=test=>{for(let j=0;j<H.length;j++){if(H[j]&&test(H[j]))return j;}return -1;};
+  const ci={
+    item:findCol(c=>(c.includes('item')&&c.includes('no'))||c==='item'),
+    desc:findCol(c=>c.includes('description')),
+    qty:findCol(c=>c.includes('qty')||c.includes('quantity')),
+    unit:findCol(c=>c==='unit'||(c.includes('unit')&&!c.includes('price'))),
+    up:findCol(c=>c.includes('unit')&&c.includes('price')),
+    cost:findCol(c=>c.includes('cost')||c.includes('amount')||(c.includes('price')&&!c.includes('unit')))
+  };
+  if(ci.desc<0)throw new Error('Could not find a Description column.');
+  const BOILER=['price schedule','incorporated by reference','company name'];
+  let title='';
+  for(let i=0;i<hi;i++){const vals=(rows[i]||[]).map(norm).filter(Boolean);
+    if(vals.length===1&&!BOILER.some(b=>vals[0].toLowerCase().includes(b))){title=vals[0];break;}}
+  const codes=[],rest=[];
+  title.split(/\s+/).forEach(t=>{if(!rest.length&&/^[A-Z0-9][A-Z0-9\-]{3,}$/.test(t))codes.push(t);else if(t)rest.push(t);});
+  const num=v=>{if(v==null||v==='')return null;const n=parseFloat(String(v).replace(/[, $]/g,''));return isNaN(n)?null:n;};
+  const tasks=[];let cat='';
+  for(let i=hi+1;i<rows.length;i++){const r=rows[i]||[];
+    const itemNo=ci.item>=0?norm(r[ci.item]):'';
+    const desc=ci.desc>=0?norm(r[ci.desc]):'';
+    if(!desc)continue;
+    if(desc.toUpperCase()==='TOTAL')break;
+    const qty=ci.qty>=0?num(r[ci.qty]):null;
+    const up=ci.up>=0?num(r[ci.up]):null;
+    if(/^[A-Za-z]$/.test(itemNo)&&qty==null&&up==null){cat=desc;continue;}   // category header
+    const unit=ci.unit>=0?norm(r[ci.unit]):'';
+    const cost=ci.cost>=0?num(r[ci.cost]):null;
+    const short=desc.split(' - ')[0].trim()||desc;
+    const qtyStr=(qty!=null?String(qty)+(unit?' '+unit:''):unit);
+    const notes=[itemNo?'['+itemNo+']':'',cat,qtyStr].filter(Boolean).join(' \u00b7 ')+'\n'+desc;
+    tasks.push({id:uid(),description:short,quantity:qtyStr,value:(cost!=null?Math.round(cost*100)/100:''),notes:notes});
+  }
+  if(tasks.length===0)throw new Error('No priced line items found below the header row.');
+  return {job_num:codes[0]||'',client:'',location:rest.join(' '),
+    value:Math.round(tasks.reduce((a,t)=>a+(Number(t.value)||0),0)*100)/100,tasks};
+}
+
 async function runAnalysis(file,pasteText){
+  // ── SPREADSHEET PATH (xlsx / xls / csv) — local parse, no API key ──────────
+  if(file && /\.(xlsx|xls|csv)$/i.test(file.name||'')){
+    return await parseSpreadsheet(file);
+  }
   // ── PASTE TEXT PATH ───────────────────────────────────────────────────────
   // If the user pasted text, try the local parser first — no API key required.
   // This works reliably for QBO estimates and Strada estimates.
@@ -4645,6 +4733,18 @@ const adaptOut={
   viewPref(v){if(v.sortBy!==undefined)S.filter.sortBy=v.sortBy;if(v.hideComplete!==undefined)S.filter.hideComplete=!!v.hideComplete;if(v.showArchived!==undefined)S.filter.showArchived=!!v.showArchived;saveFilters();}
 };
 let _gv2host=null,_gv2mounted=false,_gv2mounting=false;
+function openAppProjModal(id){
+  // Open the app's FULL project modal (financials, invoice prompt, inline tasks,
+  // locates/soils) from inside the embedded Gantt — reuses buildProjModal.
+  if(id){
+    const p=S.projects.find(x=>x.id===id);
+    if(!p)return;
+    S.modal={type:'proj',isNew:false,p:{...p}};
+  }else{
+    S.modal={type:'proj',isNew:true,p:{id:uid(),job_num:'',client:'',loc:'',loc_exp:null,status:'Not started',collapsed:false,sort_order:S.projects.length,job_value:null,po_num:null,estimate_num:null,invoice_num:null,locates_req:'no',soils_req:false,notes:null,locate_public_ordered:false,locate_private_ordered:false,locate_public_complete:false,locate_private_complete:false,locate_public_req:null,locate_private_req:null}};
+  }
+  openModal();
+}
 function mountOrRefreshGV2(){
   const main=document.getElementById('main');
   if(!_gv2host){_gv2host=el('div');_gv2host.style.cssText='flex:1;min-height:0';}
@@ -4652,7 +4752,7 @@ function mountOrRefreshGV2(){
   if(_gv2mounted){try{window.GanttV2.refresh(adaptIn());}catch(e){console.error('[gv2 refresh]',e);}return;}
   if(_gv2mounting)return;
   _gv2mounting=true;
-  queueMicrotask(()=>{try{window.GanttV2.mount(_gv2host,{data:adaptIn(),write:adaptOut,newId:()=>uid(),embedded:true});_gv2mounted=true;}
+  queueMicrotask(()=>{try{window.GanttV2.mount(_gv2host,{data:adaptIn(),write:adaptOut,newId:()=>uid(),embedded:true,openProjectModal:openAppProjModal});_gv2mounted=true;}
     catch(e){console.error('[gv2 mount]',e);}finally{_gv2mounting=false;}});
 }
 function buildGantt(){
@@ -6947,15 +7047,15 @@ function buildImportInput(m,ms){
   pasteWrap.appendChild(pasteLbl);pasteWrap.appendChild(ta);pasteWrap.appendChild(pasteCounter);m.appendChild(pasteWrap);
 
   // ── SECONDARY: File upload (requires API key) ─────────────────────────────
-  const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or upload a file (requires Anthropic API key in Settings)';m.appendChild(orDiv);
+  const orDiv=el('div');orDiv.className='import-or';orDiv.textContent='or upload a PDF, Word, or Excel/CSV file (spreadsheets parse instantly; PDF/Word need an Anthropic API key)';m.appendChild(orDiv);
   const zone=el('div');zone.className='drop-zone';zone.style.cssText='margin-top:0;padding:16px 20px';
   const ico=el('div');ico.className='drop-zone-icon';ico.style.fontSize='22px';ico.textContent='📄';zone.appendChild(ico);
-  const dt=el('div');dt.className='drop-zone-text';dt.textContent='Click to select a PDF or Word (.docx) file';zone.appendChild(dt);
+  const dt=el('div');dt.className='drop-zone-text';dt.textContent='Click to select a PDF, Word (.docx), or Excel/CSV file';zone.appendChild(dt);
   const fl=el('div');fl.className='drop-zone-file';fl.textContent=ms.file?'📎 '+ms.file.name:'';zone.appendChild(fl);
-  const fi=el('input');fi.type='file';fi.accept='.pdf,.docx';fi.style.display='none';
+  const fi=el('input');fi.type='file';fi.accept='.pdf,.docx,.xlsx,.xls,.csv';fi.style.display='none';
   fi.onchange=e=>{
     const f=e.target.files[0];ms.file=f||null;
-    fl.textContent=f?'📎 '+f.name:'';dt.textContent=f?'File selected — click Analyze to continue':'Click to select a PDF or Word (.docx) file';
+    fl.textContent=f?'📎 '+f.name:'';dt.textContent=f?'File selected — click Analyze to continue':'Click to select a PDF, Word (.docx), or Excel/CSV file';
   };
   zone.onclick=()=>fi.click();
   zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag-over')});
@@ -7012,6 +7112,7 @@ function buildImportPreview(m,ms){
   const sw=el('div');const sl=el('label');sl.className='lbl';sl.textContent='Status';sw.appendChild(sl);
   sw.appendChild(inp2(ms.editProj.status||'Not started',e=>{ms.editProj.status=e.target.value},'select',ST_OPTS.map(s=>[s,s])));grid.appendChild(sw);
   addF('Client','client',true);addF('Location / Project Name','location',true);
+  addF('Estimated Value ($)','value',false);
   sec.appendChild(grid);m.appendChild(sec);
   // Tasks header
   const th=el('div');th.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px';
@@ -7021,7 +7122,7 @@ function buildImportPreview(m,ms){
   // Tasks table
   const tbl=el('table');tbl.className='preview-table';
   const thead=el('thead');const hr=el('tr');
-  [['Task Description','60%'],['Quantity / Unit','25%'],['','15%']].forEach(([t,w])=>{
+  [['Task Description','46%'],['Quantity / Unit','22%'],['Value $','20%'],['','12%']].forEach(([t,w])=>{
     const th2=el('th');th2.textContent=t;th2.style.width=w;hr.appendChild(th2);
   });thead.appendChild(hr);tbl.appendChild(thead);
   const tbody=el('tbody');
@@ -7031,6 +7132,8 @@ function buildImportPreview(m,ms){
     di.oninput=e=>{ms.editTasks[ti].description=e.target.value};td1.appendChild(di);tr.appendChild(td1);
     const td2=el('td');const qi=el('input');qi.className='preview-inp';qi.value=task.quantity;qi.placeholder='e.g. 304 m²';
     qi.oninput=e=>{ms.editTasks[ti].quantity=e.target.value};td2.appendChild(qi);tr.appendChild(td2);
+    const tdv=el('td');const vi=el('input');vi.className='preview-inp';vi.value=(task.value!=null?task.value:'');vi.placeholder='$';
+    vi.oninput=e=>{ms.editTasks[ti].value=e.target.value};tdv.appendChild(vi);tr.appendChild(tdv);
     const td3=el('td');td3.style.textAlign='center';
     const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px';
     db.textContent='×';db.onclick=()=>{ms.editTasks.splice(ti,1);openModal()};td3.appendChild(db);tr.appendChild(td3);
@@ -7052,15 +7155,21 @@ function buildImportPreview(m,ms){
     try{
       const pid=uid();
       const proj={id:pid,job_num:ms.editProj.job_num||'',client:ms.editProj.client||'',
-        loc:ms.editProj.location||'',loc_exp:'',status:ms.editProj.status||'Not started',collapsed:false,sort_order:S.projects.length};
+        loc:ms.editProj.location||'',loc_exp:'',status:ms.editProj.status||'Not started',collapsed:false,sort_order:S.projects.length,
+        job_value:dollarsToCents(ms.editProj.value)};
       await upsertProject(proj);
       const tasks=ms.editTasks.map((t,i)=>({
         id:t.id,project_id:pid,
-        descr:t.description+(t.quantity?' — '+t.quantity:''),
+        // spreadsheet rows carry full text in notes -> keep descr as the clean short title;
+        // PDF/estimate rows have no notes -> keep the old behaviour of appending qty to descr
+        descr:t.description+((t.quantity&&!t.notes)?' — '+t.quantity:''),
         crew:'',status:proj.status,wknd:false,sort_order:i,
+        task_value:dollarsToCents(t.value),
         segs:[{s:null,e:null,crews:[]}]
       }));
       for(const task of tasks)await upsertTask(task);
+      // full line-item text -> task notes (isolated write; silently ignored if the notes column isn't migrated yet)
+      for(const t of ms.editTasks){if(t.notes){try{await sb.from('tasks').update({notes:t.notes}).eq('id',t.id);}catch(_){}}}
       await loadAll();closeModal();render();
       toast('✓ "'+proj.client+'" imported — '+tasks.length+' task'+(tasks.length!==1?'s':''),'ok');
     }catch(e){toast('⚠ Import failed: '+e.message,'error');impBtn.disabled=false;impBtn.textContent='✓ Import';}
