@@ -876,25 +876,7 @@ const LABEL_BADGES = [
 const mk=(tag,cls)=>{const e=document.createElement(tag);if(cls)e.className=cls;return e;};
 const W = ()=>CFG.nDays*CFG.dayW;          // body content width
 
-let CONFLICTS=new Set();
-function computeConflicts(){
-  const byCrew={};
-  state.tasks.forEach(t=>t.segs.forEach((sg,si)=>{
-    if(!sg.s||!sg.e)return;
-    (sg.crews||[]).forEach(cn=>{(byCrew[cn]=byCrew[cn]||[]).push({key:t.id+":"+si,tid:t.id,a:dayIndex(sg.s),b:dayIndex(sg.e)});});
-  }));
-  const out=new Set();
-  Object.values(byCrew).forEach(list=>{
-    list.sort((x,y)=>x.a-y.a);
-    for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
-      if(list[j].a>list[i].b)break;                 // sorted -> no later overlap
-      if(list[i].tid!==list[j].tid){out.add(list[i].key);out.add(list[j].key);}
-    }
-  });
-  return out;
-}
 function render(){
-  CONFLICTS=computeConflicts();
   const app=ROOT;
   const _pb=app.querySelector(".body-pane");          // preserve scroll across rebuild
   const _sx=_pb?_pb.scrollLeft:null,_sy=_pb?_pb.scrollTop:null;
@@ -1050,8 +1032,6 @@ function bodyTask(t){
     bar.dataset.task=t.id;bar.dataset.seg=si;
     bar.dataset.tip=t.descr+" · "+(crews.join(", ")||"unassigned")+" · "+sg.s+" → "+sg.e+(t.notes?(" · "+t.notes):"");
     if(crews.length){const tag=mk("span","crew-tag");tag.textContent=crews.length>1?(crews.length+" crews"):crews[0];bar.appendChild(tag);}
-    if(CONFLICTS.has(t.id+":"+si)){bar.classList.add("conflict");bar.dataset.tip+=" · ⚠ crew double-booked";
-      const w=mk("span","warn");w.textContent="⚠";bar.insertBefore(w,bar.firstChild);}
     const lab=mk("span");lab.style.cssText="overflow:hidden;text-overflow:ellipsis";lab.textContent=t.descr;bar.appendChild(lab);
     const hl=mk("div","handle l"),hr=mk("div","handle r");bar.appendChild(hl);bar.appendChild(hr);
     Drag.bind(bar,t,si,hl,hr);
@@ -1156,10 +1136,6 @@ const Tip = {
 function renderToolbar(){
   const t=mk("div","toolbar");
   if(!_opts.embedded){const brand=mk("div","brand");brand.innerHTML='<span class="dot"></span>Strada Gantt';t.appendChild(brand);}
-  const nConf=new Set([...CONFLICTS].map(k=>k.split(":")[0])).size;
-  if(nConf){const cc=mk("button","tb-btn");cc.textContent="⚠ "+nConf+" conflict"+(nConf>1?"s":"");
-    cc.style.cssText="background:#dc2626;border-color:#dc2626";cc.title="Tasks where a crew is double-booked. Click to filter search.";
-    cc.onclick=()=>{ScrollSync.toToday();};t.appendChild(cc);}
   t.appendChild(mk("div","tb-spacer"));
   const g=mk("div","tb-group");
   const zoom=mk("div","zoom");zoom.innerHTML="<span>Zoom</span>";
@@ -1433,8 +1409,6 @@ const Export = {
   },
   statusReport(){
     let body='<h1>Status report</h1><div class="sub">'+state.projects.length+' projects \u00b7 printed '+fmtFull(dt.iso(TODAY))+'</div>';
-    const nConf=new Set([...computeConflicts()].map(k=>k.split(":")[0])).size;
-    if(nConf)body+='<p class="warn">\u26a0 '+nConf+' task'+(nConf>1?"s":"")+' with a crew double-booked.</p>';
     body+='<table><thead><tr><th>Job #</th><th>Client</th><th>Location</th><th>Status</th><th>Value</th><th>Progress</th><th>Locates</th></tr></thead><tbody>';
     state.projects.slice().sort((a,b)=>a.sort-b.sort).forEach(p=>{const st=locateStatus(p);
       body+='<tr><td>'+escHtml(p.job_num)+'</td><td>'+escHtml(p.client)+'</td><td>'+escHtml(p.loc)+'</td><td>'+escHtml(p.status)+
