@@ -56,14 +56,14 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .toast.show{opacity:1;transform:translateX(0)}
 /* Gantt */
 .gantt-wrap{flex:1;overflow:auto;position:relative;user-select:none}
-.gantt-hdr{position:sticky;top:0;z-index:20;display:flex;flex-shrink:0}
+.gantt-hdr{position:sticky;top:0;z-index:20;display:flex;flex-shrink:0;width:max-content}
 .corner{position:sticky;left:0;z-index:30;background:#1F3864;border-bottom:1px solid #0d2748;border-right:2px solid #0d2748;display:flex;align-items:flex-end;padding:0 10px 4px;flex-shrink:0}
 .cal-wrap{background:#1F3864;flex-shrink:0}
 .month-row,.day-row,.wd-row{display:flex}
 .mc{display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;letter-spacing:.5px;border-right:1px solid rgba(255,255,255,.1);flex-shrink:0}
 .dc{display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;flex-shrink:0;border-right:1px solid rgba(255,255,255,.04)}
 .wc{display:flex;align-items:center;justify-content:center;font-size:7px;flex-shrink:0}
-.g-row{display:flex;flex-shrink:0}
+.g-row{display:flex;flex-shrink:0;width:max-content}
 .lc{position:sticky;left:0;z-index:10;overflow:hidden;display:flex;align-items:center;padding:0 8px;flex-shrink:0}
 .gc{position:relative;overflow:hidden;flex-shrink:0}
 .proj-row .lc{background:#2F4F8F;border-right:2px solid #1a3d6e;border-bottom:1px solid #1a3d6e}
@@ -409,8 +409,1156 @@ input,select,textarea{font-family:inherit;font-size:12px}
 .eq-bar{position:absolute;height:14px;top:50%;transform:translateY(-50%);border-radius:3px;font-size:8px;color:#fff;font-weight:700;display:flex;align-items:center;padding:0 4px;white-space:nowrap;overflow:hidden;cursor:pointer}
 .eq-today{position:absolute;top:0;width:2px;background:rgba(255,210,0,.7);pointer-events:none}
 </style>
+<style id="gv2-css">
+
+/* ── standalone reset — harmless, dropped when embedded in the host app ── */
+html,body{margin:0;height:100%}
+
+.gv2{
+  /* design tokens (was :root) */
+  --navy:#1F3864; --navy-2:#2F4F8F; --navy-line:#16294a;
+  --ink:#16233a; --muted:#5b6470; --faint:#7a8394;
+  --label-bg:#EFF3FA; --row-alt:#F8FAFC; --row-base:#ffffff;
+  --line:#e6eaf0; --line-day:#e8edf3; --line-strong:#c0cce0;
+  --weekend:rgba(31,56,100,.045); --holiday:rgba(217,119,6,.10);
+  --today:rgba(55,138,221,.10); --today-line:#2e69b5;
+  --shadow:0 1px 3px rgba(16,38,74,.12); --shadow-lg:0 8px 30px rgba(16,38,74,.18);
+
+  /* dimensions (JS reads --day-w and --label-w too) */
+  --day-w:30px; --row-h:30px; --sub-h:24px; --proj-h:38px; --label-w:330px; --head-h:54px;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  /* container (was .app + body typography) */
+  display:flex;flex-direction:column;height:100%;
+  margin:0;font-family:var(--font);color:var(--ink);background:#e9edf2;font-size:13px
+}
+
+/* ============================================================================
+   DESIGN TOKENS  — change the look in ONE place. Everything reads from these.
+   ========================================================================== */
+.gv2 *{box-sizing:border-box}
+.gv2 button{font-family:inherit;cursor:pointer}
+/* ---- Toolbar -------------------------------------------------------------- */
+.gv2 .toolbar{display:flex;align-items:center;gap:10px;background:var(--navy);color:#fff;
+  padding:8px 14px;flex:none;box-shadow:var(--shadow)}
+.gv2 .brand{font-weight:600;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+.gv2 .brand .dot{width:9px;height:9px;border-radius:2px;background:#7fa8e0}
+.gv2 .tb-spacer{flex:1}
+.gv2 .tb-group{display:flex;align-items:center;gap:6px}
+.gv2 .tb-btn{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.18);
+  border-radius:7px;padding:6px 11px;font-size:12px;font-weight:500}
+.gv2 .tb-btn:hover{background:rgba(255,255,255,.24)}
+.gv2 .tb-btn.primary{background:#fff;color:var(--navy);border-color:#fff}
+.gv2 .tb-input{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;
+  border-radius:7px;padding:6px 10px;font-size:12px;outline:none;min-width:150px}
+.gv2 .tb-input::placeholder{color:rgba(255,255,255,.6)}
+.gv2 .tb-input:focus{background:rgba(255,255,255,.2)}
+.gv2 select.tb-input option{color:#16233a}
+.gv2 .chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;border:1.5px solid transparent;
+  cursor:pointer;user-select:none;white-space:nowrap}
+.gv2 .chip.off{opacity:.4;filter:grayscale(.4)}
+.gv2 .zoom{display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,.85)}
+.gv2 .zoom input{accent-color:#7fa8e0}
+/* ---- Filter strip --------------------------------------------------------- */
+.gv2 .filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f4f6fa;
+  border-bottom:1px solid var(--line);padding:7px 14px;flex:none}
+.gv2 .filters .lbl{font-size:11px;color:var(--muted);font-weight:600;margin-right:2px}
+/* ---- Gantt frozen-pane shell --------------------------------------------- */
+.gv2 .gantt{flex:1;display:grid;
+  grid-template-columns:var(--label-w) 1fr;
+  grid-template-rows:var(--head-h) 1fr;
+  min-height:0;background:#fff}
+.gv2 .corner{grid-area:1/1;background:var(--navy);color:#fff;z-index:5;
+  border-right:3px solid var(--line-strong);border-bottom:1px solid var(--navy-line);
+  display:flex;flex-direction:column;justify-content:flex-end;padding:6px 12px;gap:2px}
+.gv2 .corner .c-count{font-size:11px;color:rgba(255,255,255,.55)}
+.gv2 .corner .c-title{font-size:13px;font-weight:600}
+.gv2 .head-pane{grid-area:1/2;overflow:hidden;background:var(--navy)}
+.gv2 .label-pane{grid-area:2/1;overflow:hidden;border-right:3px solid var(--line-strong);
+  background:var(--label-bg)}
+.gv2 .body-pane{grid-area:2/2;overflow:auto}
+.gv2 .head-inner,.gv2 .body-inner{position:relative}
+.gv2 .label-inner{position:relative}
+/* ---- Header bands --------------------------------------------------------- */
+.gv2 .month-band,.gv2 .day-band{display:flex;height:var(--head-h)}
+.gv2 .month-band{height:22px}
+.gv2 .day-band{height:32px}
+.gv2 .month-cell{flex:none;color:#fff;font-size:10px;font-weight:600;letter-spacing:.4px;
+  display:flex;align-items:center;padding-left:7px;border-left:1px solid rgba(255,255,255,.14)}
+.gv2 .day-cell{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:rgba(255,255,255,.92);border-left:1px solid rgba(255,255,255,.06);line-height:1.1}
+.gv2 .day-cell.wknd{background:rgba(255,255,255,.05);color:rgba(255,255,255,.5)}
+.gv2 .day-cell.today{background:rgba(255,255,255,.18)}
+.gv2 .day-cell .dow{font-size:8px;opacity:.7}
+.gv2 .day-cell .dom{font-size:11px;font-weight:600}
+/* ---- Background grid layer (body) ---------------------------------------- */
+.gv2 .bands{position:absolute;inset:0;z-index:0;pointer-events:none}
+.gv2 .band{position:absolute;top:0;bottom:0}
+.gv2 .band.wknd{background:var(--weekend)}
+.gv2 .band.holiday{background:var(--holiday)}
+.gv2 .band.today{background:var(--today);box-shadow:inset 1px 0 0 var(--today-line),inset -1px 0 0 rgba(46,105,181,.3)}
+.gv2 .gridlines{position:absolute;inset:0;z-index:0;pointer-events:none}
+/* ---- Rows ----------------------------------------------------------------- */
+.gv2 .rows{position:relative;z-index:1}
+.gv2 .lrow,.gv2 .brow{display:flex;align-items:center;box-sizing:border-box}
+.gv2 .lrow{padding:0 8px 0 10px;gap:6px;border-bottom:1px solid var(--line)}
+.gv2 .brow{position:relative;border-bottom:1px solid var(--line)}
+/* project row */
+.gv2 .lrow.proj{background:var(--navy);color:#fff;border-bottom:1px solid var(--navy-line)}
+.gv2 .brow.proj{background:var(--navy-2);opacity:.18}
+.gv2 .chev{background:none;border:none;color:rgba(255,255,255,.8);font-size:11px;padding:2px;line-height:1}
+.gv2 .p-jobnum{font-size:11px;font-weight:600;color:rgba(255,255,255,.6);flex:none}
+.gv2 .p-client{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gv2 .p-info{display:flex;flex-direction:column;min-width:0;flex:1;margin-right:2px}
+.gv2 .p-loc{font-size:10px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gv2 .p-actions{display:flex;gap:2px;flex:none}
+.gv2 .p-actions button{background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:5px;
+  width:22px;height:22px;font-size:12px;display:flex;align-items:center;justify-content:center}
+.gv2 .p-actions button:hover{background:rgba(255,255,255,.28)}
+/* task row */
+.gv2 .lrow.task{background:transparent;cursor:pointer}
+.gv2 .lrow.task:hover{background:rgba(31,56,100,.05)}
+.gv2 .lrow.alt{background:var(--row-alt)}
+.gv2 .t-arrow{color:#b6c0d0;font-size:11px;flex:none}
+.gv2 .t-descr{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#27364a}
+.gv2 .t-wd{font-size:10px;color:var(--faint);flex:none;min-width:24px;text-align:right}
+/* badges */
+.gv2 .badge{font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;white-space:nowrap;flex:none}
+.gv2 .crew-badge{font-size:10px;font-weight:600;padding:1px 7px;border-radius:9px;color:#fff;flex:none;
+  max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ---- Subtasks (milestones / checklist) ----------------------------------- */
+.gv2 .lrow.sub{background:transparent;cursor:pointer;padding-left:28px;gap:7px}
+.gv2 .lrow.sub:hover{background:rgba(31,56,100,.05)}
+.gv2 .sub-check{width:15px;height:15px;border:1.5px solid #b6c0d0;border-radius:4px;flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;line-height:1;background:#fff}
+.gv2 .sub-check.on{background:#198754;border-color:#198754}
+.gv2 .sub-descr{flex:1;min-width:0;font-size:11.5px;color:#3a4658;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gv2 .sub-descr.done{text-decoration:line-through;color:#9ca3af}
+.gv2 .brow.sub .sub-diamond{position:absolute;top:50%;width:10px;height:10px;
+  transform:translate(-50%,-50%) rotate(45deg);border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.gv2 .brow.sub .sub-line{position:absolute;top:50%;transform:translateY(-50%);height:0;
+  border-top:1.5px dashed #6b7280;opacity:.55}
+/* ---- Bars ----------------------------------------------------------------- */
+.gv2 .bar{position:absolute;top:50%;transform:translateY(-50%);height:calc(var(--row-h) - 12px);
+  border-radius:5px;display:flex;align-items:center;gap:5px;padding:0 7px;color:#fff;
+  font-size:10px;font-weight:600;overflow:hidden;cursor:grab;box-shadow:0 1px 2px rgba(0,0,0,.18);
+  user-select:none;white-space:nowrap}
+.gv2 .bar:hover{filter:brightness(1.06);box-shadow:0 2px 6px rgba(0,0,0,.28)}
+.gv2 .bar.dragging{cursor:grabbing;z-index:30;filter:brightness(1.1);box-shadow:var(--shadow-lg)}
+.gv2 .bar .crew-tag{background:rgba(255,255,255,.28);border-radius:3px;padding:0 4px;font-size:9px;flex:none}
+.gv2 .bar .handle{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize}
+.gv2 .bar .handle.l{left:0}
+.gv2 .bar .handle.r{right:0}
+.gv2 .bar.complete{opacity:.78}
+.gv2 .bar.conflict{box-shadow:0 0 0 2px #dc2626,0 1px 3px rgba(0,0,0,.25)}
+.gv2 .bar .warn{font-size:10px}
+.gv2 .proj-span{position:absolute;top:50%;transform:translateY(-50%);height:6px;border-radius:3px;
+  background:rgba(255,255,255,.25);pointer-events:none}
+/* ---- Empty state ---------------------------------------------------------- */
+.gv2 .empty{padding:50px;text-align:center;color:var(--muted)}
+.gv2 .empty h3{color:var(--navy);margin:0 0 6px}
+/* ---- Modal ---------------------------------------------------------------- */
+.gv2 .overlay{position:fixed;inset:0;background:rgba(16,38,74,.45);display:flex;align-items:center;
+  justify-content:center;z-index:100;padding:20px}
+.gv2 .modal{background:#fff;border-radius:12px;box-shadow:var(--shadow-lg);width:min(560px,100%);
+  max-height:90vh;overflow:auto}
+.gv2 .modal h2{margin:0;padding:16px 20px;font-size:15px;background:var(--navy);color:#fff;
+  border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between}
+.gv2 .modal h2 .x{background:rgba(255,255,255,.15);border:none;color:#fff;width:26px;height:26px;
+  border-radius:6px;font-size:15px}
+.gv2 .modal-body{padding:18px 20px}
+.gv2 .field{margin-bottom:14px}
+.gv2 .field label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px;
+  text-transform:uppercase;letter-spacing:.4px}
+.gv2 .field input,.gv2 .field select,.gv2 .field textarea{width:100%;padding:8px 10px;border:1px solid #d3dae6;
+  border-radius:7px;font-size:13px;font-family:inherit;outline:none}
+.gv2 .field input:focus,.gv2 .field select:focus,.gv2 .field textarea:focus{border-color:var(--navy-2);
+  box-shadow:0 0 0 3px rgba(47,79,143,.12)}
+.gv2 .seg{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;padding:10px;background:#f6f8fc;
+  border:1px solid #e3e9f2;border-radius:9px}
+.gv2 .seg .field{margin:0;flex:1}
+.gv2 .seg .seg-rm{background:#fee2e2;border:none;color:#b91c1c;border-radius:6px;width:30px;height:34px;font-size:14px;flex:none}
+.gv2 .btn-add-seg{background:#eef3fb;border:1px dashed #9fb4d8;color:var(--navy-2);border-radius:7px;
+  padding:7px;width:100%;font-size:12px;font-weight:600;margin-top:2px}
+.gv2 .modal-foot{display:flex;gap:8px;justify-content:space-between;padding:14px 20px;
+  border-top:1px solid var(--line);background:#fafbfd;border-radius:0 0 12px 12px;position:sticky;bottom:0}
+.gv2 .btn{padding:9px 18px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid transparent}
+.gv2 .btn.save{background:var(--navy);color:#fff}
+.gv2 .btn.cancel{background:#fff;border-color:#d3dae6;color:var(--ink)}
+.gv2 .btn.del{background:#fff;border-color:#f0c2c2;color:#b91c1c}
+.gv2 .ctx{position:fixed;z-index:300;background:#fff;border:1px solid #d3dae6;border-radius:9px;
+  box-shadow:var(--shadow-lg);padding:5px;min-width:190px;font-size:12.5px}
+.gv2 .ctx-item{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:6px;cursor:pointer;
+  color:var(--ink);position:relative;white-space:nowrap}
+.gv2 .ctx-item:hover{background:#eef3fb}
+.gv2 .ctx-item.danger{color:#b91c1c}
+.gv2 .ctx-item.danger:hover{background:#fee2e2}
+.gv2 .ctx-ck{width:13px;flex:none;color:#198754;font-size:11px}
+.gv2 .ctx-arrow{margin-left:auto;color:#9aa6b6;font-size:10px;padding-left:10px}
+.gv2 .ctx-sep{height:1px;background:var(--line);margin:4px 6px}
+.gv2 .ctx-sub{display:none;position:absolute;left:100%;top:-5px;background:#fff;border:1px solid #d3dae6;
+  border-radius:9px;box-shadow:var(--shadow-lg);padding:5px;min-width:160px;margin-left:3px;max-height:60vh;overflow:auto}
+.gv2 .ctx-item.has-sub:hover>.ctx-sub{display:block}
+.gv2 .tip{position:fixed;z-index:200;background:#16233a;color:#fff;font-size:11px;padding:6px 9px;
+  border-radius:6px;pointer-events:none;max-width:240px;box-shadow:var(--shadow-lg);opacity:0;transition:opacity .1s}
+
+</style>
 </head>
 <body>
+<script id="gv2-js">
+
+(function(){
+"use strict";
+let ROOT=null,_attached=false,_opts={};
+/* ============================================================================
+   STRADA GANTT — standalone rebuild.  Architecture map:
+     CFG / TOKENS ........ all tunable numbers (mirrors CSS vars)
+     state ............... the single source of truth
+     dt .................. pure date helpers
+     Data ................ CRUD on state (each op independent)
+     select() ............ filtering -> flat row list
+     LABEL_BADGES ........ registry: add/remove a row badge in one place
+     render*() ........... rebuild panes from state (pure-ish)
+     ScrollSync / Drag / Modal / Filters .... independent controllers
+   No controller reaches into another's internals; they share only `state`
+   and call render(). That is what keeps features from colliding.
+   ========================================================================== */
+
+const CFG = {
+  dayW: 30,              // must match --day-w (kept in sync by setZoom)
+  nDays: 200,            // grid length in calendar days
+  startBackDays: 7,      // grid begins this many days before today (the scroll-back fix)
+  statuses: ["Not started","In progress","On hold","Complete","To invoice"],
+  statusColor: {"Not started":"#6c757d","In progress":"#0d6efd","On hold":"#b8860b",
+                "Complete":"#198754","To invoice":"#6f42c1"},
+  LS_KEY: "strada_gantt_standalone_v1"
+};
+
+/* ---- date helpers (pure) -------------------------------------------------- */
+const dt = {
+  iso:(d)=>d.toISOString().slice(0,10),
+  parse:(s)=>new Date(s+"T12:00:00"),
+  addDays:(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;},
+  isWeekend:(d)=>{const w=d.getDay();return w===0||w===6;},
+  monthName:(m)=>["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m],
+  dow:(d)=>["S","M","T","W","T","F","S"][d.getDay()]
+};
+const TODAY = new Date(new Date().toISOString().slice(0,10)+"T12:00:00");
+const GRID_START = dt.addDays(TODAY, -CFG.startBackDays);
+const dayIndex = (iso)=>Math.round((dt.parse(iso)-GRID_START)/86400000);
+const idxToDate = (i)=>dt.iso(dt.addDays(GRID_START,i));
+
+/* ---- seed data ------------------------------------------------------------ */
+const CREWS = [
+  {id:"c1",name:"Alfredo",color:"#0072C8"},{id:"c2",name:"Phil",color:"#ED7D31"},
+  {id:"c3",name:"Esmond",color:"#70AD47"},{id:"c4",name:"Kyle",color:"#FF0000"},
+  {id:"c5",name:"Marc-André",color:"#666699"},{id:"c6",name:"Stef",color:"#009999"},
+  {id:"c7",name:"Troy",color:"#C4BD97"}
+];
+const HOLIDAYS = [{date:dt.iso(new Date(TODAY.getFullYear(),6,1,12)),name:"Canada Day"}];
+let _id=0; const uid=(p)=>p+(++_id);
+
+function buildSeed(){
+  // [jobnum, client, location, status, value, tasks[{descr, crew, start(offset from today, weekdays), dur(days), status?}]]
+  const P=[
+    ["25-11","Thomas Cavanagh","Kemptville Lifestyles PH1","In progress",48000,[
+      ["Barrier curb — FG 150mm GA, form & pour","Alfredo",-4,3],
+      ["Sidewalks — FG 150mm GA, reinforced","Phil",0,4],
+      ["TWSI — supply and install","Esmond",5,3]]],
+    ["25-20","Davis Landscaping","Richmond Meadows","In progress",22500,[
+      ["Fine grade ±50mm GA","Kyle",-1,3],
+      ["Pave 50mm HL3F hot asphalt","Marc-André",3,2]]],
+    ["25-36","Grow Green Property Maint.","Locale Decoeur","In progress",31000,[
+      ["Bike rack pads 182m² — FG 150mm GA","Stef",1,3],
+      ["Fine grade 300mm GB for shelter pad","Stef",4,2],
+      ["Form & pour reinforced pads","Troy",7,3]]],
+    ["25-57","Glover Brothers","400 Albert Splash Pad","In progress",96000,[
+      ["Rough grading & removals 360m³","Troy",-3,2],
+      ["Concrete sidewalk P-01 304m²","Alfredo",1,5],
+      ["Coloured banding 260m²","Phil",7,3],
+      ["Splash pad footings & drain","Esmond",11,3]]],
+    ["25-83","Ottawa Carleton Constr.","157 Holland Ave","In progress",18900,[
+      ["Permeable pavers 66.5m²","Kyle",2,3],
+      ["Topsoil & sod 138m²","Marc-André",6,2]]],
+    ["25-89","Paul & Alan","116 Woodgate Way","In progress",14200,[
+      ["Driveway: excavate, GA base, pave HL3F","Alfredo",8,4]]],
+    ["25-122","City of Ottawa","135 Craig Henry Dr","In progress",26700,[
+      ["Topsoil & sod installation","Stef",0,2],
+      ["Repair interlock & asphalt deficiencies","Phil",3,2]]],
+    ["25-90","Glover Brothers","Rochester Towers","Not started",54000,[
+      ["Curb + paving FG 150mm GA","Alfredo",14,4],
+      ["Planter walls","Troy",19,3]]],
+    ["26-02","Capital Asphalt","2500 Palladium (Toyota)","Not started",72000,[
+      ["SC7.1 barrier + depressed curbs","Esmond",16,4],
+      ["Monolithic sidewalk w/ SC7.1","Marc-André",21,4]]],
+    ["25-113","Fior & Millie D'Orazio","52 Kilmory","Complete",9800,[
+      ["Interlock — Semma block & caps","Kyle",-8,3,"Complete"]]],
+    ["26-08","Glover Brothers","398 Roosevelt","Complete",15600,[
+      ["City sidewalk 90m²","Phil",-7,2,"Complete"],
+      ["Road cut reinstatement R10","Troy",-4,2,"Complete"]]],
+    ["25-140","Sentinel Management","1081 Ambleside Dr","Not started",6400,[
+      ["Repair service entrance laneway","Alfredo",24,2]]]
+  ];
+  const projects=[],tasks=[];
+  // weekday-aware offset: count business days from today
+  const bizDate=(offset)=>{let d=new Date(TODAY),step=offset>=0?1:-1,left=Math.abs(offset);
+    while(left>0){d=dt.addDays(d,step);if(!dt.isWeekend(d))left--;}return d;};
+  P.forEach((p,pi)=>{
+    const pid=uid("p_");
+    projects.push({id:pid,job_num:p[0],client:p[1],loc:p[2],status:p[3],value:p[4],collapsed:false,sort:pi,
+      locates:{pub:{req:null,ordered:false,complete:false},priv:{req:null,ordered:false,complete:false}},soils:false});
+    p[5].forEach((t,ti)=>{
+      const s=bizDate(t[2]); let e=new Date(s),left=t[3]-1;
+      while(left>0){e=dt.addDays(e,1);if(!dt.isWeekend(e))left--;}
+      tasks.push({id:uid("t_"),project_id:pid,descr:t[0],status:t[4]||p[3],sort:ti,
+        wknd:false,notes:"",task_value:null,subtasks:[],
+        segs:[{s:dt.iso(s),e:dt.iso(e),crews:[t[1]]}]});
+    });
+  });
+  // demo locates / soils
+  if(projects[0])projects[0].locates.pub={req:dt.iso(bizDate(2)),ordered:true,complete:false};
+  if(projects[1])projects[1].locates.priv={req:dt.iso(bizDate(-1)),ordered:true,complete:false};
+  if(projects[3]){projects[3].locates.pub={req:dt.iso(bizDate(-6)),ordered:true,complete:true};projects[3].soils=true;}
+  if(projects[8])projects[8].soils=true;
+  // demo subtasks on a couple of tasks (milestones, some dated/complete)
+  if(tasks[1])tasks[1].subtasks=[
+    {id:uid("s_"),descr:"Locate clearance confirmed",assigned:"Alfredo",date:dt.iso(bizDate(-3)),complete:true},
+    {id:uid("s_"),descr:"Forms inspected before pour",assigned:"",date:dt.iso(bizDate(1)),complete:false},
+    {id:uid("s_"),descr:"Strip & cure",assigned:"",date:null,complete:false}];
+  if(tasks[6])tasks[6].subtasks=[
+    {id:uid("s_"),descr:"Book city inspection",assigned:"Esmond",date:dt.iso(bizDate(4)),complete:false}];
+  return {projects,tasks};
+}
+
+/* ---- state + persistence -------------------------------------------------- */
+let state = load() || init();
+function init(){const s=buildSeed();return {projects:s.projects,tasks:s.tasks,crews:CREWS,holidays:HOLIDAYS,
+  filters:{crews:new Set(CREWS.map(c=>c.name)),status:"",search:""}, ui:{}};}
+function load(){
+  try{const raw=localStorage.getItem(CFG.LS_KEY);if(!raw)return null;const o=JSON.parse(raw);
+    o.crews=CREWS;o.holidays=o._holidays||HOLIDAYS;o.filters={crews:new Set(o._crews||CREWS.map(c=>c.name)),status:o._status||"",search:""};
+    return o;}catch(e){return null;}
+}
+function save(){
+  if(_opts.readOnly||_opts.write)return; // embedded: host owns persistence via write hooks
+  if(_opts.onSave){_opts.onSave();return;}  // I3 hook: route writes to host
+  try{const o={projects:state.projects,tasks:state.tasks,
+    _crews:[...state.filters.crews],_status:state.filters.status,_holidays:state.holidays};
+    localStorage.setItem(CFG.LS_KEY,JSON.stringify(o));}catch(e){}
+}
+function resetData(){localStorage.removeItem(CFG.LS_KEY);state=init();render();}
+
+/* ---- helpers -------------------------------------------------------------- */
+const crewColor=(name)=>{const c=state.crews.find(c=>c.name===name);return c?c.color:"#888";};
+const projTasks=(pid)=>state.tasks.filter(t=>t.project_id===pid).sort((a,b)=>a.sort-b.sort);
+function workDays(t){
+  let n=0;const hol=new Set(state.holidays.map(h=>h.date));const wknd=t&&t.wknd;
+  (t.segs||[]).forEach(sg=>{if(!sg.s||!sg.e)return;let d=dt.parse(sg.s),end=dt.parse(sg.e);
+    while(d<=end){const skip=(!wknd&&dt.isWeekend(d))||hol.has(dt.iso(d));if(!skip)n++;d=dt.addDays(d,1);}});
+  return n;
+}
+
+/* ---- Data (CRUD — each independent) -------------------------------------- */
+const Data = {
+  updateTask(id,patch){let nt=null;state.tasks=state.tasks.map(t=>t.id===id?(nt={...t,...patch}):t);save();if(nt)emit('task',nt);},
+  addTask(pid){const t={id:genId("t_"),project_id:pid,descr:"New task",status:"Not started",
+    sort:projTasks(pid).length,wknd:false,notes:"",task_value:null,subtasks:[],
+    segs:[{s:idxToDate(CFG.startBackDays),e:idxToDate(CFG.startBackDays+1),crews:[state.crews[0]?state.crews[0].name:""]}]};
+    state.tasks.push(t);save();emit('task',t);return t;},
+  deleteTask(id){state.tasks=state.tasks.filter(t=>t.id!==id);save();emit('taskDelete',id);},
+  updateProject(id,patch){let np=null;state.projects=state.projects.map(p=>p.id===id?(np={...p,...patch}):p);save();if(np)emit('project',np);},
+  addProject(){const p={id:genId("p_"),job_num:"NEW",client:"New project",loc:"",status:"Not started",
+    value:0,collapsed:false,sort:state.projects.length,
+    locates:{pub:{req:null,ordered:false,complete:false},priv:{req:null,ordered:false,complete:false}},soils:false};
+    state.projects.push(p);save();emit('project',p);return p;},
+  deleteProject(id){state.projects=state.projects.filter(p=>p.id!==id);
+    state.tasks=state.tasks.filter(t=>t.project_id!==id);save();emit('projectDelete',id);},
+  toggleCollapse(id){const p=state.projects.find(p=>p.id===id);if(p){p.collapsed=!p.collapsed;save();}},
+  toggleSubtask(tid,sid){const t=state.tasks.find(x=>x.id===tid);if(t){const sb=(t.subtasks||[]).find(x=>x.id===sid);if(sb)sb.complete=!sb.complete;save();emit('task',t);}},
+  toggleSubCollapse(tid){const t=state.tasks.find(x=>x.id===tid);if(t){t.subCollapsed=!t.subCollapsed;save();}},
+  collapseAll(v){state.projects.forEach(p=>p.collapsed=v);save();},
+  duplicateTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;
+    const copy=JSON.parse(JSON.stringify(t));copy.id=genId("t_");copy.descr=t.descr+" (copy)";
+    copy.sort=projTasks(t.project_id).length;(copy.subtasks||[]).forEach(sb=>sb.id=genId("s_"));
+    state.tasks.push(copy);save();emit('task',copy);},
+  nudgeTask(id,days){const t=state.tasks.find(x=>x.id===id);if(!t)return;
+    t.segs=t.segs.map(sg=>({...sg,s:sg.s?idxToDate(dayIndex(sg.s)+days):sg.s,e:sg.e?idxToDate(dayIndex(sg.e)+days):sg.e}));
+    (t.subtasks||[]).forEach(sb=>{if(sb.date)sb.date=idxToDate(dayIndex(sb.date)+days);});save();emit('task',t);},
+  setTaskCrew(id,crew){const t=state.tasks.find(x=>x.id===id);if(!t)return;
+    t.segs=t.segs.map(sg=>({...sg,crews:[crew]}));save();emit('task',t);}
+};
+
+/* ---- selection: state -> flat ordered rows ------------------------------- */
+function select(){
+  const f=state.filters, q=f.search.trim().toLowerCase();
+  const rows=[];
+  state.projects.slice().sort((a,b)=>a.sort-b.sort).forEach(p=>{
+    let tk=projTasks(p.id);
+    // crew + status + search filters apply to tasks; project shows if any task passes (or no filter)
+    let vis=tk.filter(t=>{
+      const crews=t.segs.flatMap(s=>s.crews||[]);
+      const crewOk=crews.length===0||crews.some(c=>f.crews.has(c));
+      const statusOk=!f.status||t.status===f.status;
+      const qOk=!q||t.descr.toLowerCase().includes(q)||p.client.toLowerCase().includes(q)||p.job_num.toLowerCase().includes(q);
+      return crewOk&&statusOk&&qOk;
+    });
+    const filtering = f.crews.size<state.crews.length||f.status||q;
+    if(filtering && vis.length===0) return;          // hide projects with no matching tasks
+    rows.push({type:"proj",p});
+    if(!p.collapsed) vis.forEach(t=>{
+      rows.push({type:"task",p,t});
+      if(!t.subCollapsed && t.subtasks && t.subtasks.length)
+        t.subtasks.forEach(sub=>rows.push({type:"sub",p,t,sub}));
+    });
+  });
+  return rows;
+}
+
+function locateStatus(p){
+  const lc=p.locates;if(!lc)return null;let worst=null;
+  [["pub","Public"],["priv","Private"]].forEach(([k,name])=>{
+    const o=lc[k];if(!o||(!o.req&&!o.ordered))return;if(o.complete)return;
+    const days=o.req?Math.round((dt.parse(o.req)-TODAY)/86400000):null;let sev,label,short,color;
+    if(days!=null&&days<0){sev=4;color="#dc2626";label=name+" locate overdue";short="Loc !";}
+    else if(days!=null&&days<=5){sev=3;color="#d97706";label=name+" locate due "+fmtShort(o.req);short="Loc "+fmtShort(o.req);}
+    else if(o.ordered){sev=2;color="#2563eb";label=name+" locate ordered";short="Loc \u25CF";}
+    else{sev=1;color="#6b7280";label=name+" locate needed";short="Loc ?";}
+    if(!worst||sev>worst.sev)worst={sev,label,short,color};
+  });
+  if(!worst){const any=["pub","priv"].some(k=>lc[k]&&(lc[k].req||lc[k].ordered));
+    return any?{label:"Locates cleared",short:"Loc \u2713",color:"#198754"}:null;}
+  return worst;
+}
+
+/* ---- LABEL BADGE REGISTRY (add/remove a badge here, nothing else changes) - */
+const fmtShort=(iso)=>{const d=dt.parse(iso);return dt.monthName(d.getMonth())+" "+d.getDate();};
+const fmtMoney=(v)=>v>=1000?"$"+(v/1000).toFixed(v%1000?1:0)+"k":"$"+v;
+function fmtFull(iso){const d=dt.parse(iso);return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]+" "+dt.monthName(d.getMonth())+" "+d.getDate();}
+function weekMon(d){const x=new Date(d);const dow=(x.getDay()+6)%7;return dt.addDays(x,-dow);}
+function projProgress(p){const tk=projTasks(p.id);if(!tk.length)return 0;return Math.round(100*tk.filter(t=>t.status==="Complete").length/tk.length);}
+function escHtml(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+const LABEL_BADGES = [
+  {id:"value", show:p=>p.value>0, el:p=>{const b=mk("span","badge");b.textContent=fmtMoney(p.value);
+    b.style.cssText="background:#2e69b5;color:#fff";return b;}},
+  {id:"valday", show:p=>p.value>0, el:p=>{
+    const days=projTasks(p.id).reduce((n,t)=>n+workDays(t),0);
+    if(!days)return null;const b=mk("span","badge");b.textContent=fmtMoney(Math.round(p.value/days))+"/d";
+    b.style.cssText="background:rgba(255,255,255,.16);color:#fff";return b;}},
+  {id:"soils", show:p=>p.soils, el:p=>{const b=mk("span","badge");b.style.cssText="background:#b45309;color:#fff";b.textContent="Soils";b.title="Soils report required";return b;}},
+  {id:"locates", show:p=>!!locateStatus(p), el:p=>{const st=locateStatus(p);const b=mk("span","badge");
+    b.style.cssText="background:"+st.color+";color:#fff";b.textContent=st.short;b.title=st.label;return b;}}
+];
+
+/* ============================================================================
+   RENDER
+   ========================================================================== */
+const mk=(tag,cls)=>{const e=document.createElement(tag);if(cls)e.className=cls;return e;};
+const W = ()=>CFG.nDays*CFG.dayW;          // body content width
+
+let CONFLICTS=new Set();
+function computeConflicts(){
+  const byCrew={};
+  state.tasks.forEach(t=>t.segs.forEach((sg,si)=>{
+    if(!sg.s||!sg.e)return;
+    (sg.crews||[]).forEach(cn=>{(byCrew[cn]=byCrew[cn]||[]).push({key:t.id+":"+si,tid:t.id,a:dayIndex(sg.s),b:dayIndex(sg.e)});});
+  }));
+  const out=new Set();
+  Object.values(byCrew).forEach(list=>{
+    list.sort((x,y)=>x.a-y.a);
+    for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
+      if(list[j].a>list[i].b)break;                 // sorted -> no later overlap
+      if(list[i].tid!==list[j].tid){out.add(list[i].key);out.add(list[j].key);}
+    }
+  });
+  return out;
+}
+function render(){
+  CONFLICTS=computeConflicts();
+  const app=ROOT;
+  const _pb=app.querySelector(".body-pane");          // preserve scroll across rebuild
+  const _sx=_pb?_pb.scrollLeft:null,_sy=_pb?_pb.scrollTop:null;
+  app.innerHTML="";
+  app.appendChild(renderToolbar());
+  app.appendChild(renderFilters());
+  const rows=select();
+  const gantt=mk("div","gantt");
+  gantt.appendChild(renderCorner(rows));
+  gantt.appendChild(renderHeader());
+  gantt.appendChild(renderLabelPane(rows));
+  gantt.appendChild(renderBodyPane(rows));
+  app.appendChild(gantt);
+  ScrollSync.attach();
+  if(_sx!=null){const nb=app.querySelector(".body-pane");if(nb){nb.scrollLeft=_sx;nb.scrollTop=_sy;}}
+  Tip.attach();
+}
+
+function renderCorner(rows){
+  const c=mk("div","corner");
+  const t=mk("div","c-title");t.textContent="Project / task";
+  const n=mk("div","c-count");
+  n.textContent=rows.filter(r=>r.type==="task").length+" tasks · "+state.projects.length+" jobs";
+  c.appendChild(n);c.appendChild(t);return c;
+}
+
+function renderHeader(){
+  const pane=mk("div","head-pane");pane.id="headPane";
+  const inner=mk("div","head-inner");inner.style.width=W()+"px";
+  const months=mk("div","month-band"),days=mk("div","day-band");
+  let mStart=0;
+  for(let i=0;i<=CFG.nDays;i++){
+    const d=dt.addDays(GRID_START,i);
+    if(i===CFG.nDays || (i>0 && d.getDate()===1)){
+      const cell=mk("div","month-cell");
+      const md=dt.addDays(GRID_START,mStart);
+      cell.textContent=dt.monthName(md.getMonth())+" "+md.getFullYear();
+      cell.style.width=(i-mStart)*CFG.dayW+"px";months.appendChild(cell);mStart=i;
+    }
+    if(i<CFG.nDays){
+      const cell=mk("div","day-cell");cell.style.width=CFG.dayW+"px";
+      if(dt.isWeekend(d))cell.classList.add("wknd");
+      if(i===CFG.startBackDays)cell.classList.add("today");
+      const dow=mk("span","dow");dow.textContent=dt.dow(d);
+      const dom=mk("span","dom");dom.textContent=d.getDate();
+      cell.appendChild(dow);cell.appendChild(dom);days.appendChild(cell);
+    }
+  }
+  inner.appendChild(months);inner.appendChild(days);pane.appendChild(inner);return pane;
+}
+
+function renderLabelPane(rows){
+  const pane=mk("div","label-pane");pane.id="labelPane";
+  const inner=mk("div","label-inner");
+  if(rows.length===0){const e=mk("div","empty");e.innerHTML="<h3>No matching work</h3>Adjust filters or add a project.";inner.appendChild(e);}
+  let alt=false;
+  rows.forEach(row=>{
+    if(row.type==="proj"){alt=false;inner.appendChild(labelProj(row.p));}
+    else if(row.type==="sub"){inner.appendChild(labelSub(row.t,row.sub));}
+    else{inner.appendChild(labelTask(row.p,row.t,alt));alt=!alt;}
+  });
+  pane.appendChild(inner);return pane;
+}
+function labelProj(p){
+  const r=mk("div","lrow proj");r.style.height="var(--proj-h)";r.dataset.proj=p.id;
+  const chev=mk("button","chev");chev.textContent=p.collapsed?"▶":"▼";
+  chev.onclick=(e)=>{e.stopPropagation();Data.toggleCollapse(p.id);render();};
+  const info=mk("div","p-info");
+  const top=mk("div");top.style.cssText="display:flex;align-items:center;gap:6px;overflow:hidden";
+  const jn=mk("span","p-jobnum");jn.textContent=p.job_num;
+  const cl=mk("span","p-client");cl.textContent=p.client;
+  top.appendChild(jn);top.appendChild(cl);
+  const loc=mk("div","p-loc");loc.textContent=p.loc;
+  info.appendChild(top);info.appendChild(loc);
+  r.appendChild(chev);r.appendChild(info);
+  LABEL_BADGES.forEach(b=>{if(b.show(p)){const el=b.el(p);if(el)r.appendChild(el);}});
+  const act=mk("div","p-actions");
+  const addB=mk("button");addB.textContent="+";addB.title="Add task";
+  addB.onclick=(e)=>{e.stopPropagation();const t=Data.addTask(p.id);Modal.task(t,true);};
+  const edB=mk("button");edB.textContent="✎";edB.title="Edit project";
+  edB.onclick=(e)=>{e.stopPropagation();Modal.project(p);};
+  act.appendChild(addB);act.appendChild(edB);r.appendChild(act);
+  return r;
+}
+function labelTask(p,t,alt){
+  const r=mk("div","lrow task"+(alt?" alt":""));r.style.height="var(--row-h)";r.dataset.task=t.id;
+  r.onclick=()=>Modal.task(t,false);
+  const hasSub=t.subtasks&&t.subtasks.length;
+  const arr=mk("span","t-arrow");
+  if(hasSub){arr.textContent=t.subCollapsed?"▶":"▼";arr.style.cursor="pointer";
+    arr.onclick=(e)=>{e.stopPropagation();Data.toggleSubCollapse(t.id);render();};}
+  else arr.textContent="↳";
+  const d=mk("span","t-descr");d.textContent=t.descr;
+  r.appendChild(arr);r.appendChild(d);
+  if(hasSub){const done=t.subtasks.filter(x=>x.complete).length;
+    const sc=mk("span","badge");sc.style.cssText="background:#eef1f6;color:#5b6470";sc.textContent="☑ "+done+"/"+t.subtasks.length;r.appendChild(sc);}
+  if(t.task_value){const tvb=mk("span","badge");tvb.style.cssText="background:#e6effa;color:#1b4f8a";tvb.textContent=fmtMoney(t.task_value);r.appendChild(tvb);}
+  if(t.notes&&t.notes.trim()){const nb=mk("span","t-arrow");nb.textContent="📝";nb.title=t.notes;nb.style.cursor="help";nb.style.flex="none";r.appendChild(nb);}
+  const crews=[...new Set(t.segs.flatMap(s=>s.crews||[]))];
+  crews.forEach(cn=>{const cb=mk("span","crew-badge");cb.style.background=crewColor(cn);cb.textContent=cn;r.appendChild(cb);});
+  const wd=workDays(t);if(wd){const w=mk("span","t-wd");w.textContent=wd+"d";r.appendChild(w);}
+  return r;
+}
+
+function renderBodyPane(rows){
+  const pane=mk("div","body-pane");pane.id="bodyPane";
+  const inner=mk("div","body-inner");inner.style.width=W()+"px";
+
+  // background: gridlines + weekend/holiday/today bands
+  const gl=mk("div","gridlines");
+  gl.style.backgroundImage="repeating-linear-gradient(to right,var(--line-day) 0 1px,transparent 1px "+CFG.dayW+"px)";
+  inner.appendChild(gl);
+  const bands=mk("div","bands");
+  const hol=new Set(state.holidays.map(h=>h.date));
+  for(let i=0;i<CFG.nDays;i++){
+    const d=dt.addDays(GRID_START,i);const iso=dt.iso(d);
+    let cls=null;
+    if(i===CFG.startBackDays)cls="today";
+    else if(hol.has(iso))cls="holiday";
+    else if(dt.isWeekend(d))cls="wknd";
+    if(cls){const b=mk("div","band "+cls);b.style.left=i*CFG.dayW+"px";b.style.width=CFG.dayW+"px";bands.appendChild(b);}
+  }
+  inner.appendChild(bands);
+
+  const body=mk("div","rows");
+  if(rows.length===0){pane.appendChild(inner);return pane;}
+  rows.forEach(row=>{
+    if(row.type==="proj"){body.appendChild(bodyProj(row.p));}
+    else if(row.type==="sub"){body.appendChild(bodySub(row.t,row.sub));}
+    else body.appendChild(bodyTask(row.t));
+  });
+  inner.appendChild(body);pane.appendChild(inner);return pane;
+}
+function bodyProj(p){
+  const r=mk("div","brow proj");r.style.height="var(--proj-h)";r.dataset.proj=p.id;
+  // project span summary: from earliest seg start to latest seg end across tasks
+  let mn=Infinity,mx=-Infinity;
+  projTasks(p.id).forEach(t=>t.segs.forEach(s=>{if(s.s)mn=Math.min(mn,dayIndex(s.s));if(s.e)mx=Math.max(mx,dayIndex(s.e));}));
+  if(mn!==Infinity){const span=mk("div","proj-span");span.style.left=mn*CFG.dayW+"px";
+    span.style.width=((mx-mn+1)*CFG.dayW)+"px";r.appendChild(span);}
+  return r;
+}
+function bodyTask(t){
+  const r=mk("div","brow task");r.style.height="var(--row-h)";r.dataset.task=t.id;
+  t.segs.forEach((sg,si)=>{
+    if(!sg.s||!sg.e)return;
+    const a=dayIndex(sg.s),b=dayIndex(sg.e);
+    const bar=mk("div","bar"+(t.status==="Complete"?" complete":""));
+    bar.style.left=a*CFG.dayW+"px";bar.style.width=((b-a+1)*CFG.dayW)+"px";
+    const crews=sg.crews||[];
+    bar.style.background=crewColor(crews[0]);
+    bar.dataset.task=t.id;bar.dataset.seg=si;
+    bar.dataset.tip=t.descr+" · "+(crews.join(", ")||"unassigned")+" · "+sg.s+" → "+sg.e+(t.notes?(" · "+t.notes):"");
+    if(crews.length){const tag=mk("span","crew-tag");tag.textContent=crews.length>1?(crews.length+" crews"):crews[0];bar.appendChild(tag);}
+    if(CONFLICTS.has(t.id+":"+si)){bar.classList.add("conflict");bar.dataset.tip+=" · ⚠ crew double-booked";
+      const w=mk("span","warn");w.textContent="⚠";bar.insertBefore(w,bar.firstChild);}
+    const lab=mk("span");lab.style.cssText="overflow:hidden;text-overflow:ellipsis";lab.textContent=t.descr;bar.appendChild(lab);
+    const hl=mk("div","handle l"),hr=mk("div","handle r");bar.appendChild(hl);bar.appendChild(hr);
+    Drag.bind(bar,t,si,hl,hr);
+    r.appendChild(bar);
+  });
+  return r;
+}
+
+function labelSub(t,sub){
+  const r=mk("div","lrow sub");r.style.height="var(--sub-h)";r.dataset.task=t.id;r.dataset.sub=sub.id;
+  r.onclick=()=>Modal.task(t,false);
+  const cb=mk("span","sub-check"+(sub.complete?" on":""));cb.textContent=sub.complete?"✓":"";
+  cb.onclick=(e)=>{e.stopPropagation();Data.toggleSubtask(t.id,sub.id);render();};
+  const d=mk("span","sub-descr"+(sub.complete?" done":""));d.textContent=sub.descr||"(untitled)";
+  r.appendChild(cb);r.appendChild(d);
+  if(sub.assigned){const a=mk("span","crew-badge");a.style.background=crewColor(sub.assigned);a.style.fontSize="9px";a.textContent=sub.assigned;r.appendChild(a);}
+  if(sub.date){const dd=mk("span","t-wd");dd.textContent=fmtShort(sub.date);
+    if(!sub.complete&&dt.parse(sub.date)<TODAY)dd.style.color="#dc2626";r.appendChild(dd);}
+  return r;
+}
+function bodySub(t,sub){
+  const r=mk("div","brow sub");r.style.height="var(--sub-h)";r.dataset.task=t.id;r.dataset.sub=sub.id;
+  const overdue=sub.date&&!sub.complete&&dt.parse(sub.date)<TODAY;
+  const color=sub.complete?"#9ca3af":overdue?"#dc2626":"#6b7280";
+  if(sub.date){
+    const i=dayIndex(sub.date);
+    if(i>=0&&i<CFG.nDays){const dia=mk("div","sub-diamond");dia.style.left=(i*CFG.dayW+CFG.dayW/2)+"px";
+      dia.style.background=color;dia.style.opacity=sub.complete?".45":".9";
+      dia.title=sub.descr+(sub.complete?" (done)":" — "+fmtShort(sub.date));r.appendChild(dia);}
+  }else{
+    let mn=Infinity,mx=-Infinity;t.segs.forEach(s=>{if(s.s)mn=Math.min(mn,dayIndex(s.s));if(s.e)mx=Math.max(mx,dayIndex(s.e));});
+    if(mn!==Infinity){const ln=mk("div","sub-line");ln.style.left=mn*CFG.dayW+"px";ln.style.width=((mx-mn+1)*CFG.dayW)+"px";ln.style.borderColor=color;r.appendChild(ln);}
+  }
+  return r;
+}
+
+/* ============================================================================
+   CONTROLLERS  (independent — share only `state` + render())
+   ========================================================================== */
+
+/* ---- Scroll sync: body drives header (x) and label pane (y) -------------- */
+const ScrollSync = {
+  attach(){
+    const body=document.getElementById("bodyPane"),head=document.getElementById("headPane"),lab=document.getElementById("labelPane");
+    if(!body)return;
+    body.onscroll=()=>{head.scrollLeft=body.scrollLeft;lab.scrollTop=body.scrollTop;};
+    // there is no content before GRID_START, so "1 week before today" is the hard left edge by construction.
+  },
+  toToday(){const body=document.getElementById("bodyPane");if(body)body.scrollLeft=Math.max(0,(CFG.startBackDays-2)*CFG.dayW);}
+};
+
+/* ---- Drag: move / resize segments, snapped to days ----------------------- */
+const Drag = {
+  bind(bar,task,si,hl,hr){
+    const start=(mode)=>(e)=>{
+      e.preventDefault();e.stopPropagation();
+      const seg=task.segs[si];const x0=e.clientX;
+      const a0=dayIndex(seg.s),b0=dayIndex(seg.e);
+      bar.classList.add("dragging");
+      const move=(ev)=>{
+        const dd=Math.round((ev.clientX-x0)/CFG.dayW);
+        let a=a0,b=b0;
+        if(mode==="move"){a=a0+dd;b=b0+dd;}
+        else if(mode==="l"){a=Math.min(a0+dd,b0);}
+        else if(mode==="r"){b=Math.max(b0+dd,a0);}
+        a=Math.max(0,a);
+        bar.style.left=a*CFG.dayW+"px";bar.style.width=((b-a+1)*CFG.dayW)+"px";
+        bar._pending={a,b};
+      };
+      const up=()=>{
+        document.removeEventListener("pointermove",move);
+        document.removeEventListener("pointerup",up);
+        bar.classList.remove("dragging");
+        const pend=bar._pending;
+        if(pend){const segs=task.segs.map((s,i)=>i===si?{...s,s:idxToDate(pend.a),e:idxToDate(pend.b)}:s);
+          Data.updateTask(task.id,{segs});}
+        render();
+      };
+      document.addEventListener("pointermove",move);
+      document.addEventListener("pointerup",up);
+    };
+    bar.addEventListener("pointerdown",start("move"));
+    hl.addEventListener("pointerdown",start("l"));
+    hr.addEventListener("pointerdown",start("r"));
+  }
+};
+
+/* ---- Tooltip -------------------------------------------------------------- */
+const Tip = {
+  el:null,
+  attach(){
+    if(!this.el){this.el=mk("div","tip");ROOT.appendChild(this.el);}
+    document.querySelectorAll(".bar").forEach(bar=>{
+      bar.addEventListener("pointerenter",()=>{this.el.textContent=bar.dataset.tip;this.el.style.opacity="1";});
+      bar.addEventListener("pointermove",(e)=>{this.el.style.left=(e.clientX+12)+"px";this.el.style.top=(e.clientY+14)+"px";});
+      bar.addEventListener("pointerleave",()=>{this.el.style.opacity="0";});
+    });
+  }
+};
+
+/* ---- Toolbar + filters ---------------------------------------------------- */
+function renderToolbar(){
+  const t=mk("div","toolbar");
+  if(!_opts.embedded){const brand=mk("div","brand");brand.innerHTML='<span class="dot"></span>Strada Gantt';t.appendChild(brand);}
+  const nConf=new Set([...CONFLICTS].map(k=>k.split(":")[0])).size;
+  if(nConf){const cc=mk("button","tb-btn");cc.textContent="⚠ "+nConf+" conflict"+(nConf>1?"s":"");
+    cc.style.cssText="background:#dc2626;border-color:#dc2626";cc.title="Tasks where a crew is double-booked. Click to filter search.";
+    cc.onclick=()=>{ScrollSync.toToday();};t.appendChild(cc);}
+  t.appendChild(mk("div","tb-spacer"));
+  const g=mk("div","tb-group");
+  const zoom=mk("div","zoom");zoom.innerHTML="<span>Zoom</span>";
+  const zi=mk("input");zi.type="range";zi.min="16";zi.max="54";zi.value=CFG.dayW;zi.oninput=()=>setZoom(+zi.value);zoom.appendChild(zi);
+  const allCol=state.projects.length&&state.projects.every(p=>p.collapsed);
+  const colB=mk("button","tb-btn");colB.textContent=allCol?"Expand all":"Collapse all";
+  colB.onclick=()=>{Data.collapseAll(!allCol);render();};
+  const today=mk("button","tb-btn");today.textContent="Today";today.onclick=()=>ScrollSync.toToday();
+  const holB=mk("button","tb-btn");holB.textContent="Holidays";holB.onclick=()=>Modal.holidays();
+  const help=mk("button","tb-btn");help.textContent="?";
+  help.title="Shortcuts:  t = today · + / − = zoom · n = new project · c / e = collapse / expand all · / = search · Esc = close";
+  const expB=mk("button","tb-btn");expB.textContent="Export";expB.onclick=()=>Export.open();
+  const reset=mk("button","tb-btn");reset.textContent="Reset data";reset.title="Restore sample data";
+  reset.onclick=()=>{if(confirm("Reset to sample data? Your changes in this browser will be lost."))resetData();};
+  const addP=mk("button","tb-btn primary");addP.textContent="+ Project";addP.onclick=()=>{const p=Data.addProject();Modal.project(p);};
+  const _tb=[zoom,colB,today];
+  if(!_opts.embedded)_tb.push(holB);   // holidays managed in the app Settings tab when embedded
+  if(!_opts.embedded)_tb.push(expB);   // when embedded, the host app provides its own (richer) export
+  _tb.push(help);
+  if(!_opts.embedded)_tb.push(reset);  // "Reset data" only meaningful for the standalone seed
+  if(!_opts.embedded)_tb.push(addP);   // host app's +Project is used when embedded
+  _tb.forEach(x=>g.appendChild(x));
+  t.appendChild(g);return t;
+}
+function renderFilters(){
+  const f=mk("div","filters");
+  const lab=mk("span","lbl");lab.textContent="Crews";f.appendChild(lab);
+  state.crews.forEach(c=>{
+    const chip=mk("span","chip"+(state.filters.crews.has(c.name)?"":" off"));
+    chip.textContent=c.name;chip.style.cssText="background:"+c.color+"22;color:"+c.color+";border-color:"+c.color+"66";
+    chip.onclick=()=>{const s=state.filters.crews;s.has(c.name)?s.delete(c.name):s.add(c.name);save();render();};
+    f.appendChild(chip);
+  });
+  const st=mk("select","tb-input");st.style.minWidth="130px";
+  st.innerHTML='<option value="">All statuses</option>'+CFG.statuses.map(s=>`<option ${state.filters.status===s?"selected":""}>${s}</option>`).join("");
+  st.style.color="#16233a";st.style.background="#fff";st.style.borderColor="#d3dae6";
+  st.onchange=()=>{state.filters.status=st.value;save();render();};
+  const sr=mk("input","tb-input");sr.id="searchInput";sr.placeholder="Search jobs / tasks…";sr.value=state.filters.search;
+  sr.style.color="#16233a";sr.style.background="#fff";sr.style.borderColor="#d3dae6";
+  sr.oninput=()=>{state.filters.search=sr.value;clearTimeout(sr._t);sr._t=setTimeout(render,180);};
+  const sp=mk("div");sp.style.flex="1";
+  f.appendChild(sp);f.appendChild(st);f.appendChild(sr);return f;
+}
+function setZoom(px){CFG.dayW=px;if(ROOT)ROOT.style.setProperty("--day-w",px+"px");render();}
+
+/* ---- Modals --------------------------------------------------------------- */
+const Modal = {
+  shell(title,bodyFill,onSave,onDelete){
+    const ov=mk("div","overlay");ov.onclick=(e)=>{if(e.target===ov)ov.remove();};
+    const m=mk("div","modal");
+    const h=mk("h2");h.innerHTML="<span>"+title+"</span>";
+    const x=mk("button","x");x.textContent="×";x.onclick=()=>ov.remove();h.appendChild(x);
+    const body=mk("div","modal-body");bodyFill(body);
+    const foot=mk("div","modal-foot");
+    const del=mk("button","btn del");del.textContent="Delete";del.onclick=()=>{onDelete();ov.remove();render();};
+    const right=mk("div");right.style.cssText="display:flex;gap:8px";
+    const cancel=mk("button","btn cancel");cancel.textContent="Cancel";cancel.onclick=()=>ov.remove();
+    const sv=mk("button","btn save");sv.textContent="Save";sv.onclick=()=>{onSave();ov.remove();render();};
+    right.appendChild(cancel);right.appendChild(sv);
+    foot.appendChild(onDelete?del:mk("span"));foot.appendChild(right);
+    m.appendChild(h);m.appendChild(body);m.appendChild(foot);ov.appendChild(m);ROOT.appendChild(ov);
+  },
+  field(label,input){const f=mk("div","field");const l=mk("label");l.textContent=label;f.appendChild(l);f.appendChild(input);return f;},
+  project(p){
+    let jn,cl,lo,vv,stt,soils;
+    const loc=JSON.parse(JSON.stringify(p.locates||{pub:{req:null,ordered:false,complete:false},priv:{req:null,ordered:false,complete:false}}));
+    loc.pub=loc.pub||{};loc.priv=loc.priv||{};
+    this.shell(p.job_num==="NEW"?"New project":"Edit project",(body)=>{
+      jn=mk("input");jn.value=p.job_num;
+      cl=mk("input");cl.value=p.client;
+      lo=mk("input");lo.value=p.loc;
+      vv=mk("input");vv.type="number";vv.value=p.value;
+      stt=mk("select");stt.innerHTML=CFG.statuses.map(x=>`<option ${p.status===x?"selected":""}>${x}</option>`).join("");
+      const row=mk("div");row.style.cssText="display:flex;gap:10px";
+      row.appendChild(this.field("Job #",jn));row.appendChild(this.field("Value ($)",vv));
+      body.appendChild(row);
+      body.appendChild(this.field("Client",cl));
+      body.appendChild(this.field("Location",lo));
+      body.appendChild(this.field("Status",stt));
+      const lLbl=mk("label");lLbl.textContent="Utility locates";lLbl.style.cssText="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin:4px 0 6px";
+      body.appendChild(lLbl);
+      const locRow=(key,label)=>{const o=loc[key];
+        const box=mk("div","seg");box.style.alignItems="center";
+        const lab=mk("span");lab.textContent=label;lab.style.cssText="width:60px;font-size:12px;font-weight:600;color:var(--muted)";
+        const dIn=mk("input");dIn.type="date";dIn.value=o.req||"";dIn.style.maxWidth="150px";dIn.onchange=()=>o.req=dIn.value||null;
+        const mkChk=(txt,prop)=>{const w=mk("label");w.style.cssText="display:flex;gap:4px;align-items:center;font-size:11px;white-space:nowrap";
+          const c=mk("input");c.type="checkbox";c.checked=!!o[prop];c.style.width="auto";c.onchange=()=>o[prop]=c.checked;w.appendChild(c);w.appendChild(document.createTextNode(txt));return w;};
+        [lab,dIn,mkChk("ordered","ordered"),mkChk("cleared","complete")].forEach(x=>box.appendChild(x));return box;};
+      body.appendChild(locRow("pub","Public"));
+      body.appendChild(locRow("priv","Private"));
+      const sW=mk("label");sW.style.cssText="display:flex;align-items:center;gap:8px;font-size:12px;margin:10px 0 4px;cursor:pointer";
+      soils=mk("input");soils.type="checkbox";soils.checked=!!p.soils;soils.style.width="auto";
+      sW.appendChild(soils);sW.appendChild(document.createTextNode("Soils report required"));
+      body.appendChild(sW);
+    },()=>Data.updateProject(p.id,{job_num:jn.value,client:cl.value,loc:lo.value,value:+vv.value||0,status:stt.value,locates:loc,soils:soils.checked}),
+       ()=>Data.deleteProject(p.id));
+  },
+  holidays(){
+    const list=state.holidays.map(h=>({...h}));
+    this.shell("Holidays",(body)=>{
+      const note=mk("div");note.textContent="Holidays shade the calendar and are skipped in work-day counts.";
+      note.style.cssText="font-size:12px;color:var(--muted);margin-bottom:12px";body.appendChild(note);
+      const wrap=mk("div");body.appendChild(wrap);
+      const draw=()=>{wrap.innerHTML="";
+        if(!list.length){const e=mk("div");e.textContent="No holidays yet.";e.style.cssText="color:var(--muted);font-size:12px;padding:4px 0";wrap.appendChild(e);}
+        list.slice().sort((a,b)=>(a.date||"")<(b.date||"")?-1:1).forEach((h)=>{
+          const box=mk("div","seg");box.style.alignItems="center";
+          const dIn=mk("input");dIn.type="date";dIn.value=h.date||"";dIn.style.maxWidth="150px";dIn.onchange=()=>h.date=dIn.value;
+          const nm=mk("input");nm.value=h.name||"";nm.placeholder="Name";nm.style.flex="1";nm.onchange=()=>h.name=nm.value;
+          const rm=mk("button","seg-rm");rm.textContent="\u00d7";rm.onclick=()=>{const ix=list.indexOf(h);if(ix>=0)list.splice(ix,1);draw();};
+          [dIn,nm,rm].forEach(x=>box.appendChild(x));wrap.appendChild(box);
+        });};
+      draw();
+      const add=mk("button","btn-add-seg");add.textContent="+ Add holiday";
+      add.onclick=()=>{list.push({date:idxToDate(CFG.startBackDays),name:""});draw();};
+      body.appendChild(add);
+    },()=>{state.holidays=list.filter(h=>h.date);save();},null);
+  },
+  task(t,isNew){
+    let de,stt,nt,wk,tv;const segs=t.segs.map(s=>({...s,crews:[...(s.crews||[])]}));
+    const subs=(t.subtasks||[]).map(s=>({...s}));
+    this.shell(isNew?"New task":"Edit task",(body)=>{
+      de=mk("input");de.value=t.descr;
+      body.appendChild(this.field("Description",de));
+      const row=mk("div");row.style.cssText="display:flex;gap:10px";
+      stt=mk("select");stt.innerHTML=CFG.statuses.map(x=>`<option ${t.status===x?"selected":""}>${x}</option>`).join("");
+      tv=mk("input");tv.type="number";tv.placeholder="optional";tv.value=t.task_value||"";
+      row.appendChild(this.field("Status",stt));row.appendChild(this.field("Task value ($)",tv));
+      body.appendChild(row);
+      const wkW=mk("label");wkW.style.cssText="display:flex;align-items:center;gap:8px;font-size:12px;margin:0 0 14px;cursor:pointer";
+      wk=mk("input");wk.type="checkbox";wk.checked=!!t.wknd;wk.style.width="auto";
+      wkW.appendChild(wk);wkW.appendChild(document.createTextNode("Crew works weekends on this task (counts weekend days)"));
+      body.appendChild(wkW);
+      const segLbl=mk("label");segLbl.textContent="Scheduled segments";segLbl.style.cssText="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px";
+      body.appendChild(segLbl);
+      const segWrap=mk("div");body.appendChild(segWrap);
+      const drawSegs=()=>{segWrap.innerHTML="";segs.forEach((sg,i)=>{
+        const box=mk("div","seg");box.style.flexDirection="column";box.style.alignItems="stretch";
+        const top=mk("div");top.style.cssText="display:flex;gap:8px;align-items:flex-end";
+        const sIn=mk("input");sIn.type="date";sIn.value=sg.s||"";sIn.onchange=()=>sg.s=sIn.value;
+        const eIn=mk("input");eIn.type="date";eIn.value=sg.e||"";eIn.onchange=()=>sg.e=eIn.value;
+        top.appendChild(this.field("Start",sIn));top.appendChild(this.field("End",eIn));
+        const rm=mk("button","seg-rm");rm.textContent="×";rm.title="Remove segment";
+        rm.onclick=()=>{segs.splice(i,1);drawSegs();};top.appendChild(rm);
+        box.appendChild(top);
+        const chips=mk("div");chips.style.cssText="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px";
+        state.crews.forEach(c=>{const on=sg.crews.includes(c.name);
+          const chip=mk("span","chip"+(on?"":" off"));chip.textContent=c.name;
+          chip.style.cssText+=";background:"+c.color+"22;color:"+c.color+";border-color:"+c.color+"66";
+          chip.onclick=()=>{sg.crews=on?sg.crews.filter(x=>x!==c.name):[...sg.crews,c.name];drawSegs();};
+          chips.appendChild(chip);});
+        box.appendChild(chips);
+        segWrap.appendChild(box);
+      });};
+      drawSegs();
+      const add=mk("button","btn-add-seg");add.textContent="+ Add segment";
+      add.onclick=()=>{const last=segs[segs.length-1];
+        segs.push({s:last?last.e:idxToDate(CFG.startBackDays),e:last?last.e:idxToDate(CFG.startBackDays+1),crews:last?[...last.crews]:[state.crews[0].name]});drawSegs();};
+      body.appendChild(add);
+      const subLbl=mk("label");subLbl.textContent="Subtasks / milestones";subLbl.style.cssText="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;display:block;margin:4px 0 6px";
+      body.appendChild(subLbl);
+      const subWrap=mk("div");body.appendChild(subWrap);
+      const drawSubs=()=>{subWrap.innerHTML="";subs.forEach((sb,i)=>{
+        const box=mk("div","seg");box.style.alignItems="center";
+        const ck=mk("input");ck.type="checkbox";ck.checked=!!sb.complete;ck.style.width="auto";ck.style.flex="none";ck.onchange=()=>sb.complete=ck.checked;
+        const dsc=mk("input");dsc.value=sb.descr||"";dsc.placeholder="Subtask…";dsc.style.flex="1";dsc.onchange=()=>sb.descr=dsc.value;
+        const dIn=mk("input");dIn.type="date";dIn.value=sb.date||"";dIn.style.maxWidth="140px";dIn.onchange=()=>sb.date=dIn.value||null;
+        const aSel=mk("select");aSel.style.maxWidth="120px";aSel.innerHTML='<option value="">— who —</option>'+state.crews.map(c=>`<option ${sb.assigned===c.name?"selected":""}>${c.name}</option>`).join("");aSel.onchange=()=>sb.assigned=aSel.value;
+        const rm=mk("button","seg-rm");rm.textContent="×";rm.onclick=()=>{subs.splice(i,1);drawSubs();};
+        [ck,dsc,dIn,aSel,rm].forEach(x=>box.appendChild(x));subWrap.appendChild(box);
+      });};
+      drawSubs();
+      const addSub=mk("button","btn-add-seg");addSub.textContent="+ Add subtask";
+      addSub.onclick=()=>{subs.push({id:genId("s_"),descr:"",assigned:"",date:null,complete:false});drawSubs();};
+      body.appendChild(addSub);
+      nt=mk("textarea");nt.rows=3;nt.value=t.notes||"";nt.style.resize="vertical";
+      body.appendChild(this.field("Notes (weather, RFIs, changes…)",nt));
+    },()=>Data.updateTask(t.id,{descr:de.value,status:stt.value,wknd:wk.checked,notes:nt.value,
+        task_value:tv.value?+tv.value:null,subtasks:subs.filter(s=>s.descr&&s.descr.trim()),segs:segs.filter(s=>s.s&&s.e)}),
+       ()=>Data.deleteTask(t.id));
+  }
+};
+
+/* ---- Keyboard shortcuts (attached once) ---------------------------------- */
+const Keys = {
+  attach(){
+    document.addEventListener("keydown",(e)=>{
+      if(e.key==="Escape"){const ov=document.querySelector(".overlay");if(ov)ov.remove();return;}
+      const tag=(e.target.tagName||"").toLowerCase();
+      if(tag==="input"||tag==="textarea"||tag==="select")return;
+      if(e.metaKey||e.ctrlKey||e.altKey)return;
+      switch(e.key){
+        case "t":ScrollSync.toToday();break;
+        case "+":case "=":setZoom(Math.min(54,CFG.dayW+4));break;
+        case "-":setZoom(Math.max(16,CFG.dayW-4));break;
+        case "n":{const p=Data.addProject();Modal.project(p);break;}
+        case "c":Data.collapseAll(true);render();break;
+        case "e":Data.collapseAll(false);render();break;
+        case "/":{e.preventDefault();const sr=document.getElementById("searchInput");if(sr)sr.focus();break;}
+      }
+    });
+  }
+};
+
+/* ---- Export / print (all client-side) ------------------------------------ */
+const Export = {
+  download(name,type,data){const blob=new Blob([data],{type});const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1500);},
+  printDoc(title,body,landscape){
+    const w=window.open("","_blank");
+    if(!w){alert("Please allow pop-ups for this site to print/export.");return;}
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+escHtml(title)+'</title><style>'+
+      '@page{size:'+(landscape?"landscape":"portrait")+';margin:11mm}'+
+      'body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#16233a;margin:0;padding:16px;font-size:12px}'+
+      'h1{font-size:18px;color:#1F3864;margin:0 0 2px}.sub{color:#5b6470;font-size:12px;margin-bottom:14px}'+
+      'table{border-collapse:collapse;width:100%}th,td{border:1px solid #d7dde6;padding:5px 7px;text-align:left;font-size:11px}'+
+      'th{background:#1F3864;color:#fff;font-weight:600}'+
+      '.crew-card{border:1px solid #d7dde6;border-radius:8px;overflow:hidden;margin-bottom:12px;break-inside:avoid}'+
+      '.crew-h{color:#fff;padding:6px 11px;font-weight:600;font-size:13px}'+
+      '.fs-row{display:flex;gap:12px;padding:6px 11px;border-top:1px solid #eef1f5}'+
+      '.fs-date{width:118px;color:#41506a;font-weight:600;flex:none}'+
+      '.fs-loc{font-weight:600;font-size:13px}.fs-task{color:#5b6470;font-size:11px}.fs-job{margin-left:auto;color:#7a8394}'+
+      '.bar{height:12px;border-radius:2px}.muted{color:#7a8394}.warn{color:#dc2626;font-weight:600}'+
+      '</style></head><body>'+body+'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print()},150)}</scr'+'ipt></body></html>');
+    w.document.close();
+  },
+  csv(){
+    const esc=v=>{v=(v==null?"":String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+    const rows=[["Job #","Client","Location","Project status","Project value","Task","Task status","Crews","Start","End","Work days","Subtasks done","Subtasks total","Notes"]];
+    state.projects.slice().sort((a,b)=>a.sort-b.sort).forEach(p=>projTasks(p.id).forEach(t=>{
+      const segs=t.segs.filter(x=>x.s&&x.e);
+      const start=segs.length?segs.map(x=>x.s).sort()[0]:"";
+      const end=segs.length?segs.map(x=>x.e).sort().slice(-1)[0]:"";
+      const crews=[...new Set(t.segs.flatMap(x=>x.crews||[]))].join("; ");
+      const sub=t.subtasks||[];
+      rows.push([p.job_num,p.client,p.loc,p.status,p.value,t.descr,t.status,crews,start,end,workDays(t),sub.filter(x=>x.complete).length,sub.length,t.notes||""]);
+    }));
+    this.download("strada-schedule.csv","text/csv;charset=utf-8",rows.map(r=>r.map(esc).join(",")).join("\n"));
+  },
+  fieldSchedule(){
+    const start=TODAY,end=dt.addDays(TODAY,20),byCrew={};
+    state.tasks.forEach(t=>{const p=state.projects.find(x=>x.id===t.project_id);
+      t.segs.forEach(sg=>{if(!sg.s||!sg.e)return;if(dt.parse(sg.e)<start||dt.parse(sg.s)>end)return;
+        (sg.crews&&sg.crews.length?sg.crews:["Unassigned"]).forEach(cn=>{(byCrew[cn]=byCrew[cn]||[]).push({p,t,sg});});});});
+    let body='<h1>Field schedule</h1><div class="sub">Week of '+fmtFull(dt.iso(weekMon(TODAY)))+' \u2014 next 3 weeks \u00b7 printed '+fmtFull(dt.iso(TODAY))+'</div>';
+    const names=state.crews.map(c=>c.name).filter(n=>byCrew[n]).concat(byCrew["Unassigned"]?["Unassigned"]:[]);
+    if(!names.length)body+='<p class="muted">No scheduled work in this window.</p>';
+    names.forEach(cn=>{const color=cn==="Unassigned"?"#6b7280":crewColor(cn);
+      const list=byCrew[cn].sort((a,b)=>a.sg.s<b.sg.s?-1:1);
+      body+='<div class="crew-card"><div class="crew-h" style="background:'+color+'">'+escHtml(cn)+'</div>';
+      list.forEach(({p,t,sg})=>{body+='<div class="fs-row"><div class="fs-date">'+fmtShort(sg.s)+' \u2013 '+fmtShort(sg.e)+
+        '</div><div><div class="fs-loc">'+escHtml(p.loc||p.client)+'</div><div class="fs-task">'+escHtml(t.descr)+
+        '</div></div><div class="fs-job">'+escHtml(p.job_num)+'</div></div>';});
+      body+='</div>';});
+    this.printDoc("Field Schedule",body,false);
+  },
+  statusReport(){
+    let body='<h1>Status report</h1><div class="sub">'+state.projects.length+' projects \u00b7 printed '+fmtFull(dt.iso(TODAY))+'</div>';
+    const nConf=new Set([...computeConflicts()].map(k=>k.split(":")[0])).size;
+    if(nConf)body+='<p class="warn">\u26a0 '+nConf+' task'+(nConf>1?"s":"")+' with a crew double-booked.</p>';
+    body+='<table><thead><tr><th>Job #</th><th>Client</th><th>Location</th><th>Status</th><th>Value</th><th>Progress</th><th>Locates</th></tr></thead><tbody>';
+    state.projects.slice().sort((a,b)=>a.sort-b.sort).forEach(p=>{const st=locateStatus(p);
+      body+='<tr><td>'+escHtml(p.job_num)+'</td><td>'+escHtml(p.client)+'</td><td>'+escHtml(p.loc)+'</td><td>'+escHtml(p.status)+
+        '</td><td>'+fmtMoney(p.value)+'</td><td>'+projProgress(p)+'%</td><td'+(st&&st.color==="#dc2626"?' class="warn"':'')+'>'+
+        (st?escHtml(st.label):"\u2014")+'</td></tr>';});
+    body+='</tbody></table>';
+    this.printDoc("Status Report",body,false);
+  },
+  ganttPrint(){
+    const weeks=12,w0=weekMon(dt.addDays(TODAY,-7));
+    const wkIdx=(iso)=>Math.floor((dt.parse(iso)-w0)/(7*86400000));
+    let body='<h1>Gantt</h1><div class="sub">'+fmtShort(dt.iso(w0))+' \u2014 '+fmtShort(dt.iso(dt.addDays(w0,weeks*7-1)))+' \u00b7 printed '+fmtFull(dt.iso(TODAY))+'</div>';
+    body+='<table><thead><tr><th style="min-width:170px">Project / task</th>';
+    for(let i=0;i<weeks;i++)body+='<th style="text-align:center">'+fmtShort(dt.iso(dt.addDays(w0,i*7)))+'</th>';
+    body+='</tr></thead><tbody>';
+    state.projects.slice().sort((a,b)=>a.sort-b.sort).forEach(p=>{
+      body+='<tr><td style="background:#1F3864;color:#fff;font-weight:600">'+escHtml(p.job_num)+' \u00b7 '+escHtml(p.client)+'</td>';
+      for(let i=0;i<weeks;i++)body+='<td style="background:#1F3864"></td>';body+='</tr>';
+      projTasks(p.id).forEach(t=>{const cells=new Array(weeks).fill(null);
+        t.segs.forEach(sg=>{if(!sg.s||!sg.e)return;const a=wkIdx(sg.s),b=wkIdx(sg.e);
+          for(let i=Math.max(0,a);i<=Math.min(weeks-1,b);i++)cells[i]=crewColor((sg.crews||[])[0]);});
+        body+='<tr><td>'+escHtml(t.descr)+'</td>';
+        for(let i=0;i<weeks;i++)body+='<td'+(cells[i]?' style="padding:2px;background:'+cells[i]+'33"':'')+'>'+(cells[i]?'<div class="bar" style="background:'+cells[i]+'"></div>':'')+'</td>';
+        body+='</tr>';});
+    });
+    body+='</tbody></table>';
+    this.printDoc("Gantt",body,true);
+  },
+  open(){
+    const ov=mk("div","overlay");ov.onclick=e=>{if(e.target===ov)ov.remove();};
+    const m=mk("div","modal");const h=mk("h2");h.innerHTML="<span>Export / print</span>";
+    const x=mk("button","x");x.textContent="\u00d7";x.onclick=()=>ov.remove();h.appendChild(x);
+    const body=mk("div","modal-body");
+    [["Field schedule","By crew, this week + next 3 weeks. Built for the field.","fieldSchedule"],
+     ["Status report","Project summary: status, value, progress, locates.","statusReport"],
+     ["Gantt (print)","Week-resolution timeline, landscape.","ganttPrint"],
+     ["CSV download","All projects & tasks as a spreadsheet.","csv"]].forEach(([t,d,fn])=>{
+      const b=mk("button");b.style.cssText="display:block;width:100%;text-align:left;border:1px solid #d3dae6;border-radius:9px;padding:12px 14px;margin-bottom:10px;background:#fff;cursor:pointer";
+      b.innerHTML='<div style="font-weight:600;color:#1F3864">'+t+'</div><div style="font-size:11px;color:#5b6470;margin-top:2px">'+d+'</div>';
+      b.onmouseenter=()=>b.style.background="#f4f7fc";b.onmouseleave=()=>b.style.background="#fff";
+      b.onclick=()=>{ov.remove();Export[fn]();};body.appendChild(b);});
+    m.appendChild(h);m.appendChild(body);ov.appendChild(m);ROOT.appendChild(ov);
+  }
+};
+
+/* ---- Right-click context menu (self-contained; routes through Data) ------- */
+const Ctx = {
+  el:null,
+  close(){if(this.el){this.el.remove();this.el=null;}},
+  build(items){
+    const m=mk("div","ctx");m.oncontextmenu=e=>e.preventDefault();
+    items.forEach(it=>{
+      if(it.sep){m.appendChild(mk("div","ctx-sep"));return;}
+      const row=mk("div","ctx-item"+(it.danger?" danger":"")+(it.submenu?" has-sub":""));
+      const ck=mk("span","ctx-ck");ck.textContent=it.checked?"\u2713":"";row.appendChild(ck);
+      const lab=mk("span");lab.textContent=it.label;row.appendChild(lab);
+      if(it.submenu){const ar=mk("span","ctx-arrow");ar.textContent="\u25B8";row.appendChild(ar);
+        row.appendChild(this.build(it.submenu).cls("ctx-sub"));}
+      else row.onclick=(e)=>{e.stopPropagation();this.close();it.action&&it.action();};
+      m.appendChild(row);
+    });
+    m.cls=(c)=>{m.className=c;return m;};
+    return m;
+  },
+  open(x,y,items){
+    this.close();const m=this.build(items);ROOT.appendChild(m);
+    const r=m.getBoundingClientRect();
+    m.style.left=Math.min(x,innerWidth-r.width-6)+"px";
+    m.style.top=Math.min(y,innerHeight-r.height-6)+"px";
+    this.el=m;
+  },
+  forTask(t){
+    return [
+      {label:"Edit task\u2026",action:()=>Modal.task(t,false)},
+      {label:"Status",submenu:CFG.statuses.map(st=>({label:st,checked:t.status===st,action:()=>{Data.updateTask(t.id,{status:st});render();}}))},
+      {label:"Assign crew",submenu:state.crews.map(c=>({label:c.name,checked:t.segs.some(sg=>(sg.crews||[]).includes(c.name)),action:()=>{Data.setTaskCrew(t.id,c.name);render();}}))},
+      {label:"Reschedule",submenu:[
+        {label:"\u2212 1 week",action:()=>{Data.nudgeTask(t.id,-7);render();}},
+        {label:"\u2212 1 day",action:()=>{Data.nudgeTask(t.id,-1);render();}},
+        {label:"+ 1 day",action:()=>{Data.nudgeTask(t.id,1);render();}},
+        {label:"+ 1 week (weather)",action:()=>{Data.nudgeTask(t.id,7);render();}}]},
+      {sep:true},
+      {label:"Add subtask\u2026",action:()=>Modal.task(t,false)},
+      {label:"Duplicate task",action:()=>{Data.duplicateTask(t.id);render();}},
+      {sep:true},
+      {label:"Delete task",danger:true,action:()=>{if(confirm("Delete this task?")){Data.deleteTask(t.id);render();}}}
+    ];
+  },
+  forProject(p){
+    return [
+      {label:"Edit project\u2026",action:()=>Modal.project(p)},
+      {label:"Add task",action:()=>{const t=Data.addTask(p.id);Modal.task(t,true);}},
+      {label:"Status",submenu:CFG.statuses.map(st=>({label:st,checked:p.status===st,action:()=>{Data.updateProject(p.id,{status:st});render();}}))},
+      {label:p.collapsed?"Expand":"Collapse",action:()=>{Data.toggleCollapse(p.id);render();}},
+      {label:"Edit locates\u2026",action:()=>Modal.project(p)},
+      {sep:true},
+      {label:"Delete project",danger:true,action:()=>{if(confirm("Delete project and all its tasks?")){Data.deleteProject(p.id);render();}}}
+    ];
+  },
+  forSub(t,sub){
+    return [
+      {label:sub.complete?"Mark not done":"Mark done",action:()=>{Data.toggleSubtask(t.id,sub.id);render();}},
+      {label:"Edit\u2026",action:()=>Modal.task(t,false)},
+      {sep:true},
+      {label:"Delete subtask",danger:true,action:()=>{Data.updateTask(t.id,{subtasks:(t.subtasks||[]).filter(x=>x.id!==sub.id)});render();}}
+    ];
+  },
+  forBlank(){
+    return [
+      {label:"New project",action:()=>{const p=Data.addProject();Modal.project(p);}},
+      {label:"Jump to today",action:()=>ScrollSync.toToday()},
+      {sep:true},
+      {label:"Collapse all",action:()=>{Data.collapseAll(true);render();}},
+      {label:"Expand all",action:()=>{Data.collapseAll(false);render();}}
+    ];
+  },
+  attach(){
+    document.addEventListener("contextmenu",(e)=>{
+      if(!e.target.closest(".gantt")){this.close();return;}
+      e.preventDefault();
+      const subEl=e.target.closest("[data-sub]"),taskEl=e.target.closest("[data-task]"),projEl=e.target.closest("[data-proj]");
+      let items;
+      if(subEl){const t=state.tasks.find(x=>x.id===subEl.dataset.task);const sb=(t&&t.subtasks||[]).find(x=>x.id===subEl.dataset.sub);if(t&&sb)items=this.forSub(t,sb);}
+      else if(taskEl){const t=state.tasks.find(x=>x.id===taskEl.dataset.task);if(t)items=this.forTask(t);}
+      else if(projEl){const p=state.projects.find(x=>x.id===projEl.dataset.proj);if(p)items=this.forProject(p);}
+      if(!items)items=this.forBlank();
+      this.open(e.clientX,e.clientY,items);
+    });
+    document.addEventListener("click",()=>this.close());
+    document.addEventListener("scroll",()=>this.close(),true);
+  }
+};
+
+/* ---- go ------------------------------------------------------------------- */
+function applyData(d){
+  if(!d)return;
+  if(d.crews&&d.crews.length)state.crews=d.crews;
+  state.holidays=d.holidays||[];
+  state.projects=d.projects||[];   // hard replace — embedded never falls back to the component's own seed
+  state.tasks=d.tasks||[];
+  const names=new Set(state.crews.map(c=>c.name));
+  if(!state._filtersInit){state.filters.crews=new Set(names);state._filtersInit=true;}
+  else state.filters.crews=new Set([...state.filters.crews].filter(n=>names.has(n)));
+}
+// host write hooks + id generation (no-ops / local uid when standalone)
+function emit(hook){if(!_opts.write||!_opts.write[hook])return;
+  try{_opts.write[hook].apply(null,[].slice.call(arguments,1));}catch(e){console.error("[gv2 write]",hook,e);}}
+function genId(p){return _opts.newId?_opts.newId():uid(p);}
+const GanttV2={
+  mount(el,opts){_opts=opts||{};ROOT=el;el.classList.add("gv2");el.style.setProperty("--day-w",CFG.dayW+"px");
+    if(_opts.data)applyData(_opts.data);
+    if(!_attached){Keys.attach();Ctx.attach();_attached=true;}render();},
+  refresh(data){if(!ROOT)return;if(data)applyData(data);render();},
+  unmount(){if(ROOT){ROOT.innerHTML="";ROOT.classList.remove("gv2");}},
+  readOnly(){return !!_opts.readOnly;}
+};
+window.GanttV2=GanttV2;
+// (self-mount removed for embedded build)
+})();
+
+</script>
 
 <!-- Auth screens -->
 <div id="screen-login" class="screen" style="display:none">
@@ -605,20 +1753,20 @@ function mkSeeds(){
 
 // ── SUPABASE & STATE ───────────────────────────────────────────────────────────
 let sb=null,realtimeCh=null,currentUser=null;
+const GV2_ON=!new URLSearchParams(location.search).has('oldgantt'); // Gantt v2 is default; ?oldgantt=1 = legacy
 const S={
   view:'gantt',settingsTab:'crews',modal:null,boardSearch:'',
-  // ganttGrid loaded from config — persisted so it survives page reload
-  ganttGrid:(()=>{try{return JSON.parse(localStorage.getItem(CFG_KEY)||'{}').ganttGrid||false}catch{return false}})(),
+  // ganttGrid loaded from config — persisted so it survives page reload.
+  // Default ON (Option A reskin). An explicit user "off" is respected via ?? .
+  ganttGrid:(()=>{try{const v=JSON.parse(localStorage.getItem(CFG_KEY)||'{}').ganttGrid;return v??true}catch(e){return true}})(),
   projects:[],tasks:[],crews:[],holidays:[],subtasks:[],
   employees:[],employeeCerts:[],  // M1: Employee & Certification Registry
   hsIncidents:[],hsActions:[],    // M2: H&S Incidents & WSIB
   hsMeetings:[],hsPhas:[],        // M3: JHSC Meetings & Pre-Job Hazard Assessments
-  subcontractors:[],              // M4: Subcontractor Compliance Registry
-  fieldReports:[],reportEntries:[], // M6: Daily Field Reports
   equipment:[],                     // M7: Equipment Registry
   loading:false,syncing:false,
   // Management tab — data persisted to localStorage keyed by user email
-  mgmt:{bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[],crewAssignments:[]},
+  mgmt:{bids:[],hsItems:[],timeOff:[]},
   // Phase 2: filter & sort state (persisted to localStorage per user)
   filter:{crews:[],hideComplete:false,dateFrom:null,dateTo:null,sortBy:'default',showArchived:false},
   presets:[] // [{id,name,filter}]
@@ -671,7 +1819,7 @@ function saveMgmt(){try{localStorage.setItem(_mgmtKey(),JSON.stringify(S.mgmt))}
 function loadMgmt(){
   try{
     const m=JSON.parse(localStorage.getItem(_mgmtKey())||'null');
-    if(m)S.mgmt={bids:[],hsItems:[],timeOff:[],mgEvents:[],equipmentDispatch:[],crewAssignments:[],...m};
+    if(m)S.mgmt={bids:[],hsItems:[],timeOff:[],...m};
   }catch(e){}
 }
 
@@ -961,7 +2109,7 @@ function dbTaskToApp(t){
   const primaryCrew=(segs[0]?.crews[0])||taskCrew;
   return{id:t.id,project_id:t.project_id,descr:t.descr||'',crew:primaryCrew,
     status:t.status,wknd:t.wknd,sort_order:t.sort_order,
-    task_value:t.task_value||null,segs};
+    task_value:t.task_value||null,notes:t.notes||'',segs};
 }
 function appTaskToDB(t){
   // Derive primary crew from first segment's first crew (keeps tasks.crew in sync)
@@ -1023,7 +2171,7 @@ function withTimeout(promise,ms,msg){
 async function loadAll(){
   S.syncing=true;refreshToolbar();
   try{
-    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp,sc,fr,re,eq]=await withTimeout(
+    const[pr,tk,cr,hl,st,emp,ec,hi,ha,hm,hp,eq]=await withTimeout(
       Promise.all([
         sb.from('projects').select('*').order('sort_order'),
         sb.from('tasks').select('*').order('project_id').order('sort_order'),
@@ -1036,9 +2184,6 @@ async function loadAll(){
         sb.from('hs_actions').select('*').order('due_date'),
         sb.from('hs_meetings').select('*').order('meeting_date',{ascending:false}),
         sb.from('hs_phas').select('*').order('pha_date',{ascending:false}),
-        sb.from('subcontractors').select('*').order('name'),
-        sb.from('field_reports').select('*').order('report_date',{ascending:false}),
-        sb.from('report_entries').select('*').order('report_id'),
         sb.from('equipment').select('*').order('sort_order'),
       ]),
       QUERY_TIMEOUT_MS
@@ -1054,9 +2199,6 @@ async function loadAll(){
     if(!ha.error&&ha.data)S.hsActions=ha.data;
     if(!hm.error&&hm.data)S.hsMeetings=hm.data;
     if(!hp.error&&hp.data)S.hsPhas=hp.data;
-    if(!sc.error&&sc.data)S.subcontractors=sc.data;
-    if(!fr.error&&fr.data)S.fieldReports=fr.data;
-    if(!re.error&&re.data)S.reportEntries=re.data;
     if(!eq.error&&eq.data)S.equipment=eq.data;
     _projTaskCache=null;
     buildHolCache();  // rebuild immediately — workDays() must be correct before next render
@@ -1138,24 +2280,6 @@ function handleRealtimeEvent(table, payload){
         else S.hsPhas=[pha,...S.hsPhas];
         renderSafe();return;
       }
-      if(table==='subcontractors'){
-        const s=nw;
-        if(S.subcontractors.find(x=>x.id===s.id))S.subcontractors=S.subcontractors.map(x=>x.id===s.id?s:x);
-        else S.subcontractors=[...S.subcontractors,s].sort((a,b)=>a.name.localeCompare(b.name));
-        renderSafe();return;
-      }
-      if(table==='field_reports'){
-        const r=nw;
-        if(S.fieldReports.find(x=>x.id===r.id))S.fieldReports=S.fieldReports.map(x=>x.id===r.id?r:x);
-        else S.fieldReports=[r,...S.fieldReports];
-        renderSafe();return;
-      }
-      if(table==='report_entries'){
-        const e=nw;
-        if(S.reportEntries.find(x=>x.id===e.id))S.reportEntries=S.reportEntries.map(x=>x.id===e.id?e:x);
-        else S.reportEntries=[...S.reportEntries,e];
-        renderSafe();return;
-      }
       if(table==='equipment'){
         const e=nw;
         if(S.equipment.find(x=>x.id===e.id))S.equipment=S.equipment.map(x=>x.id===e.id?e:x);
@@ -1174,9 +2298,6 @@ function handleRealtimeEvent(table, payload){
       if(table==='hs_actions'){S.hsActions=S.hsActions.filter(x=>x.id!==id)}
       if(table==='hs_meetings'){S.hsMeetings=S.hsMeetings.filter(x=>x.id!==id)}
       if(table==='hs_phas'){S.hsPhas=S.hsPhas.filter(x=>x.id!==id)}
-      if(table==='subcontractors'){S.subcontractors=S.subcontractors.filter(x=>x.id!==id)}
-      if(table==='field_reports'){S.fieldReports=S.fieldReports.filter(x=>x.id!==id);S.reportEntries=S.reportEntries.filter(x=>x.report_id!==id)}
-      if(table==='report_entries'){S.reportEntries=S.reportEntries.filter(x=>x.id!==id)}
       if(table==='equipment'){S.equipment=S.equipment.filter(x=>x.id!==id)}
       _projTaskCache=null;renderSafe();return;
     }
@@ -1197,9 +2318,6 @@ function startRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_actions'},p=>handleRealtimeEvent('hs_actions',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_meetings'},p=>handleRealtimeEvent('hs_meetings',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'hs_phas'},p=>handleRealtimeEvent('hs_phas',p))
-    .on('postgres_changes',{event:'*',schema:'public',table:'subcontractors'},p=>handleRealtimeEvent('subcontractors',p))
-    .on('postgres_changes',{event:'*',schema:'public',table:'field_reports'},p=>handleRealtimeEvent('field_reports',p))
-    .on('postgres_changes',{event:'*',schema:'public',table:'report_entries'},p=>handleRealtimeEvent('report_entries',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'equipment'},p=>handleRealtimeEvent('equipment',p))
     .on('postgres_changes',{event:'*',schema:'public',table:'crews'},scheduleReload)
     .on('postgres_changes',{event:'*',schema:'public',table:'holidays'},scheduleReload)
@@ -1366,56 +2484,6 @@ const upsertHsMeeting=m=>api(async()=>{const{error}=await sb.from('hs_meetings')
 const deleteHsMeeting=id=>api(async()=>{const{error}=await sb.from('hs_meetings').delete().eq('id',id);if(error)throw error});
 const upsertHsPha=pha=>api(async()=>{const{error}=await sb.from('hs_phas').upsert(hsPHAToDB(pha));if(error)throw error});
 const deleteHsPha=id=>api(async()=>{const{error}=await sb.from('hs_phas').delete().eq('id',id);if(error)throw error});
-// ── M4: Subcontractor Compliance data layer ──────────────────────────────────
-const SUB_TRADES=['Traffic Control','Asphalt','Concrete','Drainage','Landscaping',
-  'Electrical','Utilities','Fencing','Line Marking','Surveying','Other'];
-const SUB_STATUSES=['active','inactive','do-not-use'];
-function subcontractorToDB(s){
-  return{
-    id:s.id, name:s.name||'',
-    trade_type:s.trade_type||null,
-    contact_name:s.contact_name||null,
-    contact_phone:s.contact_phone||null,
-    contact_email:s.contact_email||null,
-    wsib_account:s.wsib_account||null,
-    wsib_clearance_expiry:s.wsib_clearance_expiry||null,
-    insurance_expiry:s.insurance_expiry||null,
-    insurance_amount_cents:s.insurance_amount_cents||null,
-    agreement_on_file:!!s.agreement_on_file,
-    agreement_date:s.agreement_date||null,
-    status:s.status||'active',
-    do_not_use_reason:s.do_not_use_reason||null,
-    notes:s.notes||null,
-    sort_order:s.sort_order||0,
-  };
-}
-const upsertSubcontractor=s=>api(async()=>{const{error}=await sb.from('subcontractors').upsert(subcontractorToDB(s));if(error)throw error});
-const deleteSubcontractor=id=>api(async()=>{const{error}=await sb.from('subcontractors').delete().eq('id',id);if(error)throw error});
-// ── M6: Daily Field Reports data layer ──────────────────────────────────────
-const WEATHER_OPTS=['☀️ Clear','⛅ Cloudy','🌧️ Rain','❄️ Snow','💨 Windy','🌫️ Fog','🥵 Hot','🥶 Cold'];
-function fieldReportToDB(r){
-  return{
-    id:r.id, project_id:r.project_id||null,
-    report_date:r.report_date||TODAY,
-    supervisor_employee_id:r.supervisor_employee_id||null,
-    weather:r.weather||null, temp_celsius:r.temp_celsius||null,
-    work_description:r.work_description||null,
-    visitors:r.visitors||null, issues:r.issues||null,
-    status:r.status||'draft',
-  };
-}
-function reportEntryToDB(e){
-  return{
-    id:e.id, report_id:e.report_id,
-    employee_id:e.employee_id||null,
-    hours:Number(e.hours)||0,
-    entry_type:e.entry_type||'labour',
-  };
-}
-const upsertFieldReport=r=>api(async()=>{const{error}=await sb.from('field_reports').upsert(fieldReportToDB(r));if(error)throw error});
-const deleteFieldReport=id=>api(async()=>{const{error}=await sb.from('field_reports').delete().eq('id',id);if(error)throw error});
-const upsertReportEntry=e=>api(async()=>{const{error}=await sb.from('report_entries').upsert(reportEntryToDB(e));if(error)throw error});
-const deleteReportEntry=id=>api(async()=>{const{error}=await sb.from('report_entries').delete().eq('id',id);if(error)throw error});
 // ── M7: Equipment Registry data layer ────────────────────────────────────────
 const EQ_TYPES=[
   {key:'paver',    icon:'🛣',  label:'Paver'},
@@ -1471,76 +2539,7 @@ function activeEquipment(){
   return(S.equipment||[]).filter(e=>e.active!==false)
     .sort((a,b)=>(a.equipment_type||'').localeCompare(b.equipment_type||'')||a.name.localeCompare(b.name));
 }
-// equipmentDispatch helpers — store/retrieve from S.mgmt.equipmentDispatch (localStorage)
-function getDispatch(equipmentId){return(S.mgmt.equipmentDispatch||[]).filter(d=>d.equipment_id===equipmentId)}
-function allDispatch(){return S.mgmt.equipmentDispatch||[]}
-function saveDispatch(patch){S.mgmt.equipmentDispatch=patch;saveMgmt()}
 
-// ── Crew Calendar helpers ─────────────────────────────────────────────────────
-// crewCalWeekStart — Monday of the 2-week window, stored as ISO string in S.mgmt.
-// Defaults to the Monday of the current week.
-function getCalWeekStart(){
-  const stored=S.mgmt.calWeekStart;
-  if(stored)return stored;
-  const d=new Date(TODAY+'T12:00:00');
-  const dow=d.getDay();                     // 0=Sun,1=Mon…
-  const diff=dow===0?-6:1-dow;             // back to Monday
-  d.setDate(d.getDate()+diff);
-  return d.toISOString().slice(0,10);
-}
-function setCalWeekStart(iso){S.mgmt.calWeekStart=iso;saveMgmt();}
-// addDays(iso, n) — pure date arithmetic
-function addDays(iso,n){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
-// workDaysInWindow(start) — returns array of 10 ISO dates (Mon–Fri × 2 weeks)
-function calWorkDays(weekStart){
-  const days=[];let d=weekStart;
-  while(days.length<10){
-    const wd=new Date(d+'T12:00:00').getDay();
-    if(wd!==0&&wd!==6)days.push(d);
-    d=addDays(d,1);
-    if(days.length===5)d=addDays(d,2); // skip weekend after week 1 — wait, simpler:
-    // Actually just walk day by day and skip weekends
-  }
-  // Rebuild properly:
-  const out=[];let cur=weekStart;let count=0;
-  while(out.length<10){
-    const wd=new Date(cur+'T12:00:00').getDay();
-    if(wd!==0&&wd!==6)out.push(cur);
-    cur=addDays(cur,1);
-  }
-  return out;
-}
-// projectOnDay(crewName, date) — returns the first project where this crew has
-// a task segment covering the given date. Returns project obj or null.
-function projectOnDay(crewName,date){
-  for(const proj of S.projects){
-    if(proj.archived||proj.status==='Complete')continue;
-    const tasks=projTasks(proj.id);
-    for(const task of tasks){
-      const crews=segCrews(null,task); // task-level crew
-      if(!crews.includes(crewName))continue;
-      for(const seg of task.segs){
-        if(seg.s&&seg.e&&date>=seg.s&&date<=seg.e)return proj;
-      }
-    }
-  }
-  return null;
-}
-// getCrewAssignment(crewName, date) — localStorage overlay for task/note/equipment
-function getCrewAssignment(crewName,date){
-  return(S.mgmt.crewAssignments||[]).find(a=>a.crew===crewName&&a.date===date)||null;
-}
-function saveCrewAssignment(asgn){
-  const list=(S.mgmt.crewAssignments||[]).filter(a=>!(a.crew===asgn.crew&&a.date===asgn.date));
-  if(asgn.task_ids.length||asgn.note||asgn.equipment_ids.length)list.push(asgn);
-  S.mgmt.crewAssignments=list;saveMgmt();
-}
-// timeOffOnDay(crewName, date) — check S.mgmt.timeOff
-function timeOffOnDay(crewName,date){
-  return(S.mgmt.timeOff||[]).some(t=>t.crew===crewName&&date>=t.from&&date<=t.to);
-}
-// reportEntries(reportId) — entries for one report
-function reportEntries(reportId){return(S.reportEntries||[]).filter(e=>e.report_id===reportId);}
 // crewOnDate(projectId, date) — employee names scheduled on a project on a given date
 // Cross-references Gantt segments via segCrews() for auto-population.
 function crewOnDate(projectId,date){
@@ -1603,29 +2602,8 @@ function activeEmployees(){
   return(S.employees||[]).filter(e=>e.active!==false)
     .sort((a,b)=>((a.sort_order||0)-(b.sort_order||0))||a.name.localeCompare(b.name));
 }
-// subComplianceStatus(sub) — returns worst compliance state for a subcontractor.
-// Returns {state:'ok'|'warn'|'expired', label, items:[{field,date,daysLeft}]}
-function subComplianceStatus(sub){
-  const today=new Date(TODAY+'T12:00:00');
-  const items=[];
-  const fields=[
-    {key:'wsib_clearance_expiry',  label:'WSIB Clearance'},
-    {key:'insurance_expiry',       label:'Insurance'},
-  ];
-  fields.forEach(({key,label})=>{
-    const date=sub[key];if(!date)return;
-    const daysLeft=Math.round((new Date(date+'T12:00:00')-today)/86400000);
-    items.push({field:label,date,daysLeft});
-  });
-  if(!sub.agreement_on_file)items.push({field:'Agreement',date:null,daysLeft:null,missing:true});
-  const expired=items.filter(i=>i.daysLeft!==null&&i.daysLeft<0);
-  const warn=items.filter(i=>i.daysLeft!==null&&i.daysLeft>=0&&i.daysLeft<=30);
-  const state=expired.length?'expired':warn.length?'warn':'ok';
-  return{state,items,expired,warn};
-}
-
 // ── M5: Certification Expiry Alert Dashboard ──────────────────────────────────
-// Reads from S.employeeCerts (M1) and S.subcontractors (M4).
+// Reads from S.employeeCerts (M1).
 // Returns a fully built card DOM element. No DB calls — pure read layer.
 // showUpcoming: if true, also shows 31-60 day items (toggled by user).
 function buildCertAlertPanel(showUpcoming){
@@ -1649,19 +2627,6 @@ function buildCertAlertPanel(showUpcoming){
     alerts.push({
       kind:'employee', daysLeft, name:emp.name, type:cert.cert_type,
       date:cert.expiry_date, empId:emp.id, emp,
-    });
-  });
-
-  // Collect from subcontractor WSIB + insurance
-  (S.subcontractors||[]).filter(s=>s.status==='active').forEach(sub=>{
-    [
-      {date:sub.wsib_clearance_expiry, type:'WSIB Clearance'},
-      {date:sub.insurance_expiry,      type:'Insurance Certificate'},
-    ].forEach(({date,type})=>{
-      if(!date)return;
-      const daysLeft=Math.round((new Date(date+'T12:00:00')-today)/86400000);
-      if(daysLeft>60)return;
-      alerts.push({kind:'sub', daysLeft, name:sub.name, type, date, subId:sub.id, sub});
     });
   });
 
@@ -1966,9 +2931,7 @@ function openModal(){
   else if(S.modal.type==='hs-incident')buildHSIncidentModal(m);
   else if(S.modal.type==='jhsc-meeting')buildJHSCModal(m);
   else if(S.modal.type==='pha')buildPHAModal(m);
-  else if(S.modal.type==='subcontractor')buildSubcontractorModal(m);
   else if(S.modal.type==='equipment')buildEquipmentModal(m);
-  else if(S.modal.type==='field-report')buildFieldReportModal(m);
   else if(S.modal.type==='cc-cell-edit')buildCellEditModal(m);
   else if(S.modal.type==='cc-add-task')buildCellAddTaskModal(m);
   else if(S.modal.type==='import')buildImportModal(m);
@@ -2123,7 +3086,7 @@ function buildFilterBar(){
   bar.className='filter-bar'+(isFilterActive()?' active':'');
 
   // Only show on Gantt view
-  if(S.view!=='gantt'||S.loading){bar.style.display='none';return bar}
+  if(S.view!=='gantt'||S.loading||GV2_ON){bar.style.display='none';return bar} // gv2 provides its own crew/status/search filters
   bar.style.display='flex';
 
   // ── Crew chips ─────────────────────────────────────────────────────────────
@@ -3405,9 +4368,8 @@ function render(){
   }
   main.innerHTML='';
   bgGrad=buildBgGrad(getHolIdxs());
-  if(S.view==='gantt')main.appendChild(buildGantt());
+  if(S.view==='gantt'){if(GV2_ON)mountOrRefreshGV2();else main.appendChild(buildGantt());}
   else if(S.view==='board')main.appendChild(buildBoard());
-  else if(S.view==='crew')main.appendChild(buildCrewCalendar());
   else if(S.view==='management')main.appendChild(buildManagement());
   else main.appendChild(buildSettings());
   restoreScroll(); // FIX CP4: apply after new DOM is attached
@@ -3426,6 +4388,7 @@ function scheduleRender(){
 }
 
 function refreshGanttRows(){
+  if(GV2_ON){if(_gv2mounted){try{window.GanttV2.refresh(adaptIn());}catch(e){console.error('[gv2 refresh]',e);}}return;}
   // FIX CP4: explicit scroll save/restore on gantt-only refresh
   const old=document.querySelector('.gantt-wrap');if(!old)return;
   const sl=old.scrollLeft,st=old.scrollTop;
@@ -3437,7 +4400,7 @@ function buildToolbar(){
   const t=el('div');t.className='toolbar';t.id='toolbar';
   const logo=el('span');logo.className='logo';logo.textContent='🏗 Strada Schedule '+SEASON_YEAR;t.appendChild(logo);
   const tabs=el('div');tabs.className='tabs';
-  [['gantt','📅 Gantt'],['board','📋 Board'],['crew','👥 Crew'],['management','📊 Management'],['settings','⚙️ Settings']].forEach(([v,l])=>{
+  [['gantt','📅 Gantt'],['board','📋 Board'],['management','📊 Management'],['settings','⚙️ Settings']].forEach(([v,l])=>{
     const b=el('button');b.className='tab'+(S.view===v?' active':'');b.textContent=l;
     b.onclick=()=>{S.view=v;render()};tabs.appendChild(b);
   });t.appendChild(tabs);
@@ -3590,9 +4553,75 @@ function buildSubRowGC(gc, row, h){
   }
 }
 
+function adaptIn(){
+  // Map the app's live S.* into the GanttV2 component's expected shape.
+  // job_value/task_value are cents -> dollars; flat locates -> nested; subtasks grouped.
+  const projects=S.projects.map(p=>({
+    id:p.id,job_num:p.job_num,client:p.client,loc:p.loc,status:p.status,
+    value:(p.job_value||0)/100,collapsed:!!p.collapsed,sort:p.sort_order||0,
+    soils:!!p.soils_req,
+    locates:{pub:{req:p.locate_public_req||null,ordered:!!p.locate_public_ordered,complete:!!p.locate_public_complete},
+             priv:{req:p.locate_private_req||null,ordered:!!p.locate_private_ordered,complete:!!p.locate_private_complete}}
+  }));
+  const subBy={};(S.subtasks||[]).forEach(st=>{(subBy[st.task_id]=subBy[st.task_id]||[]).push(
+    {id:st.id,descr:st.descr||'',assigned:st.assigned_to||'',date:st.scheduled_dt||null,complete:!!st.complete});});
+  const tasks=S.tasks.map(t=>({
+    id:t.id,project_id:t.project_id,descr:t.descr,status:t.status,wknd:!!t.wknd,
+    notes:t.notes||'',task_value:t.task_value?t.task_value/100:null,sort:t.sort_order||0,
+    segs:(t.segs||[]).map(sg=>({s:sg.s,e:sg.e,crews:[...(sg.crews||[])]})),
+    subtasks:subBy[t.id]||[]
+  }));
+  const crews=S.crews.map(c=>({id:c.id,name:c.name,color:c.color}));
+  const holidays=(S.holidays||[]).map(h=>({date:h.date,name:h.name||''}));
+  return {projects,tasks,crews,holidays};
+}
+const adaptOut={
+  task(ct){
+    // component task -> app-shape -> upsertTask (segs->segments, $->cents, primary crew)
+    upsertTask({id:ct.id,project_id:ct.project_id,descr:ct.descr,
+      crew:(ct.segs&&ct.segs[0]&&ct.segs[0].crews&&ct.segs[0].crews[0])||'',
+      status:ct.status,wknd:!!ct.wknd,sort_order:ct.sort||0,
+      task_value:ct.task_value!=null?Math.round(ct.task_value*100):null,
+      segs:(ct.segs||[]).map(sg=>({s:sg.s,e:sg.e,crews:[...(sg.crews||[])]}))});
+    // notes written separately so a pre-migration (missing column) can't break the main save
+    api(async()=>{const{error}=await sb.from('tasks').update({notes:ct.notes||null}).eq('id',ct.id);if(error)throw error;});
+    // reconcile embedded subtasks against the subtasks table
+    const prior=(S.subtasks||[]).filter(s=>s.task_id===ct.id);
+    const nowIds=new Set((ct.subtasks||[]).map(s=>s.id));
+    (ct.subtasks||[]).forEach((s,i)=>upsertSubtask({id:s.id,task_id:ct.id,project_id:ct.project_id,
+      type:s.type||'note',descr:s.descr||'',detail:null,assigned_to:s.assigned||null,
+      scheduled_dt:s.date||null,complete:!!s.complete,sort_order:i}));
+    prior.forEach(s=>{if(!nowIds.has(s.id))deleteSubtask(s.id);});
+  },
+  taskDelete(id){deleteTask(id);},
+  project(cp){
+    const ex=S.projects.find(p=>p.id===cp.id)||{};
+    upsertProject({...ex,id:cp.id,job_num:cp.job_num,client:cp.client,loc:cp.loc,status:cp.status,
+      job_value:cp.value!=null?Math.round(cp.value*100):(ex.job_value||null),
+      collapsed:!!cp.collapsed,sort_order:cp.sort||ex.sort_order||0,soils_req:!!cp.soils,
+      locate_public_req:(cp.locates&&cp.locates.pub.req)||null,locate_public_ordered:!!(cp.locates&&cp.locates.pub.ordered),locate_public_complete:!!(cp.locates&&cp.locates.pub.complete),
+      locate_private_req:(cp.locates&&cp.locates.priv.req)||null,locate_private_ordered:!!(cp.locates&&cp.locates.priv.ordered),locate_private_complete:!!(cp.locates&&cp.locates.priv.complete)});
+  },
+  projectDelete(id){deleteProject(id);}
+};
+let _gv2host=null,_gv2mounted=false,_gv2mounting=false;
+function mountOrRefreshGV2(){
+  const main=document.getElementById('main');
+  if(!_gv2host){_gv2host=el('div');_gv2host.style.cssText='flex:1;min-height:0';}
+  main.appendChild(_gv2host); // re-attach persistent host (survives main.innerHTML='')
+  if(_gv2mounted){try{window.GanttV2.refresh(adaptIn());}catch(e){console.error('[gv2 refresh]',e);}return;}
+  if(_gv2mounting)return;
+  _gv2mounting=true;
+  queueMicrotask(()=>{try{window.GanttV2.mount(_gv2host,{data:adaptIn(),write:adaptOut,newId:()=>uid(),embedded:true});_gv2mounted=true;}
+    catch(e){console.error('[gv2 mount]',e);}finally{_gv2mounting=false;}});
+}
 function buildGantt(){
   const totalW=NDAYS*DW,holI=getHolIdxs(),cm=crewMap(),holDates=S.holidays.map(h=>h.date);
   const wrap=el('div');wrap.className='gantt-wrap';
+  // Phase 3A: clamp horizontal scroll so the grid can't move more than one week
+  // before today (fixes the schedule scrolling back to the original build date).
+  const MIN_SCROLL_X=Math.max(0,(TODAYIDX-7)*DW);
+  if(MIN_SCROLL_X>0)wrap.addEventListener('scroll',()=>{if(wrap.scrollLeft<MIN_SCROLL_X)wrap.scrollLeft=MIN_SCROLL_X;},{passive:true});
 
   // Empty state — no projects at all
   if(S.projects.length===0){
@@ -3930,10 +4959,10 @@ function buildManagement(){
   }
 
   // ── M5: Certification & Compliance Expiry Alert Dashboard ─────────────────
-  // Reads from S.employeeCerts (M1) and S.subcontractors (M4).
+  // Reads from S.employeeCerts (M1).
   // Only rendered when there is at least one employee cert or active subcontractor.
   // Sits between the employee summary and the operational cards below.
-  const hasCertData=(S.employeeCerts||[]).length>0||(S.subcontractors||[]).filter(s=>s.status==='active').length>0;
+  const hasCertData=(S.employeeCerts||[]).length>0;
   if(hasCertData){
     wrap.appendChild(buildCertAlertPanel(false));
   }
@@ -4112,19 +5141,6 @@ function buildManagement(){
       const names=missingPHA.slice(0,3).map(id=>{const p=S.projects.find(x=>x.id===id);return p?p.job_num:id});
       amberItems.push(missingPHA.length+' active project'+(missingPHA.length!==1?'s have':' has')+' no PHA: '+names.join(', ')+(missingPHA.length>3?' +more':''));
     }
-    // M4: Subcontractor WSIB / Insurance expiry
-    const today=new Date(TODAY+'T12:00:00');
-    (S.subcontractors||[]).filter(s=>s.status==='active').forEach(s=>{
-      [
-        {date:s.wsib_clearance_expiry, label:'WSIB clearance', sub:s.name},
-        {date:s.insurance_expiry,       label:'Insurance',      sub:s.name},
-      ].forEach(({date,label,sub})=>{
-        if(!date)return;
-        const d=Math.round((new Date(date+'T12:00:00')-today)/86400000);
-        if(d<0)redItems.push(label+' EXPIRED: '+sub+' ('+Math.abs(d)+'d ago)');
-        else if(d<=14)amberItems.push(label+' expires in '+d+'d: '+sub);
-      });
-    });
     // M7: Equipment maintenance overdue or due soon
     (S.equipment||[]).filter(e=>e.active!==false).forEach(eq=>{
       const ms=equipmentMaintenanceStatus(eq);
@@ -4587,308 +5603,13 @@ Rules:
   };
   wrap.appendChild(tocCard);
 
-  // ── Row 3: Management Gantt ───────────────────────────────────────────────
-  const mgCard=el('div');mgCard.className='mgmt-card';
-  const mgHdr=el('div');mgHdr.className='mgmt-card-hdr';
-  const mgTitle=el('div');mgTitle.className='mgmt-card-title';mgTitle.textContent='📅 Office / Admin Schedule';
-  const mgAdd=el('button');mgAdd.className='btn-sm';mgAdd.style.fontSize='11px';mgAdd.textContent='+ Add Event';
-  mgHdr.appendChild(mgTitle);mgHdr.appendChild(mgAdd);mgCard.appendChild(mgHdr);
-
-  const MG_COLORS=['#1F3864','#0d6efd','#198754','#dc3545','#fd7e14','#6f42c1','#0dcaf0'];
-  const MG_DW=20; // pixels per day for this mini-Gantt
-
-  function buildMgGantt(){
-    mgCard.querySelectorAll('.mg-gantt').forEach(e=>e.remove());
-    const events=S.mgmt.mgEvents||[];
-    if(!events.length){
-      const emp=el('div');emp.className='mg-gantt';emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:16px 0';
-      emp.textContent='No events scheduled — add onboarding, training, inspections, permit deadlines…';
-      mgCard.appendChild(emp);return;
-    }
-    // Determine date range: 2 weeks before/after today, clamped to events
-    const allDates=events.flatMap(e=>[e.from,e.to]).filter(Boolean).sort();
-    const startD=new Date(Math.min(new Date(allDates[0]+'T12:00:00'),new Date(TODAY+'T12:00:00')));
-    startD.setDate(startD.getDate()-7);
-    const endD=new Date(Math.max(new Date(allDates[allDates.length-1]+'T12:00:00'),new Date(TODAY+'T12:00:00')));
-    endD.setDate(endD.getDate()+7);
-    const nDays=Math.round((endD-startD)/86400000)+1;
-    const totalW=nDays*MG_DW+180;
-
-    const wrap2=el('div');wrap2.className='mg-gantt mgmt-gantt-wrap';
-    wrap2.style.width='100%';
-    // Header row — month/day
-    const hdrRow=el('div');hdrRow.className='mg-row';hdrRow.style.background='#f8f9fc';
-    const hlc=el('div');hlc.className='mg-lc';hlc.style.cssText='background:#f8f9fc;font-size:10px;font-weight:700;color:#9ca3af;border-right:2px solid #e4e8f0;width:180px;flex-shrink:0';hlc.textContent='Event';hdrRow.appendChild(hlc);
-    const hgc=el('div');hgc.className='mg-gc';hgc.style.cssText='flex:1;height:28px;position:relative;min-width:'+(nDays*MG_DW)+'px';
-    for(let i=0;i<nDays;i++){
-      const d=new Date(startD);d.setDate(d.getDate()+i);
-      if(d.getDay()===1||i===0){const lbl=el('span');lbl.style.cssText='position:absolute;left:'+(i*MG_DW+2)+'px;top:8px;font-size:8px;color:#9ca3af;pointer-events:none';lbl.textContent=d.toLocaleDateString('en-CA',{month:'short',day:'numeric'});hgc.appendChild(lbl)}
-      // Today line
-      if(d.toISOString().slice(0,10)===TODAY){const tl=el('div');tl.style.cssText='position:absolute;left:'+(i*MG_DW+MG_DW/2)+'px;top:0;width:2px;height:28px;background:rgba(255,215,0,.6);pointer-events:none';hgc.appendChild(tl)}
-    }
-    hdrRow.appendChild(hgc);wrap2.appendChild(hdrRow);
-    events.forEach((ev,idx)=>{
-      const row=el('div');row.className='mg-row';row.style.background=idx%2===0?'#fff':'#f8f9fc';
-      const lc=el('div');lc.className='mg-lc';lc.textContent=ev.label||'Untitled';
-      lc.title=ev.label+(ev.notes?'\n'+ev.notes:'');row.appendChild(lc);
-      const gc=el('div');gc.className='mg-gc';gc.style.cssText='flex:1;height:28px;position:relative;min-width:'+(nDays*MG_DW)+'px';
-      if(ev.from&&ev.to){
-        const s=Math.round((new Date(ev.from+'T12:00:00')-startD)/86400000);
-        const e=Math.round((new Date(ev.to+'T12:00:00')-startD)/86400000);
-        if(e>=0&&s<=nDays){
-          const bar=el('div');bar.className='mg-bar';
-          bar.style.cssText='left:'+Math.max(0,s)*MG_DW+'px;width:'+(Math.min(e,nDays-1)-Math.max(0,s)+1)*MG_DW+'px;background:'+(ev.color||MG_COLORS[idx%MG_COLORS.length]);
-          bar.textContent=ev.label||'';bar.title=ev.label+(ev.notes?'\n'+ev.notes:'');
-          gc.appendChild(bar);
-        }
-      }
-      // Delete button via double-click on label
-      lc.ondblclick=async()=>{
-        if(!await confirmModal('Remove "'+ev.label+'"?','Remove',true))return;
-        S.mgmt.mgEvents.splice(idx,1);saveMgmt();buildMgGantt();
-      };
-      lc.title+=(ev.label?'\n':'')+'Double-click to remove';
-      row.appendChild(gc);wrap2.appendChild(row);
-    });
-    mgCard.appendChild(wrap2);
-  }
-
-  mgAdd.onclick=()=>{
-    const existing=mgCard.querySelector('.mg-add-form');if(existing)existing.remove();
-    const form=el('div');form.className='mg-add-form';
-    form.style.cssText='background:#f8f9fc;border:1px solid #c5d0e8;border-radius:8px;padding:10px;margin-top:8px';
-    const g=el('div');g.style.cssText='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap';
-    const nameI=el('input');nameI.className='inp';nameI.placeholder='Event label';nameI.style.flex='1;min-width:140px';
-    const fromI=el('input');fromI.type='date';fromI.className='inp';fromI.style.width='120px';fromI.value=TODAY;
-    const toI=el('input');toI.type='date';toI.className='inp';toI.style.width='120px';toI.value=TODAY;
-    const colSel=el('select');colSel.className='inp';colSel.style.width='80px';
-    MG_COLORS.forEach((c,i)=>{const o=el('option');o.value=c;o.textContent=['Navy','Blue','Green','Red','Orange','Purple','Teal'][i];colSel.appendChild(o)});
-    const noteI=el('input');noteI.className='inp';noteI.placeholder='Note (optional)';noteI.style.flex='1';
-    const saveB=el('button');saveB.className='btn-primary';saveB.style.fontSize='11px';saveB.textContent='Add';
-    saveB.onclick=()=>{
-      if(!nameI.value.trim()){toast('Enter an event label.','error');return}
-      if(!S.mgmt.mgEvents)S.mgmt.mgEvents=[];
-      S.mgmt.mgEvents.push({id:uid(),label:nameI.value.trim(),from:fromI.value,to:toI.value,color:colSel.value,notes:noteI.value.trim()});
-      saveMgmt();form.remove();buildMgGantt();
-    };
-    const cancelB=el('button');cancelB.className='btn-sec';cancelB.style.fontSize='11px';cancelB.textContent='Cancel';
-    cancelB.onclick=()=>form.remove();
-    [lbl2('Label'),nameI,lbl2('From'),fromI,lbl2('To'),toI,lbl2('Colour'),colSel,lbl2('Note'),noteI,saveB,cancelB].forEach(i=>g.appendChild(i));
-    form.appendChild(g);mgCard.appendChild(form);
-  };
-  buildMgGantt();
-  wrap.appendChild(mgCard);
-
-  // ── Row 5: Subcontractor Compliance Registry (M4) ────────────────────────
-  const subCard=el('div');subCard.className='mgmt-card';
-  const subHdr=el('div');subHdr.className='mgmt-card-hdr';
-  const subTitle=el('div');subTitle.className='mgmt-card-title';subTitle.textContent='🤝 Subcontractor Compliance';
-  const subAddBtn=el('button');subAddBtn.className='btn-sm';subAddBtn.style.fontSize='11px';subAddBtn.textContent='+ Add Subcontractor';
-  subHdr.appendChild(subTitle);subHdr.appendChild(subAddBtn);subCard.appendChild(subHdr);
-
-  // Compliance summary strip — expired + expiring counts at a glance
-  function buildSubSummary(){
-    subCard.querySelectorAll('.sub-summary').forEach(e=>e.remove());
-    const active=(S.subcontractors||[]).filter(s=>s.status==='active');
-    const expired=active.filter(s=>subComplianceStatus(s).state==='expired').length;
-    const warn=active.filter(s=>subComplianceStatus(s).state==='warn').length;
-    if(!active.length)return;
-    const strip=el('div');strip.className='sub-summary';
-    strip.style.cssText='display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap';
-    const mkPill=(count,label,bg,col)=>{
-      const p=el('span');p.style.cssText='font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:'+bg+';color:'+col;
-      p.textContent=count+' '+label;return p;
-    };
-    strip.appendChild(mkPill(active.length,'active','#f0f4ff','#1F3864'));
-    if(expired)strip.appendChild(mkPill(expired,'expired','#fee2e2','#dc2626'));
-    if(warn)strip.appendChild(mkPill(warn,'expiring soon','#fef3c7','#92400e'));
-    if(!expired&&!warn)strip.appendChild(mkPill('✓','all compliant','#dcfce7','#166534'));
-    subCard.insertBefore(strip,subList);
-  }
-
-  const subList=el('div');subCard.appendChild(subList);
-
-  const SUB_STATUS_CFG={
-    active:       {dot:'#16a34a',label:'Active'},
-    inactive:     {dot:'#9ca3af',label:'Inactive'},
-    'do-not-use': {dot:'#dc2626',label:'Do Not Use'},
-  };
-
-  function renderSubList(){
-    subList.innerHTML='';
-    const subs=S.subcontractors||[];
-    if(!subs.length){
-      const emp=el('div');emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:20px 0';
-      emp.textContent='No subcontractors on record — click + Add Subcontractor to get started.';
-      subList.appendChild(emp);buildSubSummary();return;
-    }
-    // Sort: active first (expired then warn then ok), then inactive, then do-not-use
-    const sortOrder={expired:0,warn:1,ok:2};
-    const statusOrder={active:0,inactive:1,'do-not-use':2};
-    const sorted=[...subs].sort((a,b)=>{
-      const so=(statusOrder[a.status]||0)-(statusOrder[b.status]||0);
-      if(so!==0)return so;
-      const ca=subComplianceStatus(a).state,cb=subComplianceStatus(b).state;
-      return (sortOrder[ca]||0)-(sortOrder[cb]||0)||a.name.localeCompare(b.name);
-    });
-    sorted.forEach(sub=>{
-      const cst=subComplianceStatus(sub);
-      const stCfg=SUB_STATUS_CFG[sub.status]||SUB_STATUS_CFG.active;
-      const card=el('div');card.className='sub-card';
-      // Avatar initials
-      const av=el('div');av.className='sub-av';
-      av.textContent=(sub.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-      av.style.background=sub.status==='do-not-use'?'#dc2626':sub.status==='inactive'?'#9ca3af':'#334155';
-      card.appendChild(av);
-      // Info block
-      const info=el('div');info.style.cssText='flex:1;min-width:0';
-      const nameLine=el('div');nameLine.className='sub-name';
-      nameLine.textContent=sub.name;info.appendChild(nameLine);
-      const tradeLine=el('div');tradeLine.className='sub-trade';
-      const tradeParts=[sub.trade_type,sub.contact_name].filter(Boolean);
-      if(sub.contact_phone)tradeParts.push(sub.contact_phone);
-      tradeLine.textContent=tradeParts.join(' · ');info.appendChild(tradeLine);
-      // Compliance badges
-      const badges=el('div');badges.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-top:4px';
-      // WSIB
-      if(sub.wsib_clearance_expiry){
-        const d=Math.round((new Date(sub.wsib_clearance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
-        const b=el('span');b.className='sub-compliance-badge';
-        b.style.cssText=d<0?'background:#fee2e2;color:#dc2626;border:1px solid #fca5a5':d<=30?'background:#fef3c7;color:#92400e;border:1px solid #fcd34d':'background:#f0f4ff;color:#1F3864;border:1px solid #c5d0e8';
-        b.textContent='WSIB: '+(d<0?'Exp.'+Math.abs(d)+'d':d+'d');b.title='WSIB clearance expires '+sub.wsib_clearance_expiry;
-        badges.appendChild(b);
-      }else{
-        const b=el('span');b.className='sub-compliance-badge';b.style.cssText='background:#f3f4f6;color:#9ca3af;border:1px solid #e5e7eb';b.textContent='WSIB: not set';badges.appendChild(b);
-      }
-      // Insurance
-      if(sub.insurance_expiry){
-        const d=Math.round((new Date(sub.insurance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
-        const b=el('span');b.className='sub-compliance-badge';
-        b.style.cssText=d<0?'background:#fee2e2;color:#dc2626;border:1px solid #fca5a5':d<=30?'background:#fef3c7;color:#92400e;border:1px solid #fcd34d':'background:#f0f4ff;color:#1F3864;border:1px solid #c5d0e8';
-        b.textContent='Ins: '+(d<0?'Exp.'+Math.abs(d)+'d':d+'d');b.title='Insurance expires '+sub.insurance_expiry;
-        badges.appendChild(b);
-      }else{
-        const b=el('span');b.className='sub-compliance-badge';b.style.cssText='background:#f3f4f6;color:#9ca3af;border:1px solid #e5e7eb';b.textContent='Ins: not set';badges.appendChild(b);
-      }
-      // Agreement
-      const ab=el('span');ab.className='sub-compliance-badge';
-      ab.style.cssText=sub.agreement_on_file?'background:#dcfce7;color:#166534;border:1px solid #86efac':'background:#fef3c7;color:#92400e;border:1px solid #fcd34d';
-      ab.textContent=sub.agreement_on_file?'✓ Agreement':'⚠ No agreement';badges.appendChild(ab);
-      // Do-not-use reason
-      if(sub.status==='do-not-use'&&sub.do_not_use_reason){
-        const rb=el('span');rb.className='sub-compliance-badge';rb.style.cssText='background:#fee2e2;color:#dc2626;border:1px solid #fca5a5';rb.textContent='⛔ '+sub.do_not_use_reason.slice(0,30);badges.appendChild(rb);
-      }
-      info.appendChild(badges);card.appendChild(info);
-      // Status dot
-      const dot=el('div');dot.className='sub-status-dot';dot.style.background=stCfg.dot;dot.title=stCfg.label;card.appendChild(dot);
-      card.onclick=()=>{S.modal={type:'subcontractor',isNew:false,sub:{...sub}};openModal()};
-      subList.appendChild(card);
-    });
-    buildSubSummary();
-  }
-
-  subAddBtn.onclick=()=>{
-    S.modal={type:'subcontractor',isNew:true,sub:{
-      id:crypto.randomUUID(),name:'',trade_type:'',contact_name:'',
-      contact_phone:'',contact_email:'',wsib_account:'',
-      wsib_clearance_expiry:'',insurance_expiry:'',
-      insurance_amount_cents:null,agreement_on_file:false,
-      agreement_date:'',status:'active',do_not_use_reason:'',notes:'',sort_order:S.subcontractors.length,
-    }};openModal();
-  };
-  renderSubList();
-  wrap.appendChild(subCard);
-
-  // ── Row 7: Daily Field Reports (M6) ──────────────────────────────────────
-  const frCard=el('div');frCard.className='mgmt-card';
-  const frHdr=el('div');frHdr.className='mgmt-card-hdr';
-  const frTitle=el('div');frTitle.className='mgmt-card-title';frTitle.textContent='📋 Daily Field Reports';
-  const frBtns=el('div');frBtns.style.cssText='display:flex;gap:6px;align-items:center';
-  const frAddBtn=el('button');frAddBtn.className='btn-sm';frAddBtn.style.fontSize='11px';frAddBtn.textContent='+ New Report';
-  frBtns.appendChild(frAddBtn);frHdr.appendChild(frTitle);frHdr.appendChild(frBtns);frCard.appendChild(frHdr);
-
-  // Filter row — project selector + search
-  const frFilter=el('div');frFilter.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
-  const frProjSel=inp2('',()=>{},'select',
-    [['','All projects'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]);
-  frProjSel.style.cssText='flex:1;min-width:180px;max-width:280px;font-size:12px';
-  const frCountSp=el('span');frCountSp.style.cssText='font-size:11px;color:#9ca3af;margin-left:auto';
-  frFilter.appendChild(frProjSel);frFilter.appendChild(frCountSp);frCard.appendChild(frFilter);
-
-  const frList=el('div');frCard.appendChild(frList);
-
-  const FR_STATUS={
-    draft:    {label:'Draft',    bg:'#fef3c7',col:'#92400e'},
-    submitted:{label:'Submitted',bg:'#dcfce7',col:'#166534'},
-  };
-
-  function renderFRList(){
-    frList.innerHTML='';
-    const projFilter=frProjSel.value;
-    const reports=(S.fieldReports||[])
-      .filter(r=>!projFilter||r.project_id===projFilter)
-      .sort((a,b)=>b.report_date.localeCompare(a.report_date))
-      .slice(0,20);
-    frCountSp.textContent=(S.fieldReports||[]).length+' total reports';
-
-    if(!reports.length){
-      const emp=el('div');emp.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:16px 0';
-      emp.textContent=projFilter?'No reports for this project yet.':'No field reports yet — click + New Report to start.';
-      frList.appendChild(emp);return;
-    }
-    reports.forEach(report=>{
-      const proj=S.projects.find(p=>p.id===report.project_id);
-      const sup=S.employees.find(e=>e.id===report.supervisor_employee_id);
-      const entries=reportEntries(report.id);
-      const totalHrs=entries.reduce((s,e)=>s+Number(e.hours||0),0);
-      const st=FR_STATUS[report.status]||FR_STATUS.draft;
-      const row=el('div');row.className='fr-row';
-      const stBadge=el('span');stBadge.className='fr-status';
-      stBadge.style.cssText='background:'+st.bg+';color:'+st.col;stBadge.textContent=st.label;row.appendChild(stBadge);
-      const dateSpan=el('span');dateSpan.className='fr-date';dateSpan.textContent=fmtDate(report.report_date);row.appendChild(dateSpan);
-      const projName=el('span');projName.className='fr-proj';
-      projName.textContent=proj?(proj.job_num+' — '+proj.client):'(No project)';row.appendChild(projName);
-      const meta=el('span');meta.className='fr-meta';
-      const parts=[];
-      if(report.weather)parts.push(report.weather.split(' ')[0]); // just the emoji
-      if(entries.length)parts.push(entries.length+' crew, '+totalHrs+'h');
-      if(sup)parts.push(sup.name.split(' ')[0]);
-      meta.textContent=parts.join(' · ');row.appendChild(meta);
-      row.onclick=()=>{S.modal={type:'field-report',report:{...report},isNew:false,localEntries:entries.map(e=>({...e}))};openModal()};
-      frList.appendChild(row);
-    });
-    if((S.fieldReports||[]).filter(r=>!projFilter||r.project_id===projFilter).length>20){
-      const more=el('div');more.style.cssText='font-size:11px;color:#9ca3af;text-align:center;padding:4px 0';
-      more.textContent='Showing 20 most recent. Use the project filter to narrow results.';frList.appendChild(more);
-    }
-  }
-  frProjSel.onchange=()=>renderFRList();
-  frAddBtn.onclick=()=>{
-    const report={id:crypto.randomUUID(),project_id:frProjSel.value||null,
-      report_date:TODAY,supervisor_employee_id:null,weather:'',
-      temp_celsius:null,work_description:'',visitors:'',issues:'',status:'draft'};
-    // Auto-populate entries from Gantt if project selected
-    const autoEntries=report.project_id
-      ?crewOnDate(report.project_id,TODAY).map(empId=>({
-          id:crypto.randomUUID(),report_id:report.id,
-          employee_id:empId,hours:8,entry_type:'labour',
-        }))
-      :[];
-    S.modal={type:'field-report',report,isNew:true,localEntries:autoEntries};
-    openModal();
-  };
-  renderFRList();
-  wrap.appendChild(frCard);
-
   // ── Row 8: Equipment Registry & Dispatch (M7) ─────────────────────────────
   const eqCard=el('div');eqCard.className='mgmt-card';
   const eqHdr=el('div');eqHdr.className='mgmt-card-hdr';
-  const eqTitle=el('div');eqTitle.className='mgmt-card-title';eqTitle.textContent='🚜 Equipment & Dispatch';
+  const eqTitle=el('div');eqTitle.className='mgmt-card-title';eqTitle.textContent='🚜 Equipment';
   const eqBtns=el('div');eqBtns.style.cssText='display:flex;gap:6px';
   const eqAddBtn=el('button');eqAddBtn.className='btn-sm';eqAddBtn.style.fontSize='11px';eqAddBtn.textContent='+ Add Equipment';
-  const eqDispBtn=el('button');eqDispBtn.className='btn-sm';eqDispBtn.style.cssText='font-size:11px;background:#f0f4ff;border-color:#c5d0e8;color:#1F3864';
-  eqDispBtn.textContent='+ Dispatch';eqDispBtn.title='Assign equipment to a project for a date range';
-  eqBtns.appendChild(eqAddBtn);eqBtns.appendChild(eqDispBtn);
+  eqBtns.appendChild(eqAddBtn);
   eqHdr.appendChild(eqTitle);eqHdr.appendChild(eqBtns);eqCard.appendChild(eqHdr);
 
   // ── Equipment list ────────────────────────────────────────────────────────
@@ -4920,8 +5641,6 @@ Rules:
       const typeInfo=EQ_TYPE_MAP[eq.equipment_type]||EQ_TYPE_MAP.other;
       const ms=equipmentMaintenanceStatus(eq);
       const mc=MAINT_CFG[ms.state]||MAINT_CFG.unknown;
-      const dispatches=getDispatch(eq.id);
-      const now=dispatches.find(d=>d.from<=TODAY&&d.to>=TODAY);
 
       const card=el('div');card.className='eq-card';
       if(eq.active===false)card.style.opacity='0.5';
@@ -4935,7 +5654,6 @@ Rules:
       const metaParts=[];
       if(eq.make||eq.model)metaParts.push([eq.make,eq.model,eq.year].filter(Boolean).join(' '));
       if(eq.ownership==='rented'&&eq.rental_supplier)metaParts.push('Rental: '+eq.rental_supplier);
-      if(now){const p=S.projects.find(x=>x.id===now.project_id);if(p)metaParts.push('On: '+p.job_num);}
       meta.textContent=metaParts.join(' · ');info.appendChild(meta);
       card.appendChild(info);
       // Maintenance badge
@@ -4958,128 +5676,6 @@ Rules:
   };
   renderEqList();
 
-  // ── Dispatch Gantt ────────────────────────────────────────────────────────
-  // 6 weeks rolling: 2 weeks before → 4 weeks after today
-  const EQ_DW=22; // px per day
-  const DISP_DAYS=42;
-  const dispStart=new Date(TODAY+'T12:00:00');
-  dispStart.setDate(dispStart.getDate()-14);
-  const dispStartStr=dispStart.toISOString().slice(0,10);
-
-  // Only show dispatch Gantt if any equipment or dispatch entries exist
-  const hasDispData=(S.equipment||[]).filter(e=>e.active!==false).length>0;
-  if(hasDispData){
-    const dWrap=el('div');dWrap.className='eq-dispatch-wrap';
-
-    // Header row — day labels every 7 days
-    const dHdr=el('div');dHdr.className='eq-dispatch-hdr';
-    const dHdrLc=el('div');dHdrLc.className='eq-dispatch-lc';dHdrLc.textContent='Equipment';dHdr.appendChild(dHdrLc);
-    const dHdrGc=el('div');dHdrGc.className='eq-dispatch-gc';
-    dHdrGc.style.cssText='flex:1;position:relative;min-width:'+(DISP_DAYS*EQ_DW)+'px;height:22px';
-    for(let i=0;i<DISP_DAYS;i++){
-      const d=new Date(dispStart);d.setDate(d.getDate()+i);
-      if(i===0||d.getDay()===1){
-        const lbl=el('span');lbl.style.cssText='position:absolute;left:'+(i*EQ_DW+2)+'px;top:4px;font-size:8px;color:#9ca3af;pointer-events:none';
-        lbl.textContent=d.toLocaleDateString('en-CA',{month:'short',day:'numeric'});dHdrGc.appendChild(lbl);
-      }
-    }
-    // Today marker in header
-    const todayOff=Math.round((new Date(TODAY+'T12:00:00')-dispStart)/86400000);
-    if(todayOff>=0&&todayOff<DISP_DAYS){
-      const tl=el('div');tl.className='eq-today';tl.style.cssText='position:absolute;left:'+(todayOff*EQ_DW+EQ_DW/2)+'px;top:0;width:2px;height:22px;background:rgba(255,210,0,.7)';
-      dHdrGc.appendChild(tl);
-    }
-    dHdr.appendChild(dHdrGc);dWrap.appendChild(dHdr);
-
-    // One row per active equipment item
-    activeEquipment().forEach(eq=>{
-      const row=el('div');row.className='eq-row';
-      const lc=el('div');lc.className='eq-row-lc';
-      const typeInfo=EQ_TYPE_MAP[eq.equipment_type]||EQ_TYPE_MAP.other;
-      lc.textContent=typeInfo.icon+' '+eq.name;lc.title=eq.name;row.appendChild(lc);
-      const gc=el('div');gc.className='eq-row-gc';
-      gc.style.cssText='flex:1;position:relative;min-width:'+(DISP_DAYS*EQ_DW)+'px;height:26px';
-      // Today line
-      if(todayOff>=0&&todayOff<DISP_DAYS){
-        const tl=el('div');tl.className='eq-today';
-        tl.style.cssText='position:absolute;left:'+(todayOff*EQ_DW+EQ_DW/2)+'px;top:0;width:2px;height:26px;background:rgba(255,210,0,.5)';
-        gc.appendChild(tl);
-      }
-      // Dispatch bars
-      getDispatch(eq.id).forEach(d=>{
-        if(d.to<dispStartStr)return;
-        const s=Math.max(0,Math.round((new Date(d.from+'T12:00:00')-dispStart)/86400000));
-        const e=Math.min(DISP_DAYS-1,Math.round((new Date(d.to+'T12:00:00')-dispStart)/86400000));
-        if(e<s)return;
-        const proj=S.projects.find(p=>p.id===d.project_id);
-        const bar=el('div');bar.className='eq-bar';
-        bar.style.cssText='left:'+(s*EQ_DW)+'px;width:'+((e-s+1)*EQ_DW)+'px;background:#1F3864';
-        bar.textContent=proj?proj.job_num:'—';
-        bar.title=(proj?proj.client+' ('+proj.job_num+')':'Unknown project')+'\n'+fmtDate(d.from)+' → '+fmtDate(d.to)+(d.note?'\n'+d.note:'');
-        bar.onclick=e2=>{e2.stopPropagation();openDispatchEdit(d,eq)};
-        gc.appendChild(bar);
-      });
-      row.appendChild(gc);dWrap.appendChild(row);
-    });
-    eqCard.appendChild(dWrap);
-  }
-
-  // ── Dispatch add form (opened by + Dispatch button) ───────────────────────
-  function openDispatchEdit(existing,preselectedEq){
-    eqCard.querySelectorAll('.eq-dispatch-form').forEach(f=>f.remove());
-    const isNew=!existing;
-    const d=existing?{...existing}:{
-      id:crypto.randomUUID(),equipment_id:preselectedEq?preselectedEq.id:'',
-      project_id:'',from:TODAY,to:TODAY,note:'',
-    };
-    const form=el('div');form.className='eq-dispatch-form';
-    form.style.cssText='background:#f0f4ff;border:1.5px solid #c5d0e8;border-radius:8px;padding:12px;margin-top:8px';
-    const g=el('div');g.style.cssText='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap';
-    // Equipment
-    const eqW=el('div');eqW.appendChild(lbl2('Equipment'));
-    const eqSel=inp2(d.equipment_id||'',e=>{d.equipment_id=e.target.value},'select',
-      [['','— Select —'],...activeEquipment().map(e=>[e.id,(EQ_TYPE_MAP[e.equipment_type]||EQ_TYPE_MAP.other).icon+' '+e.name])]);
-    eqSel.style.cssText='width:160px;font-size:12px';eqW.appendChild(eqSel);g.appendChild(eqW);
-    // Project
-    const pW=el('div');pW.appendChild(lbl2('Project'));
-    const pSel=inp2(d.project_id||'',e=>{d.project_id=e.target.value},'select',
-      [['','— Select —'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]);
-    pSel.style.cssText='width:200px;font-size:12px';pW.appendChild(pSel);g.appendChild(pW);
-    // From / To
-    const fW=el('div');fW.appendChild(lbl2('From'));
-    const fI=el('input');fI.type='date';fI.className='inp';fI.value=d.from;fI.style.width='120px';
-    fI.onchange=e=>{d.from=e.target.value};fW.appendChild(fI);g.appendChild(fW);
-    const tW=el('div');tW.appendChild(lbl2('To'));
-    const tI=el('input');tI.type='date';tI.className='inp';tI.value=d.to;tI.style.width='120px';
-    tI.onchange=e=>{d.to=e.target.value};tW.appendChild(tI);g.appendChild(tW);
-    // Note
-    const nW=el('div');nW.style.flex='1';nW.appendChild(lbl2('Note'));
-    const nI=el('input');nI.className='inp';nI.placeholder='Optional note';nI.value=d.note||'';
-    nI.oninput=e=>{d.note=e.target.value};nW.appendChild(nI);g.appendChild(nW);
-    form.appendChild(g);
-    const foot=el('div');foot.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:8px';
-    if(!isNew){
-      const delB=el('button');delB.className='btn-danger';delB.style.fontSize='11px';delB.textContent='Remove';
-      delB.onclick=async()=>{
-        if(!await confirmModal('Remove this dispatch assignment?','Remove',true))return;
-        saveDispatch(allDispatch().filter(x=>x.id!==d.id));form.remove();render();
-      };foot.appendChild(delB);
-    }
-    const cancelB=el('button');cancelB.className='btn-sec';cancelB.style.fontSize='11px';cancelB.textContent='Cancel';
-    cancelB.onclick=()=>form.remove();
-    const saveB=el('button');saveB.className='btn-primary';saveB.style.fontSize='11px';saveB.textContent=isNew?'Dispatch':'Save';
-    saveB.onclick=()=>{
-      if(!d.equipment_id||!d.project_id||!d.from||!d.to){toast('Select equipment, project, and dates.','error');return}
-      if(d.to<d.from){toast('End date must be on or after start date.','error');return}
-      const existing2=allDispatch().find(x=>x.id===d.id);
-      if(existing2)saveDispatch(allDispatch().map(x=>x.id===d.id?d:x));
-      else saveDispatch([...allDispatch(),d]);
-      form.remove();render();toast('✓ Equipment dispatched','ok');
-    };
-    foot.appendChild(cancelB);foot.appendChild(saveB);form.appendChild(foot);
-    eqCard.appendChild(form);
-  }
-  eqDispBtn.onclick=()=>openDispatchEdit(null,null);
   wrap.appendChild(eqCard);
 
   // ── Row 6: Info card — what goes here ─────────────────────────────────────
@@ -5103,249 +5699,6 @@ Rules:
 // Reads directly from S.tasks (same source as Gantt) — changes via task modal
 // automatically appear in both views. localStorage overlay adds day-level
 // dispatch notes and equipment without touching the Gantt schema.
-function buildCrewCalendar(){
-  const wrap=el('div');wrap.className='cc-wrap';
-  const holDates=new Set(S.holidays.map(h=>h.date));
-
-  // ── Navigation ──────────────────────────────────────────────────────────
-  const weekStart=getCalWeekStart();
-  const workDays=calWorkDays(weekStart);
-  const week2Start=workDays[5];
-
-  function prevWeek(){
-    let d=addDays(weekStart,-1);
-    while([0,6].includes(new Date(d+'T12:00:00').getDay()))d=addDays(d,-1);
-    const dow2=new Date(d+'T12:00:00').getDay();
-    setCalWeekStart(addDays(d,1-dow2));render();
-  }
-  function nextWeek(){setCalWeekStart(addDays(workDays[4],3));render();}
-
-  // ── Nav bar ──────────────────────────────────────────────────────────────
-  const nav=el('div');nav.className='cc-nav';
-  const prevBtn=el('button');prevBtn.className='btn-sec';prevBtn.style.fontSize='12px';prevBtn.textContent='← Prev week';
-  prevBtn.onclick=prevWeek;nav.appendChild(prevBtn);
-  const navLabel=el('div');navLabel.className='cc-nav-label';
-  const t1=el('div');t1.className='cc-nav-title';
-  t1.textContent=fmtDate(workDays[0])+' – '+fmtDate(workDays[9])+', '+new Date(workDays[0]+'T12:00:00').getFullYear();
-  const t2=el('div');t2.className='cc-nav-sub';
-  t2.textContent='Click any cell to edit — changes sync to the Gantt';
-  navLabel.appendChild(t1);navLabel.appendChild(t2);nav.appendChild(navLabel);
-  const nextBtn=el('button');nextBtn.className='btn-sec';nextBtn.style.fontSize='12px';nextBtn.textContent='Next week →';
-  nextBtn.onclick=nextWeek;nav.appendChild(nextBtn);
-  wrap.appendChild(nav);
-
-  // ── Table ────────────────────────────────────────────────────────────────
-  const tableWrap=el('div');tableWrap.className='cc-table-wrap';
-  const table=el('table');table.className='cc-table';
-
-  const CREW_W=120,DAY_W=96;
-  const cg=el('colgroup');
-  const c0=el('col');c0.style.width=CREW_W+'px';cg.appendChild(c0);
-  workDays.forEach(()=>{const c=el('col');c.style.width=DAY_W+'px';cg.appendChild(c);});
-  table.appendChild(cg);
-
-  // ── Header row 1: week labels ────────────────────────────────────────────
-  const thead=el('thead');
-  const hr1=el('tr');
-  const th0=el('th');th0.className='cc-th-crew';th0.textContent='CREW / DATE';hr1.appendChild(th0);
-  const wk1th=el('th');wk1th.colSpan=5;wk1th.className='cc-th-wk';
-  wk1th.textContent='WEEK OF '+new Date(workDays[0]+'T12:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric'}).toUpperCase();
-  hr1.appendChild(wk1th);
-  const wk2th=el('th');wk2th.colSpan=5;wk2th.className='cc-th-wk';
-  wk2th.textContent='WEEK OF '+new Date(workDays[5]+'T12:00:00').toLocaleDateString('en-CA',{month:'long',day:'numeric'}).toUpperCase();
-  hr1.appendChild(wk2th);
-  thead.appendChild(hr1);
-
-  // ── Header row 2: day labels ─────────────────────────────────────────────
-  const hr2=el('tr');
-  const th00=el('th');th00.className='cc-th-crew';th00.style.cssText='font-weight:400;font-size:9px;color:rgba(255,255,255,.5)';
-  th00.textContent='Click cell to edit';hr2.appendChild(th00);
-  workDays.forEach((date,di)=>{
-    const d=new Date(date+'T12:00:00');
-    const isToday=date===TODAY;const isHol=holDates.has(date);
-    const th=el('th');th.className='cc-th-day'+(isToday?' today':isHol?' hol':'');
-    const dn=el('div');dn.style.cssText='font-size:8px;font-weight:700;color:'+(isToday?'#1d4ed8':isHol?'#dc2626':'#9ca3af')+';letter-spacing:.3px';
-    dn.textContent=['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
-    const dd=el('div');dd.style.cssText='font-size:16px;font-weight:'+(isToday?'700':'500')+';color:'+(isToday?'#1d4ed8':isHol?'#dc2626':'#1a2b4a')+';line-height:1.15';
-    dd.textContent=d.getDate();
-    th.appendChild(dn);th.appendChild(dd);
-    if(isToday){const pill=el('div');pill.style.cssText='font-size:7px;font-weight:700;color:#1d4ed8;background:rgba(29,78,216,.1);border-radius:3px;padding:1px 4px;display:inline-block;letter-spacing:.3px';pill.textContent='TODAY';th.appendChild(pill)}
-    if(isHol){
-      const hname=S.holidays.find(h=>h.date===date);
-      const hp=el('div');hp.style.cssText='font-size:7px;color:#dc2626;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:'+(DAY_W-8)+'px';
-      hp.textContent=hname?hname.name:'Holiday';th.appendChild(hp);
-    }
-    if(di===4)th.style.borderRight='2px solid #c5d0e8';
-    hr2.appendChild(th);
-  });
-  thead.appendChild(hr2);
-  table.appendChild(thead);
-
-  // ── Body: one row per crew ────────────────────────────────────────────────
-  const tbody=el('tbody');
-  const crews=S.crews.slice().sort((a,b)=>a.sort_order-b.sort_order);
-
-  crews.forEach((crew,ri)=>{
-    const row=el('tr');
-    const lc=el('td');lc.className='cc-crew-lc';lc.style.height='94px';
-    const ldiv=el('div');ldiv.style.cssText='display:flex;align-items:center;gap:7px';
-    const dot=el('div');dot.style.cssText='width:10px;height:10px;border-radius:50%;background:'+crew.color+';flex-shrink:0';
-    const nm=el('span');nm.style.cssText='font-size:12px;font-weight:700;color:#1a2b4a';nm.textContent=crew.name;
-    ldiv.appendChild(dot);ldiv.appendChild(nm);lc.appendChild(ldiv);
-
-    // + Add task quick-link in crew cell
-    const addLink=el('button');addLink.style.cssText='display:block;margin-top:6px;font-size:9px;color:#1F3864;background:none;border:none;cursor:pointer;text-align:left;padding:0;opacity:.6';
-    addLink.textContent='+ Add task';
-    addLink.onclick=()=>openCrewAddTask(crew);
-    lc.appendChild(addLink);
-    row.appendChild(lc);
-
-    workDays.forEach((date,di)=>{
-      const isToday=date===TODAY;const isHol=holDates.has(date);
-      const td=el('td');td.className='cc-cell'+(isToday?' today':isHol?' hol':'');
-      if(di===4)td.style.borderRight='2px solid #c5d0e8';
-
-      const off=timeOffOnDay(crew.name,date);
-      // All tasks for this crew on this date (from Gantt segments)
-      const tasksOnDay=off?[]:tasksForCrewOnDay(crew.name,date);
-      const asgn=getCrewAssignment(crew.name,date);
-
-      // Continuation detection — same set of projects as previous workday
-      const prevDate=di>0?workDays[di-1]:null;
-      const prevTasks=prevDate&&!off?tasksForCrewOnDay(crew.name,prevDate):[];
-      const prevProj=prevTasks.length?S.projects.find(p=>p.id===prevTasks[0].project_id):null;
-      const curProj=tasksOnDay.length?S.projects.find(p=>p.id===tasksOnDay[0].project_id):null;
-      const isCont=curProj&&prevProj&&curProj.id===prevProj.id;
-
-      const inner=el('div');
-      inner.className='cc-cell-inner '+(off?'off':tasksOnDay.length?isCont?'cont':'start':'empty');
-
-      if(off){
-        inner.style.cssText='height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box;border-left:3px solid #dc2626;background:#fee2e2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px';
-        const ol=el('div');ol.style.cssText='font-size:10px;color:#991b1b;font-weight:700';ol.textContent='Time off';inner.appendChild(ol);
-        const tof=(S.mgmt.timeOff||[]).find(t=>t.crew===crew.name&&date>=t.from&&date<=t.to);
-        if(tof&&tof.note){const ol2=el('div');ol2.style.cssText='font-size:9px;color:#c9190b';ol2.textContent=tof.note;inner.appendChild(ol2);}
-      }else if(tasksOnDay.length){
-        const opacity=isCont?0.45:1;
-        const borderW=isCont?'2':'3';
-        const borderColor=isCont?crew.color+'55':crew.color;
-        const tint=crew.color+(isCont?'0B':'18');
-        inner.style.cssText='height:88px;border-radius:5px;padding:5px 6px;overflow:hidden;box-sizing:border-box;border-left:'+borderW+'px solid '+borderColor+';background:'+tint;
-
-        // Project location (primary)
-        const proj=S.projects.find(p=>p.id===tasksOnDay[0].project_id);
-        if(proj){
-          const jn=el('div');jn.className='cc-job';jn.style.cssText='font-size:8px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1px;color:'+crew.color+';opacity:'+opacity;
-          jn.textContent=proj.job_num;inner.appendChild(jn);
-          const loc=el('div');loc.className='cc-loc';loc.style.cssText='font-size:11px;font-weight:700;color:#1a2b4a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;opacity:'+opacity;
-          loc.textContent=proj.loc||proj.client;inner.appendChild(loc);
-          if(proj.client&&proj.loc&&proj.client!==proj.loc){
-            const cl=el('div');cl.className='cc-client';cl.style.cssText='font-size:9px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;opacity:'+opacity;
-            cl.textContent=proj.client;inner.appendChild(cl);
-          }
-        }
-        // Tasks (from Gantt + overlay selection)
-        if(!isCont){
-          const selIds=asgn&&asgn.task_ids&&asgn.task_ids.length?asgn.task_ids:null;
-          const displayTasks=selIds
-            ?selIds.map(id=>tasksOnDay.find(t=>t.id===id)).filter(Boolean)
-            :tasksOnDay.slice(0,2);
-          if(displayTasks.length){
-            const dv=el('div');dv.className='cc-divider';dv.style.cssText='height:1px;margin:4px 0;background:'+crew.color;inner.appendChild(dv);
-          }
-          displayTasks.forEach(t=>{
-            const tl=el('div');tl.className='cc-task-line';
-            const tick=el('span');tick.style.cssText='color:'+crew.color+';font-size:9px;flex-shrink:0;margin-top:1px';tick.textContent='✓';
-            const txt=el('span');txt.textContent=t.descr;tl.appendChild(tick);tl.appendChild(txt);inner.appendChild(tl);
-          });
-          if(tasksOnDay.length>2&&!selIds){const ml=el('div');ml.style.cssText='font-size:9px;color:'+crew.color+';opacity:.7;margin-top:2px';ml.textContent='+'+(tasksOnDay.length-2)+' more';inner.appendChild(ml)}
-          // Overlay: notes + equipment
-          if(asgn&&asgn.note){
-            const nl=el('div');nl.className='cc-note-line';
-            const ico=el('span');ico.style.flexShrink='0';ico.textContent='📝';
-            const nt=el('span');nt.textContent=asgn.note;nl.appendChild(ico);nl.appendChild(nt);inner.appendChild(nl);
-          }
-          if(asgn&&asgn.equipment_ids&&asgn.equipment_ids.length){
-            const eqs=asgn.equipment_ids.map(id=>S.equipment.find(e=>e.id===id)).filter(Boolean);
-            if(eqs.length){
-              const el2=el('div');el2.className='cc-note-line';
-              const ic2=el('span');ic2.style.flexShrink='0';ic2.textContent='🚜';
-              const tx2=el('span');tx2.textContent=eqs.map(e=>e.name).join(', ');
-              el2.appendChild(ic2);el2.appendChild(tx2);inner.appendChild(el2);
-            }
-          }
-        }
-        // Click → open cell edit panel (tasks + notes + equipment)
-        td.style.cursor='pointer';
-        td.onclick=()=>openCellEdit(crew,date,tasksOnDay,curProj,asgn);
-      }else{
-        // Empty — click to assign
-        inner.style.cssText='height:88px;border-radius:5px;overflow:hidden;box-sizing:border-box';
-        td.style.cursor='pointer';
-        td.title='Click to assign a project to '+crew.name+' on '+fmtDate(date);
-        td.onclick=()=>openCellEdit(crew,date,[],null,null);
-      }
-
-      td.appendChild(inner);row.appendChild(td);
-    });
-    tbody.appendChild(row);
-  });
-
-  table.appendChild(tbody);tableWrap.appendChild(table);wrap.appendChild(tableWrap);
-
-  // Legend
-  const legend=el('div');legend.style.cssText='display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;padding:0 2px';
-  const mkLeg=(bg,border,label)=>{
-    const d=el('div');d.style.cssText='display:flex;align-items:center;gap:5px';
-    const box=el('div');box.style.cssText='width:36px;height:14px;border-radius:3px;background:'+bg+';border-left:3px solid '+border;
-    const lbl=el('span');lbl.style.cssText='font-size:11px;color:#6b7280';lbl.textContent=label;
-    d.appendChild(box);d.appendChild(lbl);return d;
-  };
-  legend.appendChild(mkLeg('rgba(0,114,200,.1)','#0072C8','New project day'));
-  legend.appendChild(mkLeg('rgba(0,114,200,.04)','rgba(0,114,200,.33)','Continues'));
-  legend.appendChild(mkLeg('#fee2e2','#dc2626','Time off'));
-  legend.appendChild(mkLeg('#f8f9fb','transparent','Unscheduled'));
-  wrap.appendChild(legend);
-  return wrap;
-}
-
-// ── tasksForCrewOnDay ─────────────────────────────────────────────────────────
-// Returns all tasks where this crew has a segment covering the given date.
-// Reads from S.tasks directly (same source as Gantt) — the single source of truth.
-function tasksForCrewOnDay(crewName,date){
-  const results=[];
-  for(const proj of S.projects){
-    if(proj.archived)continue;
-    for(const task of projTasks(proj.id)){
-      const taskCrews=segCrews(null,task);
-      if(!taskCrews.includes(crewName))continue;
-      const onDay=task.segs.some(seg=>seg.s&&seg.e&&date>=seg.s&&date<=seg.e);
-      if(onDay)results.push(task);
-    }
-  }
-  return results;
-}
-
-// ── openCrewAddTask — quick-add: opens task modal pre-filled for this crew ────
-function openCrewAddTask(crew){
-  // Open a project picker first, then task modal
-  S.modal={type:'cc-add-task',crew};openModal();
-}
-
-// ── CELL EDIT PANEL ───────────────────────────────────────────────────────────
-// Full editing: open task modal(s) for Gantt sync + notes/equipment overlay.
-function openCellEdit(crew,date,tasksOnDay,proj,existingAsgn){
-  S.modal={type:'cc-cell-edit',crew,date,tasksOnDay,proj,
-    asgn:{
-      crew:crew.name,date,project_id:proj?proj.id:null,
-      task_ids:existingAsgn?[...existingAsgn.task_ids]:[],
-      note:existingAsgn?existingAsgn.note:'',
-      equipment_ids:existingAsgn?[...existingAsgn.equipment_ids]:[],
-    }};
-  openModal();
-}
-// ── CELL EDIT PANEL (old stub — replaced above) ──── DELETED
-
 function buildCellEditModal(m){
   const ms=S.modal;
   const {crew,date,tasksOnDay,proj,asgn}=ms;
@@ -5841,11 +6194,10 @@ function buildEquipmentModal(m){
   const delBtn=!ms.isNew?(()=>{
     const b=el('button');b.className='btn-danger';b.textContent='Delete';
     b.onclick=async()=>{
-      if(!await confirmModal('Delete "'+eq.name+'"? Dispatch history will also be removed.','Delete',true))return;
+      if(!await confirmModal('Delete "'+eq.name+'"?','Delete',true))return;
       await deleteEquipment(eq.id);
       S.equipment=S.equipment.filter(x=>x.id!==eq.id);
       // Remove dispatch entries for this equipment from localStorage
-      saveDispatch(allDispatch().filter(d=>d.equipment_id!==eq.id));
       closeModal();render();
     };return b;
   })():null;
@@ -5862,305 +6214,6 @@ function buildEquipmentModal(m){
 
 // ── DAILY FIELD REPORT MODAL (M6) ────────────────────────────────────────────
 // S.modal = {type:'field-report', report:{...}, isNew:bool, localEntries:[...]}
-function buildFieldReportModal(m){
-  const ms=S.modal;const r=ms.report;
-  mhdr(m,(ms.isNew?'New Field Report':'Field Report — ')+fmtDateLong(r.report_date));
-
-  // ── Section 1: Report Header ───────────────────────────────────────────────
-  const sec1=el('div');sec1.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
-  const s1l=el('p');s1l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
-  s1l.textContent='Report Details';sec1.appendChild(s1l);
-  const g1=el('div');g1.className='fg';
-
-  // Project
-  const projW=el('div');projW.className='fg-full';projW.appendChild(lbl2('Project'));
-  const projSel=inp2(r.project_id||'',e=>{
-    r.project_id=e.target.value||null;
-    // Auto-populate crew when project changes (only for new reports with no entries yet)
-    if(ms.isNew&&ms.localEntries.length===0&&r.project_id&&r.report_date){
-      ms.localEntries=crewOnDate(r.project_id,r.report_date).map(empId=>({
-        id:crypto.randomUUID(),report_id:r.id,employee_id:empId,hours:8,entry_type:'labour',
-      }));
-      renderEntries();
-    }
-  },'select',[['','— Select project —'],...S.projects.filter(p=>!p.archived).map(p=>[p.id,p.job_num+' — '+p.client])]);
-  projW.appendChild(projSel);g1.appendChild(projW);
-
-  // Date + Supervisor
-  const dW=el('div');dW.appendChild(lbl2('Report Date'));
-  const dInp=inp2(r.report_date||TODAY,e=>{r.report_date=e.target.value},'date');dW.appendChild(dInp);g1.appendChild(dW);
-  const supW=el('div');supW.appendChild(lbl2('Site Supervisor'));
-  supW.appendChild(inp2(r.supervisor_employee_id||'',e=>{r.supervisor_employee_id=e.target.value||null},'select',
-    [['','— Select —'],...activeEmployees().map(e=>[e.id,e.name])]));g1.appendChild(supW);
-
-  // Status
-  const stW=el('div');stW.appendChild(lbl2('Status'));
-  stW.appendChild(inp2(r.status||'draft',e=>{r.status=e.target.value},'select',
-    [['draft','Draft'],['submitted','Submitted']]));g1.appendChild(stW);
-  sec1.appendChild(g1);
-
-  // Weather row — icon toggle buttons
-  const wRow=el('div');wRow.style.cssText='margin-top:10px';wRow.appendChild(lbl2('Weather Conditions'));
-  const wBtns=el('div');wBtns.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-top:4px';
-  WEATHER_OPTS.forEach(w=>{
-    const btn=el('button');btn.className='weather-btn'+(r.weather===w?' active':'');
-    btn.textContent=w;
-    btn.onclick=()=>{
-      r.weather=r.weather===w?'':w; // toggle off if already selected
-      wBtns.querySelectorAll('.weather-btn').forEach(b=>b.classList.toggle('active',b.textContent===r.weather));
-    };
-    wBtns.appendChild(btn);
-  });
-  wRow.appendChild(wBtns);
-  // Temperature
-  const tmpRow=el('div');tmpRow.style.cssText='display:flex;align-items:center;gap:8px;margin-top:8px';
-  tmpRow.appendChild(lbl2('Temp (°C)'));
-  const tmpInp=el('input');tmpInp.type='number';tmpInp.className='inp';tmpInp.style.cssText='width:80px';
-  tmpInp.value=r.temp_celsius!=null?r.temp_celsius:'';
-  tmpInp.placeholder='e.g. 18';tmpInp.oninput=e=>{r.temp_celsius=e.target.value!==''?parseInt(e.target.value):null};
-  tmpRow.appendChild(tmpInp);wRow.appendChild(tmpRow);
-  sec1.appendChild(wRow);m.appendChild(sec1);
-
-  // ── Section 2: Crew Hours ──────────────────────────────────────────────────
-  const sec2=el('div');sec2.style.cssText='background:#f0f4ff;border:1px solid #c5d0e8;border-radius:7px;padding:12px;margin-bottom:12px';
-  const s2hdr=el('div');s2hdr.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
-  const s2l=el('p');s2l.style.cssText='font-size:10px;font-weight:700;color:#1F3864;text-transform:uppercase;letter-spacing:.5px;margin:0';
-  s2l.textContent='Crew Hours (feeds job costing)';
-  const addEntryBtn=el('button');addEntryBtn.className='btn-sm';addEntryBtn.style.fontSize='11px';addEntryBtn.textContent='+ Add Person';
-  s2hdr.appendChild(s2l);s2hdr.appendChild(addEntryBtn);sec2.appendChild(s2hdr);
-
-  // Auto-populate note
-  if(ms.isNew&&ms.localEntries.length>0){
-    const note=el('div');note.style.cssText='font-size:11px;color:#1F3864;background:#dbeafe;border-radius:4px;padding:4px 8px;margin-bottom:8px';
-    note.textContent='✓ Crew auto-populated from the Gantt schedule for this date.';sec2.appendChild(note);
-  }
-
-  const entryList=el('div');sec2.appendChild(entryList);
-  // Hours summary
-  const hrsSummary=el('div');hrsSummary.style.cssText='margin-top:8px;font-size:12px;font-weight:700;color:#1F3864;text-align:right';sec2.appendChild(hrsSummary);
-
-  function renderEntries(){
-    entryList.innerHTML='';
-    if(!ms.localEntries.length){
-      const none=el('div');none.style.cssText='color:#9ca3af;font-size:12px;text-align:center;padding:8px 0';
-      none.textContent='No crew on report yet — click + Add Person or select a project to auto-populate.';
-      entryList.appendChild(none);hrsSummary.textContent='';return;
-    }
-    ms.localEntries.forEach((entry,ei)=>{
-      const row=el('div');row.className='fr-entry-row';
-      // Employee select
-      const empSel=inp2(entry.employee_id||'',e=>{entry.employee_id=e.target.value||null},'select',
-        [['','— Select employee —'],...activeEmployees().map(e=>[e.id,e.name])]);
-      empSel.style.cssText='flex:1;font-size:11px;min-width:120px';row.appendChild(empSel);
-      // Hours
-      const hrsInp=el('input');hrsInp.type='number';hrsInp.className='inp';
-      hrsInp.style.cssText='width:64px;font-size:11px';hrsInp.min='0';hrsInp.max='24';hrsInp.step='0.5';
-      hrsInp.value=entry.hours!=null?entry.hours:'';
-      hrsInp.placeholder='hrs';
-      hrsInp.oninput=e=>{entry.hours=e.target.value!==''?parseFloat(e.target.value):0;updateHrsSummary()};
-      row.appendChild(hrsInp);
-      // Hrs label
-      const hLbl=el('span');hLbl.style.cssText='font-size:11px;color:#6b7280;flex-shrink:0';hLbl.textContent='hrs';row.appendChild(hLbl);
-      // Entry type
-      const typeSel=inp2(entry.entry_type||'labour',e=>{entry.entry_type=e.target.value},'select',
-        [['labour','Labour'],['equipment','Equipment']]);
-      typeSel.style.cssText='width:90px;font-size:11px';row.appendChild(typeSel);
-      // Delete
-      const delB=el('button');delB.style.cssText='background:none;border:none;color:#d1d5db;cursor:pointer;font-size:14px;flex-shrink:0';
-      delB.textContent='×';delB.onclick=async()=>{
-        if(entry._saved){
-          await deleteReportEntry(entry.id);
-          S.reportEntries=S.reportEntries.filter(x=>x.id!==entry.id);
-        }
-        ms.localEntries.splice(ei,1);renderEntries();
-      };row.appendChild(delB);
-      entryList.appendChild(row);
-    });
-    updateHrsSummary();
-  }
-  function updateHrsSummary(){
-    const total=ms.localEntries.reduce((s,e)=>s+Number(e.hours||0),0);
-    hrsSummary.textContent=total>0?'Total: '+total+'h on site':'';
-  }
-  // Mark existing saved entries
-  ms.localEntries.forEach(e=>{e._saved=!ms.isNew&&!!S.reportEntries.find(x=>x.id===e.id)});
-  renderEntries();
-  addEntryBtn.onclick=()=>{
-    ms.localEntries.push({id:crypto.randomUUID(),report_id:r.id,employee_id:null,hours:8,entry_type:'labour',_saved:false});
-    renderEntries();
-  };
-  m.appendChild(sec2);
-
-  // ── Section 3: Work Description & Notes ───────────────────────────────────
-  const sec3=el('div');sec3.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
-  const s3l=el('p');s3l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';
-  s3l.textContent='Site Notes';sec3.appendChild(s3l);
-  const addTA=(parent,labelTxt,key,placeholder,minH=52)=>{
-    parent.appendChild(lbl2(labelTxt));
-    const ta=el('textarea');ta.className='inp';ta.style.cssText='min-height:'+minH+'px;resize:vertical;margin-bottom:8px';
-    ta.placeholder=placeholder;ta.value=r[key]||'';ta.oninput=e=>{r[key]=e.target.value||null};parent.appendChild(ta);
-  };
-  addTA(sec3,'Work Completed (description of work done today)','work_description',
-    'Describe work completed — quantities, locations, materials placed…',72);
-  addTA(sec3,'Site Visitors (inspector name, client rep, etc.)','visitors',
-    'e.g. City inspector John Smith — checked base compaction');
-  addTA(sec3,'Issues / Delays','issues',
-    'e.g. Equipment breakdown, material delay, weather stop…');
-  m.appendChild(sec3);
-
-  // ── Footer ────────────────────────────────────────────────────────────────
-  const delBtn=!ms.isNew?(()=>{
-    const b=el('button');b.className='btn-danger';b.textContent='Delete Report';
-    b.onclick=async()=>{
-      if(!await confirmModal('Delete this field report? All crew hours will also be deleted.','Delete',true))return;
-      await deleteFieldReport(r.id);
-      S.fieldReports=S.fieldReports.filter(x=>x.id!==r.id);
-      S.reportEntries=S.reportEntries.filter(x=>x.report_id!==r.id);
-      closeModal();render();
-    };return b;
-  })():null;
-
-  mkFooter(m,delBtn,async()=>{
-    if(!r.project_id){toast('Please select a project.','error');return}
-    // Optimistic update
-    if(S.fieldReports.find(x=>x.id===r.id))
-      S.fieldReports=S.fieldReports.map(x=>x.id===r.id?r:x);
-    else
-      S.fieldReports=[r,...S.fieldReports];
-    // Optimistic entries
-    ms.localEntries.forEach(e=>{
-      e.report_id=r.id;
-      if(S.reportEntries.find(x=>x.id===e.id))
-        S.reportEntries=S.reportEntries.map(x=>x.id===e.id?e:x);
-      else
-        S.reportEntries=[...S.reportEntries,e];
-    });
-    closeModal();render();
-    // Persist to Supabase
-    try{
-      await upsertFieldReport(r);
-      for(const e of ms.localEntries)if(e.employee_id)await upsertReportEntry(e);
-      await loadAll();render();
-    }catch(err){
-      // Handle UNIQUE constraint violation gracefully
-      if(err.message&&err.message.includes('unique')){
-        toast('⚠ A report already exists for this project on this date.','error');
-      }else{
-        toast('⚠ Save failed: '+err.message,'error');
-      }
-    }
-  });
-}
-
-// ── SUBCONTRACTOR MODAL (M4) ──────────────────────────────────────────────────
-// S.modal = {type:'subcontractor', isNew:bool, sub:{...}}
-function buildSubcontractorModal(m){
-  const ms=S.modal;const sub=ms.sub;
-  mhdr(m,ms.isNew?'Add Subcontractor':'Edit: '+sub.name);
-
-  // ── Section 1: Company Details ────────────────────────────────────────────
-  const sec1=el('div');sec1.style.cssText='background:#f8f9fc;border-radius:7px;padding:12px;margin-bottom:12px';
-  const s1l=el('p');s1l.style.cssText='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s1l.textContent='Company Details';sec1.appendChild(s1l);
-  const g1=el('div');g1.className='fg';
-  const addF=(parent,labelTxt,key,full,type='text',opts=null,placeholder='')=>{
-    const w=el('div');if(full)w.className='fg-full';
-    w.appendChild(lbl2(labelTxt));
-    const i=opts?inp2(sub[key]||'',e=>{sub[key]=e.target.value},'select',opts)
-                :inp2(sub[key]||'',e=>{sub[key]=e.target.value||null},type);
-    if(placeholder&&i.tagName==='INPUT')i.placeholder=placeholder;
-    w.appendChild(i);parent.appendChild(w);
-  };
-  addF(g1,'Company Name','name',true,'text',null,'e.g. Ottawa Traffic Control Ltd.');
-  addF(g1,'Trade / Specialty','trade_type',false,'select',
-    [['','— Select —'],...SUB_TRADES.map(t=>[t,t])]);
-  addF(g1,'Status','status',false,'select',
-    [['active','Active'],['inactive','Inactive'],['do-not-use','Do Not Use']]);
-  addF(g1,'Contact Name','contact_name',false,'text',null,'Primary contact');
-  addF(g1,'Contact Phone','contact_phone',false,'text',null,'613-555-0000');
-  addF(g1,'Contact Email','contact_email',false,'text',null,'name@company.ca');
-  // Do-not-use reason (only relevant when status = do-not-use)
-  const dnuW=el('div');dnuW.className='fg-full';dnuW.appendChild(lbl2('Do-Not-Use Reason'));
-  const dnuI=inp2(sub.do_not_use_reason||'',e=>{sub.do_not_use_reason=e.target.value||null});
-  dnuI.placeholder='Reason this subcontractor should not be used…';dnuW.appendChild(dnuI);g1.appendChild(dnuW);
-  // Notes
-  const notesW=el('div');notesW.className='fg-full';notesW.appendChild(lbl2('Internal Notes'));
-  const notesI=el('textarea');notesI.className='inp';notesI.style.cssText='min-height:44px;resize:vertical';
-  notesI.placeholder='Performance notes, project history, anything useful…';
-  notesI.value=sub.notes||'';notesI.oninput=e=>{sub.notes=e.target.value||null};notesW.appendChild(notesI);g1.appendChild(notesW);
-  sec1.appendChild(g1);m.appendChild(sec1);
-
-  // ── Section 2: WSIB & Insurance ──────────────────────────────────────────
-  const sec2=el('div');sec2.style.cssText='background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:12px;margin-bottom:12px';
-  const s2l=el('p');s2l.style.cssText='font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s2l.textContent='WSIB & Insurance';sec2.appendChild(s2l);
-  const g2=el('div');g2.className='fg';
-  // WSIB
-  addF(g2,'WSIB Account Number','wsib_account',false,'text',null,'e.g. 1234567');
-  const wsibExpW=el('div');wsibExpW.appendChild(lbl2('WSIB Clearance Expiry'));
-  const wsibExpI=inp2(sub.wsib_clearance_expiry||'',e=>{sub.wsib_clearance_expiry=e.target.value||null},'date');
-  // Days remaining indicator
-  if(sub.wsib_clearance_expiry){
-    const d=Math.round((new Date(sub.wsib_clearance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
-    const ind=el('div');ind.style.cssText='font-size:10px;font-weight:700;margin-top:3px;color:'+(d<0?'#dc2626':d<=30?'#d97706':'#166534');
-    ind.textContent=d<0?'Expired '+Math.abs(d)+' days ago':d+' days remaining';wsibExpW.appendChild(wsibExpI);wsibExpW.appendChild(ind);
-  }else{wsibExpW.appendChild(wsibExpI)}
-  g2.appendChild(wsibExpW);
-  // Insurance
-  const insExpW=el('div');insExpW.appendChild(lbl2('Insurance Expiry'));
-  const insExpI=inp2(sub.insurance_expiry||'',e=>{sub.insurance_expiry=e.target.value||null},'date');
-  if(sub.insurance_expiry){
-    const d=Math.round((new Date(sub.insurance_expiry+'T12:00:00')-new Date(TODAY+'T12:00:00'))/86400000);
-    const ind=el('div');ind.style.cssText='font-size:10px;font-weight:700;margin-top:3px;color:'+(d<0?'#dc2626':d<=30?'#d97706':'#166534');
-    ind.textContent=d<0?'Expired '+Math.abs(d)+' days ago':d+' days remaining';insExpW.appendChild(insExpI);insExpW.appendChild(ind);
-  }else{insExpW.appendChild(insExpI)}
-  g2.appendChild(insExpW);
-  // Insurance amount
-  const insAmtW=el('div');insAmtW.appendChild(lbl2('Insurance Coverage ($ million)'));
-  const insAmtI=el('input');insAmtI.className='inp';insAmtI.type='number';insAmtI.step='0.5';insAmtI.min='0';
-  insAmtI.placeholder='e.g. 2';
-  insAmtI.value=sub.insurance_amount_cents?sub.insurance_amount_cents/100000000:'';
-  insAmtI.oninput=e=>{sub.insurance_amount_cents=e.target.value?Math.round(parseFloat(e.target.value)*100000000):null};
-  insAmtW.appendChild(insAmtI);g2.appendChild(insAmtW);
-  sec2.appendChild(g2);m.appendChild(sec2);
-
-  // ── Section 3: Agreement ─────────────────────────────────────────────────
-  const sec3=el('div');sec3.style.cssText='background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:12px;margin-bottom:12px';
-  const s3l=el('p');s3l.style.cssText='font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px';s3l.textContent='Subcontractor Agreement';sec3.appendChild(s3l);
-  const g3=el('div');g3.className='fg';
-  // Agreement on file toggle
-  const aggW=el('div');aggW.className='fg-full';
-  const aggLbl=el('label');aggLbl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:#444;margin-bottom:6px';
-  const aggCb=el('input');aggCb.type='checkbox';aggCb.checked=!!sub.agreement_on_file;
-  aggCb.onchange=e=>{sub.agreement_on_file=e.target.checked};
-  aggLbl.appendChild(aggCb);aggLbl.appendChild(document.createTextNode('Signed subcontractor agreement on file'));
-  aggW.appendChild(aggLbl);g3.appendChild(aggW);
-  addF(g3,'Agreement Date','agreement_date',false,'date');
-  sec3.appendChild(g3);m.appendChild(sec3);
-
-  // ── Footer ────────────────────────────────────────────────────────────────
-  const delBtn=!ms.isNew?(()=>{
-    const b=el('button');b.className='btn-danger';b.textContent='Delete';
-    b.onclick=async()=>{
-      if(!await confirmModal('Delete "'+sub.name+'"? This cannot be undone.','Delete',true))return;
-      await deleteSubcontractor(sub.id);
-      S.subcontractors=S.subcontractors.filter(x=>x.id!==sub.id);
-      closeModal();render();
-    };return b;
-  })():null;
-
-  mkFooter(m,delBtn,async()=>{
-    if(!sub.name.trim()){toast('Please enter the company name.','error');return}
-    if(S.subcontractors.find(x=>x.id===sub.id))
-      S.subcontractors=S.subcontractors.map(x=>x.id===sub.id?sub:x);
-    else
-      S.subcontractors=[...S.subcontractors,sub].sort((a,b)=>a.name.localeCompare(b.name));
-    closeModal();render();
-    await upsertSubcontractor(sub);
-    await loadAll();render();
-  });
-}
-
-// ── JHSC MEETING MODAL (M3) ───────────────────────────────────────────────────
-// S.modal = {type:'jhsc-meeting', meeting:{...}, isNew:bool}
 function openJHSCModal(existing){
   const isNew=!existing;
   S.modal={type:'jhsc-meeting',isNew,meeting:existing?{...existing,attendee_ids:[...(existing.attendee_ids||[])]}:{
@@ -7667,6 +7720,137 @@ function buildCrewModal(m){
   });
 }
 
+// ── DEMO MODE (Phase 1A) ──────────────────────────────────────────────────────
+// When the URL contains ?demo=1 (or ?demo=reset to wipe & reseed), the app runs
+// against an in-browser localStorage store instead of Supabase — NO LOGIN needed.
+// This makes the full app previewable/testable (in Claude or any browser) without
+// touching the real backend. The live Supabase path below is completely unchanged.
+function isDemoMode(){
+  try{return new URLSearchParams(window.location.search).has('demo')}catch(e){return false}
+}
+const DEMO_USER={id:'demo-user',email:'demo@strada.local'};
+function makeDemoClient(){
+  const PFX='strada_demo_';
+  const TABLES=['projects','tasks','crews','holidays','subtasks','employees',
+    'employee_certifications','hs_incidents','hs_actions','hs_meetings','hs_phas',
+    'subcontractors','field_reports','report_entries','equipment','settings'];
+  const read=t=>{try{return JSON.parse(localStorage.getItem(PFX+t)||'[]')}catch(e){return[]}};
+  const write=(t,rows)=>{try{localStorage.setItem(PFX+t,JSON.stringify(rows))}catch(e){}};
+
+  // ?demo=reset → wipe the demo store before reseeding. Also auto-wipe when the
+  // seed shape changes (SEED_VER bump) so testers always get current sample data
+  // without manually resetting.
+  var SEED_VER='3';
+  try{
+    var demoParam=new URLSearchParams(window.location.search).get('demo');
+    if(demoParam==='reset'||localStorage.getItem(PFX+'seedver')!==SEED_VER){
+      TABLES.forEach(function(t){localStorage.removeItem(PFX+t)});
+      localStorage.setItem(PFX+'seedver',SEED_VER);
+    }
+  }catch(e){}
+
+  // Seed core tables once. Demo tasks get realistic staggered weekday dates +
+  // crews so the Gantt is actually populated. (Production "Load Sample Data"
+  // intentionally leaves tasks unscheduled — that path is untouched.)
+  (function seedIfEmpty(){
+    if(read('crews').length===0)write('crews',DEF_CREWS);
+    if(read('holidays').length===0)write('holidays',DEF_HOLS);
+    if(read('projects').length===0||read('tasks').length===0){
+      try{
+        var seeds=mkSeeds();
+        var projRows=seeds.filter(function(r){return r.type==='proj'}).map(function(r){return r.row});
+        var taskRows=seeds.filter(function(r){return r.type==='task'}).map(function(r){return r.row});
+        var crewNames=DEF_CREWS.map(function(c){return c.name});
+        var addWD=function(d,n){var x=new Date(d),step=n>=0?1:-1,left=Math.abs(n);while(left>0){x.setDate(x.getDate()+step);var w=x.getDay();if(w!==0&&w!==6)left--;}return x;};
+        var iso=function(d){return d.toISOString().slice(0,10)};
+        var base=new Date(TODAY+'T12:00:00');
+        var byProj={};taskRows.forEach(function(t){(byProj[t.project_id]=byProj[t.project_id]||[]).push(t)});
+        projRows.forEach(function(p,pi){
+          var cursor=addWD(base,-6+(pi%18));               // staggered starts ≈ 1 wk ago → 3½ wks out
+          var crew=crewNames[pi%crewNames.length];
+          (byProj[p.id]||[]).forEach(function(t,ti){
+            var dur=2+(ti%3),s=new Date(cursor),e=addWD(s,dur-1); // 2–4 weekday spans
+            t.segments=[{s:iso(s),e:iso(e),crews:[crew]}];
+            cursor=addWD(e,1);
+          });
+        });
+        write('projects',projRows);
+        write('tasks',taskRows);
+      }catch(e){console.warn('[Strada demo] seed failed:',e)}
+    }
+    TABLES.forEach(function(t){if(localStorage.getItem(PFX+t)===null)write(t,[])});
+  })();
+
+  // Query builder mimicking the subset of supabase-js the app uses. It is BOTH
+  // chainable (.select/.order/.eq/.single/.upsert/.delete) AND thenable, so
+  // `await sb.from(t).select('*').order(c)` and `await sb.from(t).delete().eq(...)`
+  // resolve to {data,error} exactly like the real client.
+  function from(table){
+    const op={orders:[],eqs:[],single:false,mode:'select',rows:null};
+    const run=()=>{
+      if(op.mode==='upsert'){
+        const arr=Array.isArray(op.rows)?op.rows:[op.rows];
+        const cur=read(table);
+        arr.forEach(r=>{const i=cur.findIndex(x=>x.id===r.id);if(i>=0)cur[i]={...cur[i],...r};else cur.push(r)});
+        write(table,cur);
+        return Promise.resolve({data:arr,error:null});
+      }
+      if(op.mode==='delete'){
+        let cur=read(table);
+        op.eqs.forEach(([c,v])=>{cur=cur.filter(r=>r[c]!==v)});
+        write(table,cur);
+        return Promise.resolve({data:null,error:null});
+      }
+      let data=read(table);
+      op.eqs.forEach(([c,v])=>{data=data.filter(r=>r[c]===v)});
+      op.orders.forEach(([c,dir])=>{
+        data=[...data].sort((a,b)=>{
+          const av=a[c],bv=b[c];
+          if(av==null&&bv==null)return 0;
+          if(av==null)return 1;if(bv==null)return -1;
+          return(av>bv?1:av<bv?-1:0)*dir;
+        });
+      });
+      if(op.single)return Promise.resolve({data:data[0]||null,error:data[0]?null:{message:'No rows found',code:'PGRST116'}});
+      return Promise.resolve({data,error:null});
+    };
+    const builder={
+      select(){return builder},
+      order(col,opts){op.orders.push([col,(opts&&opts.ascending===false)?-1:1]);return builder},
+      eq(col,val){op.eqs.push([col,val]);return builder},
+      single(){op.single=true;return builder},
+      maybeSingle(){op.single=true;return builder},
+      upsert(rows){op.mode='upsert';op.rows=rows;return builder},
+      insert(rows){op.mode='upsert';op.rows=rows;return builder},
+      delete(){op.mode='delete';return builder},
+      then(res,rej){return run().then(res,rej)},
+      catch(rej){return run().catch(rej)},
+    };
+    return builder;
+  }
+  const auth={
+    async getSession(){return{data:{session:{user:DEMO_USER}},error:null}},
+    async getUser(){return{data:{user:DEMO_USER},error:null}},
+    onAuthStateChange(){return{data:{subscription:{unsubscribe(){}}}}},
+    async signInWithPassword(){return{data:{user:DEMO_USER},error:null}},
+    async signOut(){return{error:null}},
+    async resetPasswordForEmail(){return{error:null}},
+    async updateUser(){return{data:{user:DEMO_USER},error:null}},
+  };
+  function channel(){const ch={on(){return ch},subscribe(){return ch},unsubscribe(){},async send(){}};return ch}
+  return{from,auth,channel,removeChannel(){},removeAllChannels(){}};
+}
+function showDemoBanner(){
+  if(document.getElementById('demo-banner'))return;
+  const b=document.createElement('div');
+  b.id='demo-banner';
+  b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#92400e;color:#fff;font:600 12px/1.4 system-ui,-apple-system,sans-serif;padding:6px 12px;text-align:center;box-shadow:0 -1px 4px rgba(0,0,0,.25)';
+  b.innerHTML='\uD83E\uDDEA DEMO MODE \u2014 data is stored only in this browser and does not sync. '
+    +'<a href="?demo=reset" style="color:#fde68a;text-decoration:underline">Reset demo data</a> \u00B7 '
+    +'<a href="?" style="color:#fde68a;text-decoration:underline">Exit to login</a>';
+  document.body.appendChild(b);
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 // FIX CP2/CP3: Read hash FIRST, create client second, let getSession() process tokens
 (async function init(){
@@ -7681,9 +7865,14 @@ function buildCrewModal(m){
 
     // Step 2: Create client. Supabase v2 will read the hash and exchange the
     // token internally when getSession() is called.
-    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
-      auth:{detectSessionInUrl:true,persistSession:true,autoRefreshToken:true}
-    });
+    if(isDemoMode()){
+      sb=makeDemoClient();
+      showDemoBanner();
+    }else{
+      sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
+        auth:{detectSessionInUrl:true,persistSession:true,autoRefreshToken:true}
+      });
+    }
 
     // Step 3: Register listener BEFORE getSession so no events are missed.
     setupAuthListener();
