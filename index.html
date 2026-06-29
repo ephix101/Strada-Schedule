@@ -732,17 +732,17 @@ function buildSeed(){
 /* ---- state + persistence -------------------------------------------------- */
 let state = load() || init();
 function init(){const s=buildSeed();return {projects:s.projects,tasks:s.tasks,crews:CREWS,holidays:HOLIDAYS,
-  filters:{crews:new Set(CREWS.map(c=>c.name)),status:"",search:""}, ui:{}};}
+  filters:{crews:new Set(CREWS.map(c=>c.name)),status:"",search:"",sortBy:"default",hideComplete:false,showArchived:false}, ui:{}};}
 function load(){
   try{const raw=localStorage.getItem(CFG.LS_KEY);if(!raw)return null;const o=JSON.parse(raw);
-    o.crews=CREWS;o.holidays=o._holidays||HOLIDAYS;o.filters={crews:new Set(o._crews||CREWS.map(c=>c.name)),status:o._status||"",search:""};
+    o.crews=CREWS;o.holidays=o._holidays||HOLIDAYS;o.filters={crews:new Set(o._crews||CREWS.map(c=>c.name)),status:o._status||"",search:"",sortBy:o._sortBy||"default",hideComplete:!!o._hideComplete,showArchived:!!o._showArchived};
     return o;}catch(e){return null;}
 }
 function save(){
   if(_opts.readOnly||_opts.write)return; // embedded: host owns persistence via write hooks
   if(_opts.onSave){_opts.onSave();return;}  // I3 hook: route writes to host
   try{const o={projects:state.projects,tasks:state.tasks,
-    _crews:[...state.filters.crews],_status:state.filters.status,_holidays:state.holidays};
+    _crews:[...state.filters.crews],_status:state.filters.status,_sortBy:state.filters.sortBy,_hideComplete:state.filters.hideComplete,_showArchived:state.filters.showArchived,_holidays:state.holidays};
     localStorage.setItem(CFG.LS_KEY,JSON.stringify(o));}catch(e){}
 }
 function resetData(){localStorage.removeItem(CFG.LS_KEY);state=init();render();}
@@ -772,6 +772,7 @@ const Data = {
     state.projects.push(p);save();emit('project',p);return p;},
   deleteProject(id){state.projects=state.projects.filter(p=>p.id!==id);
     state.tasks=state.tasks.filter(t=>t.project_id!==id);save();emit('projectDelete',id);},
+  setArchived(id,val){const p=state.projects.find(x=>x.id===id);if(p){p.archived=val;save();emit('project',p);}},
   toggleCollapse(id){const p=state.projects.find(p=>p.id===id);if(p){p.collapsed=!p.collapsed;save();}},
   toggleSubtask(tid,sid){const t=state.tasks.find(x=>x.id===tid);if(t){const sb=(t.subtasks||[]).find(x=>x.id===sid);if(sb)sb.complete=!sb.complete;save();emit('task',t);}},
   toggleSubCollapse(tid){const t=state.tasks.find(x=>x.id===tid);if(t){t.subCollapsed=!t.subCollapsed;save();}},
@@ -787,21 +788,40 @@ const Data = {
     t.segs=t.segs.map(sg=>({...sg,crews:[crew]}));save();emit('task',t);}
 };
 
+/* ---- view-pref setter: local state + persist (host hook when embedded) --- */
+function setFilter(patch){Object.assign(state.filters,patch);
+  if(_opts.write&&_opts.write.viewPref){try{_opts.write.viewPref({sortBy:state.filters.sortBy,hideComplete:state.filters.hideComplete,showArchived:state.filters.showArchived});}catch(e){}}
+  save();render();}
+function projStart(p){let s=null;projTasks(p.id).forEach(t=>(t.segs||[]).forEach(sg=>{if(sg.s&&(!s||sg.s<s))s=sg.s;}));return s;}
+function projVPD(p){if(p.value==null||!p.value)return null;let d=0;projTasks(p.id).forEach(t=>d+=workDays(t));return d>0?p.value/d:null;}
+function sortProjects(projs,mode){
+  if(mode==="client")projs.sort((a,b)=>(a.client||"").localeCompare(b.client||""));
+  else if(mode==="jobNum")projs.sort((a,b)=>(a.job_num||"").localeCompare(b.job_num||""));
+  else if(mode==="startDate")projs.sort((a,b)=>(projStart(a)||"9999-12-31").localeCompare(projStart(b)||"9999-12-31"));
+  else if(mode==="valuePerDay")projs.sort((a,b)=>{const va=projVPD(a),vb=projVPD(b);if(va==null&&vb==null)return 0;if(va==null)return 1;if(vb==null)return -1;return vb-va;});
+  else projs.sort((a,b)=>a.sort-b.sort);
+  return projs;
+}
 /* ---- selection: state -> flat ordered rows ------------------------------- */
 function select(){
   const f=state.filters, q=f.search.trim().toLowerCase();
   const rows=[];
-  state.projects.slice().sort((a,b)=>a.sort-b.sort).forEach(p=>{
+  let projs=state.projects.slice();
+  if(!f.showArchived)projs=projs.filter(p=>!p.archived);     // archived hidden unless toggled on
+  if(f.hideComplete)projs=projs.filter(p=>p.status!=="Complete"); // hide completed projects
+  sortProjects(projs,f.sortBy);
+  projs.forEach(p=>{
     let tk=projTasks(p.id);
-    // crew + status + search filters apply to tasks; project shows if any task passes (or no filter)
+    // crew + status + search + hide-complete filters apply to tasks; project shows if any task passes
     let vis=tk.filter(t=>{
       const crews=t.segs.flatMap(s=>s.crews||[]);
       const crewOk=crews.length===0||crews.some(c=>f.crews.has(c));
       const statusOk=!f.status||t.status===f.status;
+      const completeOk=!f.hideComplete||t.status!=="Complete";
       const qOk=!q||t.descr.toLowerCase().includes(q)||p.client.toLowerCase().includes(q)||p.job_num.toLowerCase().includes(q);
-      return crewOk&&statusOk&&qOk;
+      return crewOk&&statusOk&&completeOk&&qOk;
     });
-    const filtering = f.crews.size<state.crews.length||f.status||q;
+    const filtering = f.crews.size<state.crews.length||f.status||q||f.hideComplete;
     if(filtering && vis.length===0) return;          // hide projects with no matching tasks
     rows.push({type:"proj",p});
     if(!p.collapsed) vis.forEach(t=>{
@@ -945,6 +965,7 @@ function labelProj(p){
   const jn=mk("span","p-jobnum");jn.textContent=p.job_num;
   const cl=mk("span","p-client");cl.textContent=p.client;
   top.appendChild(jn);top.appendChild(cl);
+  if(p.archived){const ab=mk("span");ab.textContent="\u{1F4C1}";ab.title="Archived";ab.style.cssText="margin-left:4px;opacity:.55;font-size:11px";top.appendChild(ab);}
   const loc=mk("div","p-loc");loc.textContent=p.loc;
   info.appendChild(top);info.appendChild(loc);
   r.appendChild(chev);r.appendChild(info);
@@ -1178,7 +1199,21 @@ function renderFilters(){
   sr.style.color="#16233a";sr.style.background="#fff";sr.style.borderColor="#d3dae6";
   sr.oninput=()=>{state.filters.search=sr.value;clearTimeout(sr._t);sr._t=setTimeout(render,180);};
   const sp=mk("div");sp.style.flex="1";
-  f.appendChild(sp);f.appendChild(st);f.appendChild(sr);return f;
+  // Sort
+  const sortSel=mk("select","tb-input");sortSel.title="Sort projects";
+  sortSel.style.cssText="color:#16233a;background:#fff;border-color:#d3dae6;min-width:118px";
+  [["default","Manual order"],["startDate","Start date"],["client","Client"],["jobNum","Job #"],["valuePerDay","$ / day"]].forEach(([v,l])=>{const o=mk("option");o.value=v;o.textContent="Sort: "+l;if(state.filters.sortBy===v)o.selected=true;sortSel.appendChild(o);});
+  sortSel.onchange=()=>setFilter({sortBy:sortSel.value});
+  // Hide complete
+  const hcChk="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#16233a;cursor:pointer;white-space:nowrap";
+  const hc=mk("label");hc.style.cssText=hcChk;
+  const hcCb=mk("input");hcCb.type="checkbox";hcCb.checked=!!state.filters.hideComplete;hcCb.onchange=()=>setFilter({hideComplete:hcCb.checked});
+  hc.appendChild(hcCb);hc.appendChild(document.createTextNode("Hide complete"));
+  // Show archived
+  const sa=mk("label");sa.style.cssText=hcChk;
+  const saCb=mk("input");saCb.type="checkbox";saCb.checked=!!state.filters.showArchived;saCb.onchange=()=>setFilter({showArchived:saCb.checked});
+  sa.appendChild(saCb);sa.appendChild(document.createTextNode("\u{1F4C1} Show archived"));
+  f.appendChild(sp);f.appendChild(sortSel);f.appendChild(hc);f.appendChild(sa);f.appendChild(st);f.appendChild(sr);return f;
 }
 function setZoom(px){CFG.dayW=px;if(ROOT)ROOT.style.setProperty("--day-w",px+"px");render();}
 
@@ -1493,6 +1528,7 @@ const Ctx = {
       {label:"Status",submenu:CFG.statuses.map(st=>({label:st,checked:p.status===st,action:()=>{Data.updateProject(p.id,{status:st});render();}}))},
       {label:p.collapsed?"Expand":"Collapse",action:()=>{Data.toggleCollapse(p.id);render();}},
       {label:"Edit locates\u2026",action:()=>Modal.project(p)},
+      {label:p.archived?"\u{1F4C1} Restore from archive":"\u{1F4C1} Archive project",action:()=>{Data.setArchived(p.id,!p.archived);render();}},
       {sep:true},
       {label:"Delete project",danger:true,action:()=>{if(confirm("Delete project and all its tasks?")){Data.deleteProject(p.id);render();}}}
     ];
@@ -1538,6 +1574,9 @@ function applyData(d){
   state.holidays=d.holidays||[];
   state.projects=d.projects||[];   // hard replace — embedded never falls back to the component's own seed
   state.tasks=d.tasks||[];
+  if(d.view){if(d.view.sortBy!==undefined)state.filters.sortBy=d.view.sortBy;
+    if(d.view.hideComplete!==undefined)state.filters.hideComplete=!!d.view.hideComplete;
+    if(d.view.showArchived!==undefined)state.filters.showArchived=!!d.view.showArchived;}
   const names=new Set(state.crews.map(c=>c.name));
   if(!state._filtersInit){state.filters.crews=new Set(names);state._filtersInit=true;}
   else state.filters.crews=new Set([...state.filters.crews].filter(n=>names.has(n)));
@@ -4559,7 +4598,7 @@ function adaptIn(){
   const projects=S.projects.map(p=>({
     id:p.id,job_num:p.job_num,client:p.client,loc:p.loc,status:p.status,
     value:(p.job_value||0)/100,collapsed:!!p.collapsed,sort:p.sort_order||0,
-    soils:!!p.soils_req,
+    soils:!!p.soils_req,archived:!!p.archived,
     locates:{pub:{req:p.locate_public_req||null,ordered:!!p.locate_public_ordered,complete:!!p.locate_public_complete},
              priv:{req:p.locate_private_req||null,ordered:!!p.locate_private_ordered,complete:!!p.locate_private_complete}}
   }));
@@ -4573,7 +4612,7 @@ function adaptIn(){
   }));
   const crews=S.crews.map(c=>({id:c.id,name:c.name,color:c.color}));
   const holidays=(S.holidays||[]).map(h=>({date:h.date,name:h.name||''}));
-  return {projects,tasks,crews,holidays};
+  return {projects,tasks,crews,holidays,view:{sortBy:S.filter.sortBy,hideComplete:S.filter.hideComplete,showArchived:S.filter.showArchived}};
 }
 const adaptOut={
   task(ct){
@@ -4598,11 +4637,12 @@ const adaptOut={
     const ex=S.projects.find(p=>p.id===cp.id)||{};
     upsertProject({...ex,id:cp.id,job_num:cp.job_num,client:cp.client,loc:cp.loc,status:cp.status,
       job_value:cp.value!=null?Math.round(cp.value*100):(ex.job_value||null),
-      collapsed:!!cp.collapsed,sort_order:cp.sort||ex.sort_order||0,soils_req:!!cp.soils,
+      collapsed:!!cp.collapsed,sort_order:cp.sort||ex.sort_order||0,soils_req:!!cp.soils,archived:!!cp.archived,
       locate_public_req:(cp.locates&&cp.locates.pub.req)||null,locate_public_ordered:!!(cp.locates&&cp.locates.pub.ordered),locate_public_complete:!!(cp.locates&&cp.locates.pub.complete),
       locate_private_req:(cp.locates&&cp.locates.priv.req)||null,locate_private_ordered:!!(cp.locates&&cp.locates.priv.ordered),locate_private_complete:!!(cp.locates&&cp.locates.priv.complete)});
   },
-  projectDelete(id){deleteProject(id);}
+  projectDelete(id){deleteProject(id);},
+  viewPref(v){if(v.sortBy!==undefined)S.filter.sortBy=v.sortBy;if(v.hideComplete!==undefined)S.filter.hideComplete=!!v.hideComplete;if(v.showArchived!==undefined)S.filter.showArchived=!!v.showArchived;saveFilters();}
 };
 let _gv2host=null,_gv2mounted=false,_gv2mounting=false;
 function mountOrRefreshGV2(){
