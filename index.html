@@ -7369,7 +7369,33 @@ function buildProjModal(m){
   const tcnt=el('span');tcnt.style.cssText='font-weight:700;font-size:13px;color:#1F3864';thdr2.appendChild(tcnt);
   const addt=el('button');addt.className='btn-sm';addt.style.fontWeight='700';addt.textContent='+ Task';
   addt.onclick=()=>{tasks.push({id:uid(),project_id:p.id,descr:'',crew:'',status:p.status,wknd:false,sort_order:tasks.length,segs:[{s:null,e:null,crews:[]}]});rTL()};
-  thdr2.appendChild(addt);tsec.appendChild(thdr2);
+  // Upload a quote / PDF / price schedule and append its line items as tasks to THIS project
+  const impt=el('button');impt.className='btn-sm';impt.textContent='📄 Upload quote';
+  impt.title='Add tasks from a PDF, Word, Excel or CSV quote / price schedule';
+  const fimp=el('input');fimp.type='file';fimp.accept='.pdf,.docx,.xlsx,.xls,.csv';fimp.style.display='none';
+  fimp.onchange=async e=>{
+    const file=e.target.files[0];fimp.value='';if(!file)return;
+    impt.disabled=true;const _o=impt.textContent;impt.textContent='⏳ Reading…';
+    try{
+      const res=await runAnalysis(file,'');
+      const ex=(res.tasks||[]).filter(t=>(t.description||'').trim());
+      if(!ex.length){toast('No tasks found in that file.','error');return}
+      ex.forEach(t=>{tasks.push({id:uid(),project_id:p.id,
+        descr:(t.description||'')+((t.quantity&&!t.notes)?' — '+t.quantity:''),
+        crew:'',status:p.status,wknd:false,sort_order:tasks.length,
+        task_value:dollarsToCents(t.value),notes:t.notes||null,
+        segs:[{s:null,e:null,crews:[]}]});});
+      // adopt the schedule total as the contract value only if none is set yet
+      if(res.value&&!p.job_value){p.job_value=dollarsToCents(res.value);
+        jvInp.value=p.job_value?((p.job_value/100).toLocaleString('en-CA',{minimumFractionDigits:0,maximumFractionDigits:0})):'';}
+      rTL();updateRecon();
+      toast('✓ Added '+ex.length+' task'+(ex.length!==1?'s':'')+' from '+file.name,'ok');
+    }catch(err){toast('⚠ Import failed: '+err.message,'error')}
+    finally{impt.disabled=false;impt.textContent=_o}
+  };
+  impt.onclick=()=>fimp.click();
+  const tbtns=el('div');tbtns.style.cssText='display:flex;gap:6px';tbtns.appendChild(impt);tbtns.appendChild(addt);
+  thdr2.appendChild(tbtns);tsec.appendChild(fimp);tsec.appendChild(thdr2);
   const tl=el('div');tl.className='task-list';
   function rTL(){
     tl.innerHTML='';tcnt.textContent='Tasks ('+tasks.length+')';
@@ -7491,6 +7517,8 @@ function buildProjModal(m){
       for(const id of deletedTaskIds)await deleteTask(id);
       await upsertProject(p);
       for(const t of tasks)await upsertTask(t);
+      // persist task notes (imported line-item detail) — isolated write, ignored if notes column not yet migrated
+      for(const t of tasks){if(t.notes){try{await sb.from('tasks').update({notes:t.notes}).eq('id',t.id);}catch(_){}}}
       // M3: auto-create a draft PHA for every new project so it never starts without one
       if(isNew){
         const draftPha={
