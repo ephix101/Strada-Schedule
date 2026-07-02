@@ -761,7 +761,7 @@ function workDays(t){
 const Data = {
   updateTask(id,patch){let nt=null;state.tasks=state.tasks.map(t=>t.id===id?(nt={...t,...patch}):t);save();if(nt)emit('task',nt);},
   addTask(pid){const t={id:genId("t_"),project_id:pid,descr:"New task",status:"Not started",
-    sort:projTasks(pid).length,wknd:false,notes:"",task_value:null,subtasks:[],
+    sort:projTasks(pid).length,wknd:false,notes:"",quantity:"",task_value:null,subtasks:[],
     segs:[{s:idxToDate(CFG.startBackDays),e:idxToDate(CFG.startBackDays+1),crews:[state.crews[0]?state.crews[0].name:""]}]};
     state.tasks.push(t);save();emit('task',t);return t;},
   deleteTask(id){state.tasks=state.tasks.filter(t=>t.id!==id);save();emit('taskDelete',id);},
@@ -876,11 +876,13 @@ const LABEL_BADGES = [
 const mk=(tag,cls)=>{const e=document.createElement(tag);if(cls)e.className=cls;return e;};
 const W = ()=>CFG.nDays*CFG.dayW;          // body content width
 
+let _lwInit=false;
 function render(){
   const app=ROOT;
   const _pb=app.querySelector(".body-pane");          // preserve scroll across rebuild
   const _sx=_pb?_pb.scrollLeft:null,_sy=_pb?_pb.scrollTop:null;
   app.innerHTML="";
+  if(!_lwInit){_lwInit=true;try{const _lw=localStorage.getItem('gv2_labelw');if(_lw)ROOT.style.setProperty('--label-w',_lw+'px');}catch(_){}}
   app.appendChild(renderToolbar());
   app.appendChild(renderFilters());
   const rows=select();
@@ -889,6 +891,14 @@ function render(){
   gantt.appendChild(renderHeader());
   gantt.appendChild(renderLabelPane(rows));
   gantt.appendChild(renderBodyPane(rows));
+  const rez=mk("div","lbl-resizer");rez.title="Drag to widen or tighten the task column";
+  let _drag=false,_x0=0,_w0=0;
+  const curW=()=>parseInt(getComputedStyle(ROOT).getPropertyValue("--label-w"))||330;
+  rez.addEventListener("pointerdown",e=>{_drag=true;_x0=e.clientX;_w0=curW();rez.classList.add("drag");try{rez.setPointerCapture(e.pointerId);}catch(_){}e.preventDefault();});
+  rez.addEventListener("pointermove",e=>{if(!_drag)return;const w=Math.max(150,Math.min(760,_w0+(e.clientX-_x0)));ROOT.style.setProperty("--label-w",w+"px");});
+  const _end=()=>{if(!_drag)return;_drag=false;rez.classList.remove("drag");try{localStorage.setItem("gv2_labelw",curW());}catch(_){}};
+  rez.addEventListener("pointerup",_end);rez.addEventListener("pointercancel",_end);
+  gantt.appendChild(rez);
   app.appendChild(gantt);
   ScrollSync.attach();
   if(_sx!=null){const nb=app.querySelector(".body-pane");if(nb){nb.scrollLeft=_sx;nb.scrollTop=_sy;}}
@@ -972,6 +982,7 @@ function labelTask(p,t,alt){
   else arr.textContent="↳";
   const d=mk("span","t-descr");d.textContent=t.descr;
   r.appendChild(arr);r.appendChild(d);
+  if(t.quantity&&String(t.quantity).trim()){const q=mk("span","t-qty");q.textContent=t.quantity;r.appendChild(q);}
   if(hasSub){const done=t.subtasks.filter(x=>x.complete).length;
     const sc=mk("span","badge");sc.style.cssText="background:#eef1f6;color:#5b6470";sc.textContent="☑ "+done+"/"+t.subtasks.length;r.appendChild(sc);}
   if(t.task_value){const tvb=mk("span","badge");tvb.style.cssText="background:#e6effa;color:#1b4f8a";tvb.textContent=fmtMoney(t.task_value);r.appendChild(tvb);}
@@ -1269,7 +1280,7 @@ const Modal = {
     },()=>{state.holidays=list.filter(h=>h.date);save();},null);
   },
   task(t,isNew){
-    let de,stt,nt,wk,tv;const segs=t.segs.map(s=>({...s,crews:[...(s.crews||[])]}));
+    let de,stt,nt,wk,tv,qy;const segs=t.segs.map(s=>({...s,crews:[...(s.crews||[])]}));
     const subs=(t.subtasks||[]).map(s=>({...s}));
     this.shell(isNew?"New task":"Edit task",(body)=>{
       de=mk("input");de.value=t.descr;
@@ -1277,7 +1288,8 @@ const Modal = {
       const row=mk("div");row.style.cssText="display:flex;gap:10px";
       stt=mk("select");stt.innerHTML=CFG.statuses.map(x=>`<option ${t.status===x?"selected":""}>${x}</option>`).join("");
       tv=mk("input");tv.type="number";tv.placeholder="optional";tv.value=t.task_value||"";
-      row.appendChild(this.field("Status",stt));row.appendChild(this.field("Task value ($)",tv));
+      qy=mk("input");qy.placeholder="e.g. 326 m³";qy.value=t.quantity||"";
+      row.appendChild(this.field("Status",stt));row.appendChild(this.field("Task value ($)",tv));row.appendChild(this.field("Quantity",qy));
       body.appendChild(row);
       const wkW=mk("label");wkW.style.cssText="display:flex;align-items:center;gap:8px;font-size:12px;margin:0 0 14px;cursor:pointer";
       wk=mk("input");wk.type="checkbox";wk.checked=!!t.wknd;wk.style.width="auto";
@@ -1327,7 +1339,7 @@ const Modal = {
       body.appendChild(addSub);
       nt=mk("textarea");nt.rows=3;nt.value=t.notes||"";nt.style.resize="vertical";
       body.appendChild(this.field("Notes (weather, RFIs, changes…)",nt));
-    },()=>Data.updateTask(t.id,{descr:de.value,status:stt.value,wknd:wk.checked,notes:nt.value,
+    },()=>Data.updateTask(t.id,{descr:de.value,status:stt.value,wknd:wk.checked,notes:nt.value,quantity:qy.value,
         task_value:tv.value?+tv.value:null,subtasks:subs.filter(s=>s.descr&&s.descr.trim()),segs:segs.filter(s=>s.s&&s.e)}),
        ()=>Data.deleteTask(t.id));
   }
@@ -2124,7 +2136,7 @@ function dbTaskToApp(t){
   const primaryCrew=(segs[0]?.crews[0])||taskCrew;
   return{id:t.id,project_id:t.project_id,descr:t.descr||'',crew:primaryCrew,
     status:t.status,wknd:t.wknd,sort_order:t.sort_order,
-    task_value:t.task_value||null,notes:t.notes||'',segs};
+    task_value:t.task_value||null,notes:t.notes||'',quantity:t.quantity||'',segs};
 }
 function appTaskToDB(t){
   // Derive primary crew from first segment's first crew (keeps tasks.crew in sync)
@@ -4668,7 +4680,7 @@ function adaptIn(){
     {id:st.id,descr:st.descr||'',assigned:st.assigned_to||'',date:st.scheduled_dt||null,complete:!!st.complete});});
   const tasks=S.tasks.map(t=>({
     id:t.id,project_id:t.project_id,descr:t.descr,status:t.status,wknd:!!t.wknd,
-    notes:t.notes||'',task_value:t.task_value?t.task_value/100:null,sort:t.sort_order||0,
+    notes:t.notes||'',quantity:t.quantity||'',task_value:t.task_value?t.task_value/100:null,sort:t.sort_order||0,
     segs:(t.segs||[]).map(sg=>({s:sg.s,e:sg.e,crews:[...(sg.crews||[])]})),
     subtasks:subBy[t.id]||[]
   }));
@@ -4686,6 +4698,7 @@ const adaptOut={
       segs:(ct.segs||[]).map(sg=>({s:sg.s,e:sg.e,crews:[...(sg.crews||[])]}))});
     // notes written separately so a pre-migration (missing column) can't break the main save
     api(async()=>{const{error}=await sb.from('tasks').update({notes:ct.notes||null}).eq('id',ct.id);if(error)throw error;});
+    api(async()=>{const{error}=await sb.from('tasks').update({quantity:ct.quantity||null}).eq('id',ct.id);if(error)throw error;});
     // reconcile embedded subtasks against the subtasks table
     const prior=(S.subtasks||[]).filter(s=>s.task_id===ct.id);
     const nowIds=new Set((ct.subtasks||[]).map(s=>s.id));
@@ -7136,14 +7149,14 @@ function buildImportPreview(m,ms){
         id:t.id,project_id:pid,
         // spreadsheet rows carry full text in notes -> keep descr as the clean short title;
         // PDF/estimate rows have no notes -> keep the old behaviour of appending qty to descr
-        descr:t.description+((t.quantity&&!t.notes)?' — '+t.quantity:''),
+        descr:t.description,
         crew:'',status:proj.status,wknd:false,sort_order:i,
         task_value:dollarsToCents(t.value),
         segs:[{s:null,e:null,crews:[]}]
       }));
       for(const task of tasks)await upsertTask(task);
       // full line-item text -> task notes (isolated write; silently ignored if the notes column isn't migrated yet)
-      for(const t of ms.editTasks){if(t.notes){try{await sb.from('tasks').update({notes:t.notes}).eq('id',t.id);}catch(_){}}}
+      for(const t of ms.editTasks){if(t.notes||t.quantity){try{await sb.from('tasks').update({notes:t.notes||null,quantity:t.quantity||null}).eq('id',t.id);}catch(_){}}}
       await loadAll();closeModal();render();
       toast('✓ "'+proj.client+'" imported — '+tasks.length+' task'+(tasks.length!==1?'s':''),'ok');
     }catch(e){toast('⚠ Import failed: '+e.message,'error');impBtn.disabled=false;impBtn.textContent='✓ Import';}
@@ -7368,7 +7381,7 @@ function buildProjModal(m){
   const thdr2=el('div');thdr2.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
   const tcnt=el('span');tcnt.style.cssText='font-weight:700;font-size:13px;color:#1F3864';thdr2.appendChild(tcnt);
   const addt=el('button');addt.className='btn-sm';addt.style.fontWeight='700';addt.textContent='+ Task';
-  addt.onclick=()=>{tasks.push({id:uid(),project_id:p.id,descr:'',crew:'',status:p.status,wknd:false,sort_order:tasks.length,segs:[{s:null,e:null,crews:[]}]});rTL()};
+  addt.onclick=()=>{tasks.push({id:uid(),project_id:p.id,descr:'',quantity:'',crew:'',status:p.status,wknd:false,sort_order:tasks.length,segs:[{s:null,e:null,crews:[]}]});rTL()};
   // Upload a quote / PDF / price schedule and append its line items as tasks to THIS project
   const impt=el('button');impt.className='btn-sm';impt.textContent='📄 Upload quote';
   impt.title='Add tasks from a PDF, Word, Excel or CSV quote / price schedule';
@@ -7381,7 +7394,7 @@ function buildProjModal(m){
       const ex=(res.tasks||[]).filter(t=>(t.description||'').trim());
       if(!ex.length){toast('No tasks found in that file.','error');return}
       ex.forEach(t=>{tasks.push({id:uid(),project_id:p.id,
-        descr:(t.description||'')+((t.quantity&&!t.notes)?' — '+t.quantity:''),
+        descr:(t.description||''),quantity:t.quantity||'',
         crew:'',status:p.status,wknd:false,sort_order:tasks.length,
         task_value:dollarsToCents(t.value),notes:t.notes||null,
         segs:[{s:null,e:null,crews:[]}]});});
@@ -7410,6 +7423,7 @@ function buildProjModal(m){
       handle.title='Drag to reorder';
       row.appendChild(handle);
       const di=inp2(t.descr,e=>{tasks[ti].descr=e.target.value});di.placeholder='Task description';di.style.flex='1';row.appendChild(di);
+      const qi2=inp2(t.quantity||'',e=>{tasks[ti].quantity=e.target.value});qi2.placeholder='Qty';qi2.style.width='92px';qi2.style.flex='none';row.appendChild(qi2);
       const db=el('button');db.style.cssText='color:#dc3545;background:none;border:none;cursor:pointer;font-size:15px;padding:0 4px';
       db.textContent='×';db.onclick=()=>{
         // If this task already exists in the DB, mark it for deletion on save
@@ -7518,7 +7532,7 @@ function buildProjModal(m){
       await upsertProject(p);
       for(const t of tasks)await upsertTask(t);
       // persist task notes (imported line-item detail) — isolated write, ignored if notes column not yet migrated
-      for(const t of tasks){if(t.notes){try{await sb.from('tasks').update({notes:t.notes}).eq('id',t.id);}catch(_){}}}
+      for(const t of tasks){if(t.notes||t.quantity){try{await sb.from('tasks').update({notes:t.notes||null,quantity:t.quantity||null}).eq('id',t.id);}catch(_){}}}
       // M3: auto-create a draft PHA for every new project so it never starts without one
       if(isNew){
         const draftPha={
