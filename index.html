@@ -892,6 +892,7 @@ function render(){
   gantt.appendChild(renderLabelPane(rows));
   gantt.appendChild(renderBodyPane(rows));
   const rez=mk("div","lbl-resizer");rez.title="Drag to widen or tighten the task column";
+  const grip=mk("div","grip");grip.textContent="↔";rez.appendChild(grip);
   let _drag=false,_x0=0,_w0=0;
   const curW=()=>parseInt(getComputedStyle(ROOT).getPropertyValue("--label-w"))||330;
   rez.addEventListener("pointerdown",e=>{_drag=true;_x0=e.clientX;_w0=curW();rez.classList.add("drag");try{rez.setPointerCapture(e.pointerId);}catch(_){}e.preventDefault();});
